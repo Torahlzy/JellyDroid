@@ -1,9 +1,16 @@
 # Gradle files
 .gradle/
 build/
+.kotlin/
 
 # Local configuration file (sdk path, etc)
 local.properties
+
+# Local AI assistant files
+.claude/
+
+# Locally scraped API reference docs
+doc/
 
 # Log/OS Files
 *.log

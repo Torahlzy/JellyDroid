@@ -72,7 +72,7 @@ class SetupRepositoryImpl(
         }
     }
 
-    override suspend fun addServer(address: String): Server {
+    override suspend fun addServer(address: String): Server = withContext(Dispatchers.IO) {
         // Check if address is not blank
         if (address.isBlank()) {
             throw ExceptionUiText(
@@ -92,7 +92,7 @@ class SetupRepositoryImpl(
         for (recommendedServerInfo in recommended) {
             when (recommendedServerInfo.score) {
                 RecommendedServerInfoScore.GREAT -> {
-                    return saveServerInDatabase(recommendedServerInfo)
+                    return@withContext saveServerInDatabase(recommendedServerInfo)
                 }
                 RecommendedServerInfoScore.GOOD -> goodServers.add(recommendedServerInfo)
                 RecommendedServerInfoScore.OK -> okServers.add(recommendedServerInfo)
@@ -102,7 +102,7 @@ class SetupRepositoryImpl(
 
         when {
             goodServers.isNotEmpty() -> {
-                return saveServerInDatabase(goodServers.first())
+                return@withContext saveServerInDatabase(goodServers.first())
             }
             okServers.isNotEmpty() -> {
                 val okServer = okServers.first()
@@ -116,7 +116,9 @@ class SetupRepositoryImpl(
         }
     }
 
-    private suspend fun saveServerInDatabase(recommendedServerInfo: RecommendedServerInfo): Server {
+    private suspend fun saveServerInDatabase(
+        recommendedServerInfo: RecommendedServerInfo
+    ): Server = withContext(Dispatchers.IO) {
         val serverInfo =
             recommendedServerInfo.systemInfo.getOrNull()
                 ?: throw ExceptionUiText(
@@ -169,7 +171,7 @@ class SetupRepositoryImpl(
             api.update(baseUrl = recommendedServerInfo.address, accessToken = null)
         }
 
-        return server
+        server
     }
 
     /**
