@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import dev.jdtech.jellyfin.film.presentation.collection.CollectionAction
 import dev.jdtech.jellyfin.models.CollectionSection
 import dev.jdtech.jellyfin.models.FindroidEpisode
+import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.GridCellsAdaptiveWithMinColumns
 
@@ -23,6 +24,7 @@ fun CollectionGrid(
     sections: List<CollectionSection>,
     innerPadding: PaddingValues,
     onAction: (CollectionAction) -> Unit,
+    onItemDetails: ((FindroidItem) -> Unit)? = null,
 ) {
     LazyVerticalGrid(
         columns = GridCellsAdaptiveWithMinColumns(minSize = 160.dp, minColumns = 2),
@@ -52,6 +54,7 @@ fun CollectionGrid(
                     direction =
                         if (item is FindroidEpisode) Direction.HORIZONTAL else Direction.VERTICAL,
                     onClick = { onAction(CollectionAction.OnItemClick(item)) },
+                    onDetailsClick = onItemDetails,
                     modifier = Modifier.animateItem(),
                 )
             }

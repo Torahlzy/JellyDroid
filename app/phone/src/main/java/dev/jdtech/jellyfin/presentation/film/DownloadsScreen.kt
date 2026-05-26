@@ -16,6 +16,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -32,6 +35,7 @@ import dev.jdtech.jellyfin.models.CollectionSection
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.UiText
 import dev.jdtech.jellyfin.presentation.film.components.CollectionGrid
+import dev.jdtech.jellyfin.presentation.film.components.DownloadDetailsDialog
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 
 @Composable
@@ -40,6 +44,7 @@ fun DownloadsScreen(
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var detailsItem by remember { mutableStateOf<FindroidItem?>(null) }
 
     LaunchedEffect(true) { viewModel.loadItems() }
 
@@ -49,14 +54,24 @@ fun DownloadsScreen(
             when (action) {
                 is CollectionAction.OnItemClick -> onItemClick(action.item)
                 is CollectionAction.OnBackClick -> Unit
+                else -> {}
             }
         },
+        onItemDetails = { detailsItem = it },
     )
+
+    detailsItem?.let { item ->
+        DownloadDetailsDialog(item = item, onDismiss = { detailsItem = null })
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DownloadsScreenLayout(state: CollectionState, onAction: (CollectionAction) -> Unit) {
+private fun DownloadsScreenLayout(
+    state: CollectionState,
+    onAction: (CollectionAction) -> Unit,
+    onItemDetails: ((FindroidItem) -> Unit)? = null,
+) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
@@ -83,7 +98,12 @@ private fun DownloadsScreenLayout(state: CollectionState, onAction: (CollectionA
             }
         }
 
-        CollectionGrid(sections = state.sections, innerPadding = innerPadding, onAction = onAction)
+        CollectionGrid(
+            sections = state.sections,
+            innerPadding = innerPadding,
+            onAction = onAction,
+            onItemDetails = onItemDetails,
+        )
     }
 }
 

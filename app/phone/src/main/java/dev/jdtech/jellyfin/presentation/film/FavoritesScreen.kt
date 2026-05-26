@@ -33,6 +33,7 @@ fun FavoritesScreen(
         onAction = { action ->
             when (action) {
                 is CollectionAction.OnItemClick -> onItemClick(action.item)
+                is CollectionAction.OnItemDetails -> {}
                 is CollectionAction.OnBackClick -> navigateBack()
             }
         },
