@@ -457,15 +457,15 @@ class PlayerActivity : BasePlayerActivity() {
                 playerGestureHelper?.updateZoomMode(wasZoom)
 
                 // Override auto brightness
-                if (
-                    appPreferences.getValue(appPreferences.playerGesturesVB) &&
-                        appPreferences.getValue(appPreferences.playerGesturesBrightnessRemember)
-                ) {
-                    window.attributes =
-                        window.attributes.apply {
-                            screenBrightness =
-                                appPreferences.getValue(appPreferences.playerBrightness)
+                if (appPreferences.getValue(appPreferences.playerGesturesVB)) {
+                    appPreferences.getValue(appPreferences.playerBrightness).let { saved ->
+                        if (saved != -1.0f) {
+                            window.attributes =
+                                window.attributes.apply {
+                                    screenBrightness = saved
+                                }
                         }
+                    }
                 }
             }
         }

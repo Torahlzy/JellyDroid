@@ -414,12 +414,10 @@ class PlayerGestureHelper(
 
     private val hideGestureBrightnessIndicatorOverlayAction = Runnable {
         activity.binding.gestureBrightnessLayout.visibility = View.GONE
-        if (appPreferences.getValue(appPreferences.playerGesturesBrightnessRemember)) {
-            appPreferences.setValue(
-                appPreferences.playerBrightness,
-                activity.window.attributes.screenBrightness,
-            )
-        }
+        appPreferences.setValue(
+            appPreferences.playerBrightness,
+            activity.window.attributes.screenBrightness,
+        )
     }
 
     private val hideGestureProgressOverlayAction = Runnable {
@@ -478,6 +476,12 @@ class PlayerGestureHelper(
                     removeCallbacks(hideGestureBrightnessIndicatorOverlayAction)
                     postDelayed(hideGestureBrightnessIndicatorOverlayAction, 1000)
                     swipeGestureBrightnessOpen = false
+
+                    // Save brightness immediately when the gesture ends
+                    appPreferences.setValue(
+                        appPreferences.playerBrightness,
+                        activity.window.attributes.screenBrightness,
+                    )
                 }
             }
             activity.binding.progressScrubberLayout.apply {
@@ -569,14 +573,15 @@ class PlayerGestureHelper(
     }
 
     init {
-        if (
-            appPreferences.getValue(appPreferences.playerGesturesVB) &&
-                appPreferences.getValue(appPreferences.playerGesturesBrightnessRemember)
-        ) {
-            activity.window.attributes =
-                activity.window.attributes.apply {
-                    screenBrightness = appPreferences.getValue(appPreferences.playerBrightness)
+        if (appPreferences.getValue(appPreferences.playerGesturesVB)) {
+            appPreferences.getValue(appPreferences.playerBrightness).let { savedBrightness ->
+                if (savedBrightness != -1.0f) {
+                    activity.window.attributes =
+                        activity.window.attributes.apply {
+                            screenBrightness = savedBrightness
+                        }
                 }
+            }
         }
 
         updateZoomMode(appPreferences.getValue(appPreferences.playerGesturesStartMaximized))
