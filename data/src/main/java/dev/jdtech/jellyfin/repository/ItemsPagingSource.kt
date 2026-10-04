@@ -17,6 +17,13 @@ class ItemsPagingSource(
     private val sortBy: SortBy,
     private val sortOrder: SortOrder,
 ) : PagingSource<Int, FindroidItem>() {
+    /**
+     * 已输出过的项目 id。服务端基于偏移量的分页并不保证稳定：当排序字段存在大量相同值时（例如
+     * DatePlayed，未播放的项目取值相同），同一项目可能被多个分页重复返回。重复输出会让惰性网格抛
+     * 出 "Key was already used" 异常，因此这里过滤掉重复项。每次刷新都会创建新的实例，集合随之重置。
+     */
+    private val emittedItemIds = mutableSetOf<UUID>()
+
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, FindroidItem> {
         val position = params.key ?: 0
 
@@ -34,7 +41,7 @@ class ItemsPagingSource(
                     limit = params.loadSize,
                 )
             LoadResult.Page(
-                data = items,
+                data = items.filter { emittedItemIds.add(it.id) },
                 prevKey = if (position == 0) null else position - params.loadSize,
                 nextKey = if (items.isEmpty()) null else position + params.loadSize,
             )
