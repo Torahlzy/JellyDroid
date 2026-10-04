@@ -1,74 +1,61 @@
 ![Findroid banner](images/findroid-banner.png)
 
-# Findroid
-![GitHub release (with filter)](https://img.shields.io/github/v/release/jarnedemeulemeester/findroid?style=for-the-badge)
-![GitHub repo stars](https://img.shields.io/github/stars/jarnedemeulemeester/findroid?style=for-the-badge)
-![GitHub issues](https://img.shields.io/github/issues/jarnedemeulemeester/findroid?style=for-the-badge)
-![GitHub pull requests](https://img.shields.io/github/issues-pr/jarnedemeulemeester/findroid?style=for-the-badge)
-![GitHub all releases](https://img.shields.io/github/downloads/jarnedemeulemeester/findroid/total?style=for-the-badge)
-![GitHub](https://img.shields.io/github/license/jarnedemeulemeester/findroid?style=for-the-badge)
+# MyFindDroid
 
-Findroid is third-party Android application for Jellyfin that provides a native user interface to browse and play movies and series.
+本仓库是 [Findroid](https://github.com/jarnedemeulemeester/findroid) 的个人分支（fork）。Findroid 是 Jellyfin 的第三方 Android 客户端，提供原生界面用于浏览和播放电影/剧集。
 
-I am developing this application in my spare time.
+上游项目完整的功能介绍、截图、翻译、构建命令、许可等信息，请直接参考官方仓库及其 README：
 
-**This project is in its early stages so expect bugs.**
+- 官方仓库：<https://github.com/jarnedemeulemeester/findroid>
+- 官方文档：<https://github.com/jarnedemeulemeester/findroid/blob/main/README.md>
 
-[<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80">](https://play.google.com/store/apps/details?id=dev.jdtech.jellyfin)
-[<img src="https://user-images.githubusercontent.com/32322857/219019331-027a6775-7362-44bb-a026-281f71e9b37b.png" alt="Available at Amazon Appstore" height="80">](https://www.amazon.com/gp/product/B0BTWC8DNZ)
-[<img src="https://f-droid.org/badge/get-it-on.png" alt="Get it on F-Droid" height="80">](https://f-droid.org/packages/dev.jdtech.jellyfin)
-[<img src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroid.png" alt="Get it on IzzyOnDroid" height="80">](https://apt.izzysoft.de/fdroid/index/apk/dev.jdtech.jellyfin)
+本文件不再重复官方说明，仅记录本分支中自行开发或调整的内容。
 
-## Screenshots
-| Home                                | Library                             | Movie                           | Season                            | Episode                             |
-|-------------------------------------|-------------------------------------|---------------------------------|-----------------------------------|-------------------------------------|
-| ![Home](fastlane/metadata/android/en-US/images/phoneScreenshots/1_en-US.png) | ![Library](fastlane/metadata/android/en-US/images/phoneScreenshots/2_en-US.png) | ![Movie](fastlane/metadata/android/en-US/images/phoneScreenshots/3_en-US.png) | ![Season](fastlane/metadata/android/en-US/images/phoneScreenshots/4_en-US.png) | ![Episode](fastlane/metadata/android/en-US/images/phoneScreenshots/5_en-US.png) |
+## 本分支自定义功能
 
-## Features
-- Completely native interface
-- Supported media items: movies, series, seasons, episodes 
-  - Direct play only, (no transcoding)
-- Offline playback / downloads
-- ExoPlayer
-  - Video codecs: H.263, H.264, H.265, VP8, VP9, AV1 
-    - Support depends on Android device
-  - Audio codecs: Vorbis, Opus, FLAC, ALAC, PCM, MP3, AAC, AC-3, E-AC-3, DTS, DTS-HD, TrueHD 
-    - Support provided by ExoPlayer FFmpeg extension
-  - Subtitle codecs: SRT, VTT, SSA/ASS, PGSSUB
-    - SSA/ASS has limited styling support see [this issue](https://github.com/google/ExoPlayer/issues/8435)
-- mpv
-  - Container formats: mkv, mov, mp4, avi
-  - Video codecs: H.264, H.265, H.266, VP8, VP9, AV1
-  - Audio codecs: Opus, FLAC, MP3, AAC, AC-3, E-AC-3, TrueHD, DTS, DTS-HD
-  - Subtitle codecs: SRT, VTT, SSA/ASS, DVDSUB
-  - Optionally force software decoding when hardware decoding has issues.
-- Picture-in-picture mode
-- Media chapters
-  - Timeline markers
-  - Chapter navigation gestures
-- Trickplay (requires Jellyfin 10.9 or higher)
-- Media segments (requires Jellyfin 10.10 or higher)
-  - Skip button
-  - Auto skip
+### 下载项详情查看
 
-## Planned features
-- Android TV
-- Websocket connection (Syncplay)
-- Chromecast support
+在“下载”页面，已下载的媒体项卡片右下角会显示一个信息按钮，点击后弹出对话框，展示该项的标题与本地文件路径，方便确认下载位置。
 
-## Translating
-[JDTech Weblate](https://weblate.jdtech.dev) is a self-hosted instance of Weblate where you can translate this project and future projects of mine.
+相关实现：
+- 新增对话框组件 `DownloadDetailsDialog`
+- `ItemCard` 新增 `onDetailsClick` 回调，仅对已下载项显示信息按钮
+- `CollectionAction` 新增 `OnItemDetails` 动作
+- 新增字符串 `download_details`、`download_file_path`
 
-## Questions?
-We have a [Discord server](https://discord.gg/tg5VvTFwTV) to discuss future development or ask general questions.
+### 播放器亮度记忆优化
 
-## License
-This project is licensed under [GPLv3](LICENSE).
+改进了播放器中通过手势调节屏幕亮度的记忆逻辑：
 
-The logo is a combination of the Jellyfin logo and the Android robot.
+- 仅当用户手动调整过亮度时才覆盖系统亮度；若从未手动调节（记忆值为初始值 `-1.0`），则保持系统亮度不变，不再自动覆盖。
+- 亮度手势结束时立即保存当前亮度，避免退出播放器后才写回导致记忆不准。
+- 不再依赖“记住亮度”开关，行为更符合直觉。
 
-The Android robot is reproduced or modified from work created and shared by Google and used according to terms described in the Creative Commons 3.0 Attribution License.
+相关实现：`PlayerGestureHelper`、`PlayerActivity`。
 
-Android is a trademark of Google LLC.
+### 播放器控制栏 UI 调整
 
-Google Play and the Google Play logo are trademarks of Google LLC.
+- 控制栏容器背景改为透明，修复播放画面被背景色遮挡的问题。
+- 播放/快进/后退等控制按钮改为左下角对齐，缩小按钮间距与内边距，布局更紧凑。
+
+相关实现：`app/phone/src/main/res/layout/exo_main_controls.xml`。
+
+### 网络请求主线程异常修复
+
+修复引导流程中添加服务器、登录时的 `NetworkOnMainThreadException`，将网络操作放入 `Dispatchers.IO` 执行，避免主线程发起网络请求导致崩溃。
+
+相关实现：`SetupRepositoryImpl`。
+
+### 分页重复项修复
+
+服务端基于偏移量的分页并不保证稳定：当排序字段存在大量相同值时（例如 `DatePlayed`，未播放的项目取值相同），同一项目可能被多个分页重复返回，导致惰性网格抛出 “Key was already used” 异常。现已对分页结果按项目 id 去重。
+
+相关实现：`ItemsPagingSource`。
+
+## 与上游同步
+
+本分支会不定期将上游 `main` 的更新合并进来，同时保留上述自定义改动。若需要上游的原生功能说明，请以上文官方仓库为准。
+
+## 授权
+
+本分支继承上游项目，基于 [GPLv3](LICENSE) 授权。原项目名称、Logo 及相关商标归原作者与各自所有者所有。
