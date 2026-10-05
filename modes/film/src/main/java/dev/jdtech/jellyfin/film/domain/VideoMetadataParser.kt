@@ -79,13 +79,11 @@ object VideoMetadataParser {
                                 VideoRangeType.HDR10 -> DisplayProfile.HDR10
                                 VideoRangeType.HDR10_PLUS -> DisplayProfile.HDR10_PLUS
                                 VideoRangeType.HLG -> DisplayProfile.HLG
+                                // SDK 1.7.1（服务端 10.10）仅提供以下 Dolby Vision 子类型
                                 VideoRangeType.DOVI,
-                                VideoRangeType.DOVI_WITH_EL,
-                                VideoRangeType.DOVI_WITH_ELHDR10_PLUS,
                                 VideoRangeType.DOVI_WITH_HLG,
                                 VideoRangeType.DOVI_WITH_SDR,
-                                VideoRangeType.DOVI_WITH_HDR10,
-                                VideoRangeType.DOVI_WITH_HDR10_PLUS -> DisplayProfile.DOLBY_VISION
+                                VideoRangeType.DOVI_WITH_HDR10 -> DisplayProfile.DOLBY_VISION
                                 else -> null
                             }?.let { displayProfiles.add(it) }
 

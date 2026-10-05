@@ -25,6 +25,7 @@ import org.jellyfin.sdk.api.client.extensions.userViewsApi
 import org.jellyfin.sdk.api.client.extensions.videosApi
 import org.jellyfin.sdk.createJellyfin
 import org.jellyfin.sdk.model.ClientInfo
+import org.jellyfin.sdk.model.ServerVersion
 
 /**
  * Jellyfin API class using org.jellyfin.sdk:jellyfin-platform-android
@@ -49,6 +50,8 @@ class JellyfinApi(
                 version = BuildConfig.VERSION_NAME,
             )
         context = androidContext
+        // 降低 SDK 的最低服务器版本门槛（默认 10.11.0），以兼容 10.10.x 服务器
+        minimumServerVersion = ServerVersion(10, 10, 0)
     }
     val api =
         jellyfin.createApi(
