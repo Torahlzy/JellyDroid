@@ -1,13 +1,20 @@
 package dev.jdtech.jellyfin.presentation.film.components
 
 import android.net.Uri
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItem
@@ -17,6 +24,9 @@ enum class Direction {
     VERTICAL,
 }
 
+// 占位图标在封面区域内的尺寸
+private val PLACEHOLDER_ICON_SIZE = 48.dp
+
 @Composable
 fun ItemPoster(
     item: FindroidItem,
@@ -24,6 +34,8 @@ fun ItemPoster(
     modifier: Modifier = Modifier,
     // 可选宽高比覆盖；不传时按方向使用默认值（横向 16:9，纵向 2:3）
     aspectRatio: Float? = null,
+    // 无封面时展示的占位图标（drawable 资源）；为空则只留底色
+    @DrawableRes placeholderIconRes: Int? = null,
 ) {
     val context = LocalContext.current
     var imageUri = item.coverUri(direction)
@@ -39,15 +51,29 @@ fun ItemPoster(
 
     val imageAspectRatio = aspectRatio ?: if (direction == Direction.HORIZONTAL) 1.77f else 0.66f
 
-    AsyncImage(
-        model = imageUri,
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier =
-            modifier
-                .aspectRatio(imageAspectRatio)
-                .background(MaterialTheme.colorScheme.surfaceContainer),
-    )
+    val posterModifier =
+        modifier
+            .aspectRatio(imageAspectRatio)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+
+    // 服务器不提供封面的条目（如合集库入口）用通用图标兜底，而不是留白
+    if (imageUri == null && placeholderIconRes != null) {
+        Box(modifier = posterModifier, contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(placeholderIconRes),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(PLACEHOLDER_ICON_SIZE),
+            )
+        }
+    } else {
+        AsyncImage(
+            model = imageUri,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = posterModifier,
+        )
+    }
 }
 
 /**

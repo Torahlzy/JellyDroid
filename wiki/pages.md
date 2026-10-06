@@ -150,7 +150,7 @@ else -> WelcomeRoute
 
 ### MediaScreen — 媒体库总览
 
-- **职责**：展示「收藏」入口与全部媒体库网格；顶部内嵌搜索栏（`FilmSearchBar`）。
+- **职责**：展示「收藏」入口与全部媒体库网格；顶部内嵌搜索栏（`FilmSearchBar`）。媒体库卡片为横图（`BANNER_ASPECT_RATIO`）；合集库（`CollectionType.BoxSets`）服务器上不提供封面，卡片改用通用图标 `CoreR.drawable.ic_collection` 占位。
 - **路由**：`MediaRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/MediaScreen.kt`；搜索栏挂载于 `MediaScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/media/MediaViewModel.kt`、`FILM/presentation/media/MediaState.kt`、`FILM/presentation/media/MediaAction.kt`。
@@ -178,6 +178,7 @@ else -> WelcomeRoute
 - **State 字段**：`items`（PagingData Flow）、`sortBy`、`sortOrder`、`coverMode`（`CoverDisplayMode`，默认竖图）、`isLoading`、`error`。
 - **主要方法 / Action**：`setup(parentId, libraryType)`、`loadItems()`、`onAction()`；`OnItemClick`、`OnBackClick`、`ChangeSorting`、`ChangeCoverMode`。
 - **封面显示模式**：偏好持久化在 `AppPreferences.libraryCoverMode`（`pref_library_cover_mode`）；横图模式走 `Direction.HORIZONTAL`，电影 / 剧集 / 合集 / 媒体库等优先取自身 `backdrop`（分集优先取 16:9 剧照 `primary`），宽高比沿用首页 `BANNER_ASPECT_RATIO`，列数按可用宽度自适应（窄屏一列、折叠屏展开等宽屏两列）；竖图走 `Direction.VERTICAL` 取 `primary`、多列网格；某一类图片缺失时由 `ItemPoster` 用另一类临时补位。
+- **合集列表封面**：合集（`FindroidBoxSet`）在服务器上没有图片，`JellyfinRepositoryImpl` 内的私有方法 `getBoxSetCoverImages()` 取合集内部条目的图片作为封面（并行补齐并限制并发、按服务器地址 + 合集 id 在进程内缓存），补齐在 `JellyfinRepositoryImpl.getItems()` 内完成，单次试探失败不影响列表加载。该方法不进 `JellyfinRepository` 接口（离线模式没有合集数据，无需为其写空实现）。合集卡片（`ItemCard`，条目为 `FindroidBoxSet`）封面右上角叠加合集角标 `BoxSetBadge`（复用 `ic_collection`），用于和普通影片区分。
 - **入口**：首页媒体库卡片；点击 `FindroidCollection` / `FindroidFolder` 条目（`PHONE/NavigationRoot.kt`）。
 
 ### CollectionScreen — 合集详情
@@ -396,3 +397,8 @@ else -> WelcomeRoute
 | 2026-10-06 | 媒体库详情页排序弹窗新增封面显示模式（`CoverDisplayMode`，竖图 / 横图），新增偏好 `pref_library_cover_mode`、Action `ChangeCoverMode`，`ItemPoster` 增加横竖图互相补位；同步 LibraryScreen 条目。 |
 | 2026-10-06 | 媒体库横图封面改用首页 `BANNER_ASPECT_RATIO`，列数按可用宽度自适应（宽屏每行两个）。 |
 | 2026-10-06 | 横图封面选取范围扩展：剧集 / 合集 / 媒体库等非电影条目也优先取 `backdrop`（分集仍优先 16:9 剧照）；全文去除行号引用，并新增「不得写行号」的书写与校验要求。 |
+| 2026-10-06 | 合集封面补齐：合集列表（`FindroidBoxSet`）用合集内条目的图片兜底（新增 `JellyfinRepositoryImpl` 内的 `getBoxSetCoverImages()`）；媒体库页的合集库入口新增通用图标 `ic_collection`，`ItemPoster` / `ItemCard` 新增 `placeholderIconRes` 参数。 |
+| 2026-10-06 | 合集封面补齐健壮性：合封面试探加并发限流与会话内缓存（键含服务器地址），优先选带 `backdrop` 的候选条目；单次试探失败仅记录日志并保留原图，不再影响整个列表加载。 |
+| 2026-10-06 | 合集封面补齐收口：`getBoxSetCoverImages()` 从 `JellyfinRepository` 接口移入 `JellyfinRepositoryImpl` 私有方法（离线实现不再需要空实现）；`MediaScreen` 的合集库占位图标策略提取为 `FindroidCollection.placeholderIconRes()`；`ItemPoster` / `ItemCard` 的 `placeholderIconRes` 补 `@DrawableRes`。 |
+| 2026-10-06 | 合集卡片加类型角标：`ItemCard` 在条目为 `FindroidBoxSet` 时于封面右上角显示新增的 `BoxSetBadge`（复用 `ic_collection`），实际在 LibraryScreen 合集库列表生效（`CollectionGrid` 的 section 只含电影 / 剧集 / 分集，不出现合集，故不受影响）；新增字符串 `collection`（含 zh-rCN / zh-rTW）。 |
+| 2026-10-06 | 文档与注释校正：修正上条对 `CollectionGrid` 的影响描述；`JellyfinRepositoryImpl.boxSetCoverCache` 注释补充「无上限、不主动清理、仅随进程存活」的缓存策略说明。 |

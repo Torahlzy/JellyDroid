@@ -94,6 +94,7 @@
     <string name="mark_as_played">标记为已播放</string>
     <string name="play">播放</string>
     <string name="watch_trailer">看预告</string>
+    <string name="collection">合集</string>
     <string name="collection_no_media">该集合不包含任何媒体</string>
     <string name="show_stacktrace">显示堆栈跟踪</string>
     <string name="title_settings">设置</string>

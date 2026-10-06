@@ -1,5 +1,6 @@
 package dev.jdtech.jellyfin.presentation.film
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.window.core.layout.WindowSizeClass
+import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.core.presentation.dummy.dummyCollections
 import dev.jdtech.jellyfin.film.presentation.media.MediaAction
 import dev.jdtech.jellyfin.film.presentation.media.MediaState
@@ -32,6 +34,8 @@ import dev.jdtech.jellyfin.film.presentation.media.MediaViewModel
 import dev.jdtech.jellyfin.film.presentation.search.SearchAction
 import dev.jdtech.jellyfin.film.presentation.search.SearchState
 import dev.jdtech.jellyfin.film.presentation.search.SearchViewModel
+import dev.jdtech.jellyfin.models.CollectionType
+import dev.jdtech.jellyfin.models.FindroidCollection
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.presentation.components.ErrorDialog
 import dev.jdtech.jellyfin.presentation.film.components.BANNER_ASPECT_RATIO
@@ -154,6 +158,7 @@ private fun MediaScreenLayout(
                     modifier = Modifier.animateItem(),
                     // 媒体库封面沿用首页 banner 的宽高比
                     aspectRatio = BANNER_ASPECT_RATIO,
+                    placeholderIconRes = library.placeholderIconRes(),
                 )
             }
         }
@@ -194,3 +199,11 @@ private fun MediaScreenLayoutPreview() {
         )
     }
 }
+
+/** 媒体库卡片无封面时的占位图标：合集库在服务器上没有封面，用通用图标代替，避免出现空白卡片。 */
+@DrawableRes
+private fun FindroidCollection.placeholderIconRes(): Int? =
+    when (type) {
+        CollectionType.BoxSets -> CoreR.drawable.ic_collection
+        else -> null
+    }

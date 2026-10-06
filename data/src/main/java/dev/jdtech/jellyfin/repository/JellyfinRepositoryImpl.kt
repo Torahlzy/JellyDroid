@@ -6,8 +6,11 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import dev.jdtech.jellyfin.api.JellyfinApi
 import dev.jdtech.jellyfin.database.ServerDatabaseDao
+import dev.jdtech.jellyfin.logging.AppLog
+import dev.jdtech.jellyfin.models.FindroidBoxSet
 import dev.jdtech.jellyfin.models.FindroidCollection
 import dev.jdtech.jellyfin.models.FindroidEpisode
+import dev.jdtech.jellyfin.models.FindroidImages
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.FindroidMovie
 import dev.jdtech.jellyfin.models.FindroidPerson
@@ -19,6 +22,7 @@ import dev.jdtech.jellyfin.models.SortBy
 import dev.jdtech.jellyfin.models.SortOrder
 import dev.jdtech.jellyfin.models.toFindroidCollection
 import dev.jdtech.jellyfin.models.toFindroidEpisode
+import dev.jdtech.jellyfin.models.toFindroidImages
 import dev.jdtech.jellyfin.models.toFindroidItem
 import dev.jdtech.jellyfin.models.toFindroidMovie
 import dev.jdtech.jellyfin.models.toFindroidPerson
@@ -29,8 +33,15 @@ import dev.jdtech.jellyfin.models.toFindroidSource
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
@@ -53,7 +64,16 @@ import org.jellyfin.sdk.model.api.SortOrder as ItemSortOrder
 import org.jellyfin.sdk.model.api.SubtitleDeliveryMethod
 import org.jellyfin.sdk.model.api.SubtitleProfile
 import org.jellyfin.sdk.model.api.UserConfiguration
-import timber.log.Timber
+
+// 查找合集封面时最多试探的子条目数量：合集内排序最前的条目也可能没有图片
+private const val BOX_SET_COVER_CANDIDATE_LIMIT = 3
+
+// 同时试探封面的合集数量上限：合集库一页可能有多个缺图合集，避免一次性打出大量并发请求
+private const val BOX_SET_COVER_CONCURRENCY = 4
+
+// 合集是否有可用封面：横竖图任一存在即可，与 ItemPoster 的取图逻辑保持一致
+private val FindroidImages.hasCover: Boolean
+    get() = primary != null || backdrop != null
 
 class JellyfinRepositoryImpl(
     private val context: Context,
@@ -61,6 +81,17 @@ class JellyfinRepositoryImpl(
     private val database: ServerDatabaseDao,
     private val appPreferences: AppPreferences,
 ) : JellyfinRepository {
+    /**
+     * 合集封面缓存：封面取自合集内部条目，会话内基本不变，缓存后翻页、回退都不会重复请求。
+     *
+     * 键含服务器地址，切换服务器不会取到上一个服务器的图片；值为空 [FindroidImages] 表示已试探过但确实没有可用图片。
+     * 刻意不设上限、不主动清理，仅随进程存活：合集总量与媒体库条目同量级且基本固定，用极小内存换取翻页 / 回退零重复请求。
+     */
+    private val boxSetCoverCache = ConcurrentHashMap<Pair<String, UUID>, FindroidImages>()
+
+    // 限制合集封面试探的并发数，避免合集库一页内的多个缺图合集同时发起请求
+    private val boxSetCoverSemaphore = Semaphore(BOX_SET_COVER_CONCURRENCY)
+
     override suspend fun getPublicSystemInfo(): PublicSystemInfo =
         withContext(Dispatchers.IO) { jellyfinApi.systemApi.getPublicSystemInfo().content }
 
@@ -116,6 +147,43 @@ class JellyfinRepositoryImpl(
                 .toFindroidItem(this@JellyfinRepositoryImpl)
         }
 
+    /**
+     * 合集（BoxSet）自身在服务器上通常没有图片，取其内部任一条目的图片作为合集封面；取不到时返回 null。
+     *
+     * 只服务于 [fillBoxSetCovers] 的兜底流程，没有别的调用方，故留在实现内而不进入 [JellyfinRepository]
+     * 接口（离线实现本也拿不到合集数据，无需被迫写空实现）。
+     */
+    private suspend fun getBoxSetCoverImages(boxSetId: UUID): FindroidImages? =
+        withContext(Dispatchers.IO) {
+            val cacheKey = getBaseUrl() to boxSetId
+            boxSetCoverCache[cacheKey]?.let { cached ->
+                return@withContext cached.takeIf { it.hasCover }
+            }
+
+            val candidates =
+                boxSetCoverSemaphore.withPermit {
+                    jellyfinApi.itemsApi
+                        .getItems(
+                            jellyfinApi.userId!!,
+                            parentId = boxSetId,
+                            recursive = true,
+                            limit = BOX_SET_COVER_CANDIDATE_LIMIT,
+                        )
+                        .content
+                        .items
+                        .map { it.toFindroidImages(this@JellyfinRepositoryImpl) }
+                }
+
+            // 横图卡片优先取 backdrop，先挑有 backdrop 的候选更贴合卡片；都没有再退回任意可用图片
+            val cover =
+                candidates.firstOrNull { it.backdrop != null }
+                    ?: candidates.firstOrNull { it.hasCover }
+
+            // 取不到也缓存，避免同一合集在翻页时被反复试探
+            boxSetCoverCache[cacheKey] = cover ?: FindroidImages()
+            cover
+        }
+
     override suspend fun getItems(
         parentId: UUID?,
         includeTypes: List<BaseItemKind>?,
@@ -140,6 +208,42 @@ class JellyfinRepositoryImpl(
                 .content
                 .items
                 .mapNotNull { it.toFindroidItem(this@JellyfinRepositoryImpl, database) }
+                .fillBoxSetCovers()
+        }
+
+    /**
+     * 用合集内部条目的封面补齐合集自身的封面：服务器上的合集（BoxSet）通常没有图片，直接展示会是空白卡片。
+     *
+     * 只对确实缺图的合集发起单独试探，多个合集并行但受 [boxSetCoverSemaphore] 限流；已有结果的合集走
+     * [boxSetCoverCache]，翻页时不会重复请求。
+     */
+    private suspend fun List<FindroidItem>.fillBoxSetCovers(): List<FindroidItem> =
+        coroutineScope {
+            map { item ->
+                    async {
+                        if (item is FindroidBoxSet && !item.images.hasCover) {
+                            item.copy(images = getBoxSetCoverSafely(item.id) ?: item.images)
+                        } else {
+                            item
+                        }
+                    }
+                }
+                .awaitAll()
+        }
+
+    /**
+     * 试探合集封面，失败时返回 null。
+     *
+     * 封面补齐只是展示上的可选增强，网络异常不应让整个列表加载失败，因此在此兜底并记录日志。
+     */
+    private suspend fun getBoxSetCoverSafely(boxSetId: UUID): FindroidImages? =
+        try {
+            getBoxSetCoverImages(boxSetId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.e(e, "补齐合集 %s 封面失败", boxSetId)
+            null
         }
 
     override suspend fun getItemsPaging(
@@ -347,7 +451,7 @@ class JellyfinRepositoryImpl(
                     mediaSourceId = mediaSourceId,
                 )
             } catch (e: Exception) {
-                Timber.e(e)
+                AppLog.e(e)
                 ""
             }
         }
@@ -368,7 +472,7 @@ class JellyfinRepositoryImpl(
 
                 return@withContext apiSegments
             } catch (e: Exception) {
-                Timber.e(e)
+                AppLog.e(e)
                 return@withContext emptyList()
             }
         }
@@ -392,7 +496,7 @@ class JellyfinRepositoryImpl(
         }
 
     override suspend fun postCapabilities() {
-        Timber.d("Sending capabilities")
+        AppLog.d("Sending capabilities")
         withContext(Dispatchers.IO) {
             jellyfinApi.sessionApi.postCapabilities(
                 playableMediaTypes = listOf(MediaType.VIDEO),
@@ -418,7 +522,7 @@ class JellyfinRepositoryImpl(
     }
 
     override suspend fun postPlaybackStart(itemId: UUID) {
-        Timber.d("Sending start $itemId")
+        AppLog.d("Sending start $itemId")
         withContext(Dispatchers.IO) {
             jellyfinApi.playStateApi.reportPlaybackStart(
                 PlaybackStartInfo(
@@ -439,7 +543,7 @@ class JellyfinRepositoryImpl(
         positionTicks: Long,
         playedPercentage: Int,
     ) {
-        Timber.d("Sending stop $itemId")
+        AppLog.d("Sending stop $itemId")
         withContext(Dispatchers.IO) {
             when {
                 playedPercentage < 10 -> {
@@ -470,7 +574,7 @@ class JellyfinRepositoryImpl(
         positionTicks: Long,
         isPaused: Boolean,
     ) {
-        Timber.d("Posting progress of $itemId, position: $positionTicks")
+        AppLog.d("Posting progress of $itemId, position: $positionTicks")
         withContext(Dispatchers.IO) {
             database.setPlaybackPositionTicks(itemId, jellyfinApi.userId!!, positionTicks)
             try {

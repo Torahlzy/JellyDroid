@@ -1,5 +1,6 @@
 package dev.jdtech.jellyfin.presentation.film.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import dev.jdtech.jellyfin.core.R
 import dev.jdtech.jellyfin.core.presentation.dummy.dummyEpisode
 import dev.jdtech.jellyfin.core.presentation.dummy.dummyMovie
+import dev.jdtech.jellyfin.models.FindroidBoxSet
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.isDownloaded
@@ -43,6 +45,8 @@ fun ItemCard(
     onDetailsClick: ((FindroidItem) -> Unit)? = null,
     // 可选宽高比覆盖，透传给封面
     aspectRatio: Float? = null,
+    // 无封面时展示的占位图标（drawable 资源），透传给封面
+    @DrawableRes placeholderIconRes: Int? = null,
     // 网格布局中宽度由单元格决定时置 true：卡片铺满可用宽度，进度条同步按实际宽度计算
     isWidthAdaptive: Boolean = false,
     modifier: Modifier = Modifier,
@@ -69,13 +73,20 @@ fun ItemCard(
             BoxWithConstraints {
                 val cardWidth = if (isWidthAdaptive) maxWidth.value.toInt() else width
                 Box {
-                    ItemPoster(item = item, direction = direction, aspectRatio = aspectRatio)
+                    ItemPoster(
+                        item = item,
+                        direction = direction,
+                        aspectRatio = aspectRatio,
+                        placeholderIconRes = placeholderIconRes,
+                    )
                     Row(
                         modifier =
                             Modifier.align(Alignment.TopEnd)
                                 .padding(MaterialTheme.spacings.small),
                         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.small),
                     ) {
+                        // 封面多半取自合集内部条目，用角标让用户知道这是合集而非单个影片
+                        if (item is FindroidBoxSet) BoxSetBadge()
                         if (item.isDownloaded()) DownloadedBadge()
                         if (item.played) PlayedBadge()
                         item.unplayedItemCount?.takeIf { it > 0 }?.let { ItemCountBadge(it) }

@@ -21,4 +21,12 @@ private val dummyShowsCollection =
         images = FindroidImages(),
     )
 
-val dummyCollections = listOf(dummyMoviesCollection, dummyShowsCollection)
+private val dummyBoxSetsCollection =
+    FindroidCollection(
+        id = UUID.randomUUID(),
+        name = "Collections",
+        type = CollectionType.BoxSets,
+        images = FindroidImages(),
+    )
+
+val dummyCollections = listOf(dummyMoviesCollection, dummyShowsCollection, dummyBoxSetsCollection)

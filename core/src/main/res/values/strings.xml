@@ -34,6 +34,7 @@
     <string name="next_up">Next Up</string>
     <string name="libraries">Libraries</string>
     <string name="series_poster">Series poster</string>
+    <string name="collection">Collection</string>
     <string name="collection_no_media">This collection does not contain any media</string>
     <string name="no_favorites">You have no favorites</string>
     <string name="no_downloads">You have nothing downloaded</string>
