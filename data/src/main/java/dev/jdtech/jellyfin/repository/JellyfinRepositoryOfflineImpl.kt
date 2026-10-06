@@ -14,6 +14,7 @@ import dev.jdtech.jellyfin.models.FindroidSeason
 import dev.jdtech.jellyfin.models.FindroidSegment
 import dev.jdtech.jellyfin.models.FindroidShow
 import dev.jdtech.jellyfin.models.FindroidSource
+import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.models.SortBy
 import dev.jdtech.jellyfin.models.SortOrder
 import dev.jdtech.jellyfin.models.toFindroidEpisode
@@ -303,8 +304,11 @@ class JellyfinRepositoryOfflineImpl(
         throw Exception("Deleting item images is not available in offline mode")
     }
 
-    override suspend fun clearItemMetadata(itemId: UUID, name: String?) {
-        throw Exception("Clearing item metadata is not available in offline mode")
+    // 离线时读的是本地库，服务器上的 nfo 本就不存在，返回空表单与「无内容可编辑」的界面语义一致
+    override suspend fun getItemMetadata(itemId: UUID): ItemMetadataEdit = ItemMetadataEdit()
+
+    override suspend fun updateItemMetadata(itemId: UUID, metadata: ItemMetadataEdit) {
+        throw Exception("Updating item metadata is not available in offline mode")
     }
 
     override suspend fun deleteItem(itemId: UUID) {

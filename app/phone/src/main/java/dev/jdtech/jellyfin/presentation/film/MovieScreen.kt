@@ -53,6 +53,7 @@ import dev.jdtech.jellyfin.presentation.film.components.ActorsRow
 import dev.jdtech.jellyfin.presentation.film.components.CollapsibleText
 import dev.jdtech.jellyfin.presentation.film.components.DeleteItemImagesDialog
 import dev.jdtech.jellyfin.presentation.film.components.DeleteItemWithFilesDialog
+import dev.jdtech.jellyfin.presentation.film.components.EditItemMetadataDialog
 import dev.jdtech.jellyfin.presentation.film.components.ExtraInfoText
 import dev.jdtech.jellyfin.presentation.film.components.FilePathText
 import dev.jdtech.jellyfin.presentation.film.components.InfoText
@@ -61,7 +62,6 @@ import dev.jdtech.jellyfin.presentation.film.components.ItemHeader
 import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
 import dev.jdtech.jellyfin.presentation.film.components.MoreMenuDialog
 import dev.jdtech.jellyfin.presentation.film.components.OverviewText
-import dev.jdtech.jellyfin.presentation.film.components.ResetMetadataDialog
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
@@ -100,6 +100,14 @@ fun MovieScreen(
         }
 
     LaunchedEffect(true) { viewModel.loadMovie(movieId = movieId) }
+
+    // 元数据用 effect 加载而不是在点击时加载：moreDialog 走的是 rememberSaveable，
+    // 进程重建后弹窗会被恢复成打开状态，靠 effect 重跑才能补上表单数据，不至于一直转圈
+    LaunchedEffect(moreDialog) {
+        if (moreDialog == MoreMenuDialogState.EDIT_METADATA) {
+            viewModel.loadItemMetadata()
+        }
+    }
 
     LaunchedEffect(state.movie) { state.movie?.let { movie -> downloaderViewModel.update(movie) } }
 
@@ -141,10 +149,10 @@ fun MovieScreen(
                         Toast.LENGTH_SHORT,
                     )
                     .show()
-            is MovieEvent.MetadataReset ->
+            is MovieEvent.MetadataUpdated ->
                 Toast.makeText(
                         context,
-                        context.getString(CoreR.string.metadata_reset),
+                        context.getString(CoreR.string.metadata_updated),
                         Toast.LENGTH_SHORT,
                     )
                     .show()
@@ -160,8 +168,8 @@ fun MovieScreen(
             }
             is MovieEvent.ItemImagesDeleteFailed ->
                 showFailureToast(CoreR.string.delete_item_images_failed, event.error)
-            is MovieEvent.MetadataResetFailed ->
-                showFailureToast(CoreR.string.reset_metadata_failed, event.error)
+            is MovieEvent.MetadataUpdateFailed ->
+                showFailureToast(CoreR.string.update_metadata_failed, event.error)
             is MovieEvent.ItemDeleteFailed ->
                 showFailureToast(CoreR.string.delete_item_failed, event.error)
         }
@@ -204,7 +212,7 @@ fun MovieScreen(
                     moreDialog = MoreMenuDialogState.DELETE_IMAGES
                     viewModel.loadItemImages()
                 },
-                onResetMetadataClick = { moreDialog = MoreMenuDialogState.RESET_METADATA },
+                onEditMetadataClick = { moreDialog = MoreMenuDialogState.EDIT_METADATA },
                 onDeleteItemClick = { moreDialog = MoreMenuDialogState.DELETE_ALL },
                 onDismiss = { moreDialog = null },
             )
@@ -225,12 +233,20 @@ fun MovieScreen(
                 },
                 onDismiss = { moreDialog = null },
             )
-        MoreMenuDialogState.RESET_METADATA ->
-            ResetMetadataDialog(
-                serverFileName = state.serverFileName,
-                onConfirm = {
+        MoreMenuDialogState.EDIT_METADATA ->
+            EditItemMetadataDialog(
+                metadata = state.itemMetadata,
+                isLoading = state.isLoadingItemMetadata,
+                errorText =
+                    state.itemMetadataError?.let { error ->
+                        stringResource(
+                            CoreR.string.edit_metadata_load_failed,
+                            error.localizedMessage ?: stringResource(CoreR.string.unknown_error),
+                        )
+                    },
+                onConfirm = { metadata ->
                     moreDialog = null
-                    viewModel.onAction(MovieAction.ResetItemMetadata)
+                    viewModel.onAction(MovieAction.UpdateItemMetadata(metadata = metadata))
                 },
                 onDismiss = { moreDialog = null },
             )
@@ -255,8 +271,8 @@ private enum class MoreMenuDialogState {
     /** 删除封面的图片确认列表。 */
     DELETE_IMAGES,
 
-    /** 重置 nfo 的确认弹窗。 */
-    RESET_METADATA,
+    /** 编辑 nfo 的表单弹窗。 */
+    EDIT_METADATA,
 
     /** 删除全部（含视频文件）的确认弹窗。 */
     DELETE_ALL,

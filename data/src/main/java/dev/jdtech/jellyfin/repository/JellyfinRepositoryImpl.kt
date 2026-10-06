@@ -19,6 +19,7 @@ import dev.jdtech.jellyfin.models.FindroidSeason
 import dev.jdtech.jellyfin.models.FindroidSegment
 import dev.jdtech.jellyfin.models.FindroidShow
 import dev.jdtech.jellyfin.models.FindroidSource
+import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.models.SortBy
 import dev.jdtech.jellyfin.models.SortOrder
 import dev.jdtech.jellyfin.models.toFindroidCollection
@@ -54,6 +55,7 @@ import org.jellyfin.sdk.model.api.ItemFields
 import org.jellyfin.sdk.model.api.ItemFilter
 import org.jellyfin.sdk.model.api.ItemSortBy
 import org.jellyfin.sdk.model.api.MediaType
+import org.jellyfin.sdk.model.api.NameGuidPair
 import org.jellyfin.sdk.model.api.PlayMethod
 import org.jellyfin.sdk.model.api.PlaybackInfoDto
 import org.jellyfin.sdk.model.api.PlaybackOrder
@@ -76,6 +78,28 @@ private const val BOX_SET_COVER_CONCURRENCY = 4
 // 合集是否有可用封面：横竖图任一存在即可，与 ItemPoster 的取图逻辑保持一致
 private val FindroidImages.hasCover: Boolean
     get() = primary != null || backdrop != null
+
+// 编辑元数据时要读回的字段：写回时漏掉任何一个，服务端都会当成「未提供」而把对应内容清空或重置。
+// 演职员不在此列：服务端对 People 是「传了才更新」，写回时显式传 null 即可原样保留，无需读回
+private val METADATA_EDIT_FIELDS =
+    listOf(
+        ItemFields.SETTINGS,
+        ItemFields.ORIGINAL_TITLE,
+        ItemFields.OVERVIEW,
+        ItemFields.GENRES,
+        ItemFields.TAGS,
+        ItemFields.TAGLINES,
+        ItemFields.STUDIOS,
+        ItemFields.PRODUCTION_LOCATIONS,
+        ItemFields.PROVIDER_IDS,
+        ItemFields.CUSTOM_RATING,
+        ItemFields.DATE_CREATED,
+    )
+
+// 服务端只读取 Studios 的 Name，Id 仅用于跟已有制片厂对上号，新加的随便生成一个即可
+private fun toStudioNameGuidPair(name: String, existing: List<NameGuidPair>?): NameGuidPair =
+    existing?.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: NameGuidPair(name = name, id = UUID.randomUUID())
 
 class JellyfinRepositoryImpl(
     private val context: Context,
@@ -680,56 +704,74 @@ class JellyfinRepositoryImpl(
         withContext(Dispatchers.IO) { jellyfinApi.libraryApi.deleteItem(itemId) }
     }
 
-    override suspend fun clearItemMetadata(itemId: UUID, name: String?) {
+    override suspend fun getItemMetadata(itemId: UUID): ItemMetadataEdit =
         withContext(Dispatchers.IO) {
-            // ProviderIds 是外部刮削 ID，被清掉会导致服务器下次刮削重新匹配（可能又匹配错），
-            // 所以先原样读回来随更新写回。读不到条目说明这次读取不可信，直接中止：
-            // 在覆盖式更新下写回空 Map 反而会把原本有效的刮削 ID 删掉
-            val item =
-                getItemWithProviderIds(itemId)
-                    ?: throw IllegalStateException("读取条目信息失败，已取消清空元数据")
+            val item = getItemForMetadataEdit(itemId)
+            ItemMetadataEdit(
+                name = item.name.orEmpty(),
+                originalTitle = item.originalTitle.orEmpty(),
+                overview = item.overview.orEmpty(),
+                genres = item.genres.orEmpty(),
+                tags = item.tags.orEmpty(),
+                studios = item.studios.orEmpty().mapNotNull { it.name },
+                productionLocations = item.productionLocations.orEmpty(),
+                // 服务端单条目只保存一条标语，读回来自然也最多一条
+                tagline = item.taglines.orEmpty().firstOrNull().orEmpty(),
+                officialRating = item.officialRating.orEmpty(),
+                productionYear = item.productionYear,
+                premiereDate = item.premiereDate,
+                communityRating = item.communityRating,
+            )
+        }
 
-            // 该接口是覆盖式更新：请求体里没有出现的字段由服务端置空，所以只填需要保留的内容，
-            // 其余不填即达到「清空 info」的效果。两点注意：
-            // 1) SDK 序列化时 explicitNulls=false，为 null 的字段不会进请求体，因此不能靠传 null 表达清空；
-            // 2) Genres/Tags/People/Studios/Taglines/ProductionLocations 传 null 会被当成「未提供」，
-            //    必须显式传空集合才会被清空
+    override suspend fun updateItemMetadata(itemId: UUID, metadata: ItemMetadataEdit) {
+        require(metadata.name.isNotBlank()) { "标题不能为空" }
+
+        withContext(Dispatchers.IO) {
+            // UpdateItem 是覆盖式更新：请求体里没出现的 Name / Overview / ProductionYear 等会被清空，
+            // 所以先整份读回来，再只覆盖本弹窗能编辑的字段，其余（刮削 ID、锁定状态……）原样写回
+            val item = getItemForMetadataEdit(itemId)
+
             jellyfinApi.itemUpdateApi.updateItem(
                 itemId,
-                BaseItemDto(
-                    // id 与 type 是 BaseItemDto 里唯二没有默认值的字段，必须带上（type 保持条目原有类型）
-                    id = itemId,
-                    type = item.type,
-                    name = name,
-                    providerIds = item.providerIds ?: emptyMap(),
-                    genres = emptyList(),
-                    tags = emptyList(),
-                    people = emptyList(),
-                    studios = emptyList(),
-                    taglines = emptyList(),
-                    productionLocations = emptyList(),
+                item.copy(
+                    name = metadata.name,
+                    // 本表单不编辑演职员，传 null 让服务端保持原有演职员，避免整体重写一遍
+                    people = null,
+                    originalTitle = metadata.originalTitle.ifBlank { null },
+                    overview = metadata.overview.ifBlank { null },
+                    genres = metadata.genres,
+                    tags = metadata.tags,
+                    studios = metadata.studios.map { toStudioNameGuidPair(it, item.studios) },
+                    productionLocations = metadata.productionLocations,
+                    // 传 null 会被服务端当成「未提供」而保留旧值，清空标语必须显式传空列表
+                    taglines =
+                        metadata.tagline.ifBlank { null }?.let { tagline -> listOf(tagline) }
+                            ?: emptyList(),
+                    officialRating = metadata.officialRating.ifBlank { null },
+                    productionYear = metadata.productionYear,
+                    premiereDate = metadata.premiereDate,
+                    communityRating = metadata.communityRating,
                 ),
             )
         }
     }
 
     /**
-     * 读取条目，用于取回需要保留的外部刮削 ID。
+     * 读取条目用于读取 / 编辑元数据。
      *
-     * 查询必须显式指定 [ItemFields.PROVIDER_IDS]，否则服务端不会返回；返回 null 表示条目没查到。
+     * 除弹窗要编辑的字段外，还必须读回演职员、刮削 ID、锁定状态等：写回时这些字段是整体替换语义，漏读等于删掉。
      */
-    private suspend fun getItemWithProviderIds(itemId: UUID): BaseItemDto? {
-        // 没有当前用户 ID 时无法保证查回的是本人数据，直接放弃读取（上层会中止清空）
-        val userId = jellyfinApi.userId ?: return null
+    private suspend fun getItemForMetadataEdit(itemId: UUID): BaseItemDto {
+        // 没有当前用户 ID 时无法保证查回的是本人数据，直接放弃而不是拿一份不可信的数据去覆盖
+        val userId = jellyfinApi.userId ?: throw IllegalStateException("未登录，无法读取条目信息")
+
         return jellyfinApi.itemsApi
-            .getItems(
-                userId,
-                ids = listOf(itemId),
-                fields = listOf(ItemFields.PROVIDER_IDS),
-            )
+            .getItems(userId = userId, ids = listOf(itemId), fields = METADATA_EDIT_FIELDS)
             .content
             .items
             .firstOrNull()
+            ?: throw IllegalStateException("服务器上找不到该条目")
     }
 
     override fun getBaseUrl() = jellyfinApi.api.baseUrl.orEmpty()

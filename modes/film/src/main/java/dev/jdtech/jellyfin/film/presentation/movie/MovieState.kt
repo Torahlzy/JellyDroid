@@ -4,6 +4,7 @@ import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.models.FindroidMovie
 import dev.jdtech.jellyfin.models.FindroidSourceType
+import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.models.VideoMetadata
 
 data class MovieState(
@@ -18,6 +19,11 @@ data class MovieState(
     val isLoadingItemImages: Boolean = false,
     /** 图片列表加载失败的原因，非空时弹窗提示失败而不是「服务器上没有图片」。 */
     val itemImagesError: Exception? = null,
+    /** 服务器上该条目的可编辑元数据，为 null 表示还没加载完成，供「编辑 nfo」弹窗回填。 */
+    val itemMetadata: ItemMetadataEdit? = null,
+    val isLoadingItemMetadata: Boolean = false,
+    /** 元数据加载失败的原因，非空时弹窗提示失败而不是显示空表单。 */
+    val itemMetadataError: Exception? = null,
     val error: Exception? = null,
 ) {
     /** 已下载到本机的文件路径：来源于本地来源，未下载时为 null。 */
@@ -37,13 +43,4 @@ data class MovieState(
             ?.distinct()
             ?.joinToString(separator = "\n")
             ?.takeIf { it.isNotEmpty() }
-
-    /** 服务器文件名：取远程文件路径首行的末段，重置 nfo 后用它作为标题兜底。 */
-    val serverFileName: String? =
-        remoteFilePath
-            ?.lineSequence()
-            ?.firstOrNull()
-            ?.substringAfterLast('/')
-            ?.substringAfterLast('\\')
-            ?.takeIf { it.isNotBlank() }
 }

@@ -11,6 +11,7 @@ import dev.jdtech.jellyfin.models.FindroidSeason
 import dev.jdtech.jellyfin.models.FindroidSegment
 import dev.jdtech.jellyfin.models.FindroidShow
 import dev.jdtech.jellyfin.models.FindroidSource
+import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.models.SortBy
 import dev.jdtech.jellyfin.models.SortOrder
 import java.util.UUID
@@ -117,8 +118,15 @@ interface JellyfinRepository {
     /** 删除条目在服务器上指定的图片，只删 [images] 中列出的那些。 */
     suspend fun deleteItemImages(itemId: UUID, images: List<FindroidItemImage>)
 
-    /** 清空条目在服务器上的元数据（即 nfo 中的信息），标题改为 [name]，[name] 为空时一并清空。 */
-    suspend fun clearItemMetadata(itemId: UUID, name: String?)
+    /** 读取条目在服务器上可编辑的 nfo 元数据，用于编辑弹窗回填。 */
+    suspend fun getItemMetadata(itemId: UUID): ItemMetadataEdit
+
+    /**
+     * 用 [metadata] 覆盖条目在服务器上的 nfo 元数据。
+     *
+     * 未涉及的部分（演职员、外部刮削 ID、锁定状态等）由实现方原样保留。
+     */
+    suspend fun updateItemMetadata(itemId: UUID, metadata: ItemMetadataEdit)
 
     /** 删除服务器上的条目本身，服务端会连媒体文件与关联的图片、nfo 一起删掉。 */
     suspend fun deleteItem(itemId: UUID)

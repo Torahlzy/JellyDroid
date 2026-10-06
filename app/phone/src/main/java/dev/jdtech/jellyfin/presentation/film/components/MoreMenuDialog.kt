@@ -18,19 +18,19 @@ import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 
 /**
- * 电影详情页「更多」菜单：删除封面 / 重置 nfo / 删除全部。
+ * 电影详情页「更多」菜单：删除封面 / 编辑 nfo / 删除全部。
  *
- * 三项都会真正改动服务器上的文件，因此各自还会再弹一次确认。
+ * 三项都会真正改动服务器上的内容，因此各自还会再弹一次确认。
  */
 @Composable
 fun MoreMenuDialog(
     onDeleteImagesClick: () -> Unit,
-    onResetMetadataClick: () -> Unit,
+    onEditMetadataClick: () -> Unit,
     onDeleteItemClick: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
-        title = { Text(text = stringResource(CoreR.string.delete_server_info)) },
+        title = { Text(text = stringResource(CoreR.string.more_menu_title)) },
         text = {
             Column {
                 MenuItemOption(
@@ -38,8 +38,8 @@ fun MoreMenuDialog(
                     onClick = onDeleteImagesClick,
                 )
                 MenuItemOption(
-                    text = stringResource(CoreR.string.reset_item_metadata),
-                    onClick = onResetMetadataClick,
+                    text = stringResource(CoreR.string.edit_item_metadata),
+                    onClick = onEditMetadataClick,
                 )
                 // 会连视频文件一起删，用错误色区分
                 MenuItemOption(
@@ -75,7 +75,7 @@ private fun MoreMenuDialogPreview() {
     FindroidTheme {
         MoreMenuDialog(
             onDeleteImagesClick = {},
-            onResetMetadataClick = {},
+            onEditMetadataClick = {},
             onDeleteItemClick = {},
             onDismiss = {},
         )

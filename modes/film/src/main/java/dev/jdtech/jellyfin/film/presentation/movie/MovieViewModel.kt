@@ -8,6 +8,7 @@ import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.models.FindroidMovie
+import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import java.util.UUID
@@ -110,8 +111,8 @@ constructor(
             is MovieAction.DeleteItemImages -> {
                 deleteItemImages(action.images)
             }
-            is MovieAction.ResetItemMetadata -> {
-                resetItemMetadata()
+            is MovieAction.UpdateItemMetadata -> {
+                updateItemMetadata(action.metadata)
             }
             is MovieAction.DeleteItemWithFiles -> {
                 deleteItemWithFiles()
@@ -146,6 +147,31 @@ constructor(
         }
     }
 
+    /** 加载服务器上可编辑的 nfo 元数据，供「编辑 nfo」弹窗回填。 */
+    fun loadItemMetadata() {
+        viewModelScope.launch {
+            _state.emit(_state.value.copy(isLoadingItemMetadata = true, itemMetadataError = null))
+            try {
+                _state.emit(
+                    _state.value.copy(
+                        itemMetadata = repository.getItemMetadata(movieId),
+                        isLoadingItemMetadata = false,
+                    )
+                )
+            } catch (e: Exception) {
+                AppLog.e(e, "加载服务器元数据失败：%s", movieId)
+                // 失败原因只落到 state：弹窗此时是开着的，直接在弹窗里显示即可，不再额外弹 Toast
+                _state.emit(
+                    _state.value.copy(
+                        itemMetadata = null,
+                        isLoadingItemMetadata = false,
+                        itemMetadataError = e,
+                    )
+                )
+            }
+        }
+    }
+
     /** 删除服务器上选中的封面图片，成功后刷新页面让封面回退到下一张。 */
     private fun deleteItemImages(images: List<FindroidItemImage>) {
         viewModelScope.launch {
@@ -162,16 +188,18 @@ constructor(
         }
     }
 
-    /** 重置服务器上的 nfo，标题回退为服务器文件名。 */
-    private fun resetItemMetadata() {
+    /** 用弹窗提交的内容覆盖服务器上的 nfo。 */
+    private fun updateItemMetadata(metadata: ItemMetadataEdit) {
         viewModelScope.launch {
             try {
-                repository.clearItemMetadata(movieId, _state.value.serverFileName)
-                eventsChannel.send(MovieEvent.MetadataReset)
+                repository.updateItemMetadata(movieId, metadata)
+                // 元数据已变，清掉表单缓存，避免下次打开弹窗看到旧值
+                _state.emit(_state.value.copy(itemMetadata = null))
+                eventsChannel.send(MovieEvent.MetadataUpdated)
                 loadMovie(movieId)
             } catch (e: Exception) {
-                AppLog.e(e, "重置服务器 nfo 失败：%s", movieId)
-                eventsChannel.send(MovieEvent.MetadataResetFailed(e))
+                AppLog.e(e, "更新服务器 nfo 失败：%s", movieId)
+                eventsChannel.send(MovieEvent.MetadataUpdateFailed(e))
             }
         }
     }

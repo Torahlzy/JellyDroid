@@ -1,6 +1,7 @@
 package dev.jdtech.jellyfin.film.presentation.movie
 
 import dev.jdtech.jellyfin.models.FindroidItemImage
+import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import java.util.UUID
 
 sealed interface MovieAction {
@@ -25,8 +26,8 @@ sealed interface MovieAction {
     /** 删除服务器上该条目的指定封面图片。 */
     data class DeleteItemImages(val images: List<FindroidItemImage>) : MovieAction
 
-    /** 重置服务器上该条目的 nfo（元数据）。 */
-    data object ResetItemMetadata : MovieAction
+    /** 用 [metadata] 覆盖服务器上该条目的 nfo（元数据）。 */
+    data class UpdateItemMetadata(val metadata: ItemMetadataEdit) : MovieAction
 
     /** 删除服务器上的条目本身，含视频文件与关联的封面、nfo。 */
     data object DeleteItemWithFiles : MovieAction
