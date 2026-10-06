@@ -23,7 +23,7 @@
 
 ### 阅读约定
 
-- **行号为生成时的定位参考**，代码变更后会偏移，请始终以文件路径为准。
+- **正文中的代码引用只写文件路径，不写行号**。行号会随代码漂移而失准，定位一律以「路径 + 符号（类 / 函数名）」为准。
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
@@ -62,6 +62,7 @@
 2. 定位对应页面条目，更新：职责、路由、Screen / ViewModel / State / Action 路径、State 字段、主要 Action、入口。
 3. 在文末「变更记录」追加一行（日期 + 摘要）。
 4. 更新开头的「最后更新」日期。
+5. 检查全文无行号引用（见下方「校验方法」）。
 
 ### 校验方法
 
@@ -86,6 +87,12 @@ Select-String -Path wiki/pages.md -Pattern '\b(PHONE|CORE|FILM|SETUP|SETTINGS|PL
 ```
 
 无输出即表示文档中的所有路径均有效。此外，页面数量应与 `PHONE/NavigationRoot.kt` 中 `composable<...>` 注册块数量一致（当前为 20 个注册块 + 1 个播放 Activity）。
+
+校验文档中不含行号引用（无输出为通过）：
+
+```powershell
+Select-String -Path wiki/pages.md -Pattern '\.kt:\d+' -AllMatches
+```
 
 ---
 
@@ -115,9 +122,9 @@ Select-String -Path wiki/pages.md -Pattern '\b(PHONE|CORE|FILM|SETUP|SETTINGS|PL
 | 引导 | 登录 | `LoginRoute` | `PHONE/presentation/setup/login/LoginScreen.kt` | `SETUP/presentation/login/LoginViewModel.kt` |
 | 播放 | 视频播放 | 无（Activity，非 NavHost 路由） | `PHONE/PlayerActivity.kt` | `PLAYER/presentation/PlayerViewModel.kt` |
 
-**底部导航标签**（`PHONE/NavigationRoot.kt:112-132`）：首页 `HomeRoute`、媒体 `MediaRoute`、下载 `DownloadsRoute`。离线模式下（`LocalOfflineMode == true`）隐藏「媒体」标签（`PHONE/NavigationRoot.kt:151-155`）。
+**底部导航标签**（`PHONE/NavigationRoot.kt`）：首页 `HomeRoute`、媒体 `MediaRoute`、下载 `DownloadsRoute`。离线模式下（`LocalOfflineMode == true`）隐藏「媒体」标签（`PHONE/NavigationRoot.kt`）。
 
-**启动路由**（`PHONE/NavigationRoot.kt:143-149`）：
+**启动路由**（`PHONE/NavigationRoot.kt`）：
 
 ```kotlin
 hasServers && hasCurrentServer && hasCurrentUser -> HomeRoute
@@ -133,29 +140,29 @@ else -> WelcomeRoute
 ### HomeScreen — 首页
 
 - **职责**：聚合首页。顶部为 `HomeHeader`（服务器名、搜索、设置、重试）；下方按 section 渲染推荐轮播、继续观看、接下来、各媒体库最新。
-- **路由**：`HomeRoute`（`PHONE/NavigationRoot.kt:79`），注册于 `PHONE/NavigationRoot.kt:293-322`。
-- **Screen**：`PHONE/presentation/film/HomeScreen.kt:51`；section 组装在 `HomeScreen.kt:105-141`。
+- **路由**：`HomeRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/HomeScreen.kt`；section 组装在 `HomeScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/home/HomeViewModel.kt`、`FILM/presentation/home/HomeState.kt`、`FILM/presentation/home/HomeAction.kt`。
 - **State 字段**：`server`、`suggestionsSection`、`resumeSection`、`nextUpSection`、`views`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadData()`；`OnItemClick`、`OnLibraryClick`、`OnRetryClick`、`OnSearchClick`、`OnSettingsClick`、`OnManageServers`。
-- **数据来源**：`getSuggestions()`、`getResumeItems()`、`getNextUp()`、`getUserViews()` + `getLatestMedia(view.id)`（`HomeViewModel.kt:70-148`）；每个 section 分别受 `AppPreferences` 的 `homeSuggestions` / `homeContinueWatching` / `homeNextUp` / `homeLatest` 开关控制，为空则不渲染。
+- **数据来源**：`getSuggestions()`、`getResumeItems()`、`getNextUp()`、`getUserViews()` + `getLatestMedia(view.id)`（`HomeViewModel.kt`）；每个 section 分别受 `AppPreferences` 的 `homeSuggestions` / `homeContinueWatching` / `homeNextUp` / `homeLatest` 开关控制，为空则不渲染。
 - **入口**：启动路由 / 底部「首页」标签 / 各详情页的 `navigateHome`。
 
 ### MediaScreen — 媒体库总览
 
 - **职责**：展示「收藏」入口与全部媒体库网格；顶部内嵌搜索栏（`FilmSearchBar`）。
-- **路由**：`MediaRoute`（`PHONE/NavigationRoot.kt:81`），注册于 `PHONE/NavigationRoot.kt:323-332`。
-- **Screen**：`PHONE/presentation/film/MediaScreen.kt:47`；搜索栏挂载于 `MediaScreen.kt:123`。
+- **路由**：`MediaRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/MediaScreen.kt`；搜索栏挂载于 `MediaScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/media/MediaViewModel.kt`、`FILM/presentation/media/MediaState.kt`、`FILM/presentation/media/MediaAction.kt`。
 - **State 字段**：`libraries`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadData()`；`OnItemClick`、`OnFavoritesClick`、`OnRetryClick`。
-- **入口**：底部「媒体」标签；首页搜索按钮会切到此页并置 `searchExpanded = true`（`PHONE/NavigationRoot.kt:304-311`）。
+- **入口**：底部「媒体」标签；首页搜索按钮会切到此页并置 `searchExpanded = true`（`PHONE/NavigationRoot.kt`）。
 
 ### DownloadsScreen — 下载
 
 - **职责**：展示本地已下载条目，分组网格呈现；空列表时提示「无下载」；点击条目弹出 `DownloadDetailsDialog`。
-- **路由**：`DownloadsRoute`（`PHONE/NavigationRoot.kt:83`），注册于 `PHONE/NavigationRoot.kt:333-339`。
-- **Screen**：`PHONE/presentation/film/DownloadsScreen.kt:42`。
+- **路由**：`DownloadsRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/DownloadsScreen.kt`。
 - **ViewModel**：`FILM/presentation/downloads/DownloadsViewModel.kt`。
 - **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action，VM 无 `onAction`）。
 - **State 字段**：`sections`、`isLoading`、`error`。
@@ -164,84 +171,85 @@ else -> WelcomeRoute
 
 ### LibraryScreen — 媒体库详情
 
-- **职责**：单个媒体库的内容列表，支持分页加载与排序切换（`SortByDialog`），条目点击进入详情。
-- **路由**：`LibraryRoute(libraryId, libraryName, libraryType)`（`PHONE/NavigationRoot.kt:85-90`），注册于 `PHONE/NavigationRoot.kt:340-351`。
-- **Screen**：`PHONE/presentation/film/LibraryScreen.kt:63`。
+- **职责**：单个媒体库的内容列表，支持分页加载、排序切换与封面显示模式切换（右上角 `SortByDialog` 同时承载两项设置），条目点击进入详情。
+- **路由**：`LibraryRoute(libraryId, libraryName, libraryType)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/LibraryScreen.kt`；设置弹窗为 `PHONE/presentation/film/components/SortByDialog.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/library/LibraryViewModel.kt`、`FILM/presentation/library/LibraryState.kt`、`FILM/presentation/library/LibraryAction.kt`。
-- **State 字段**：`items`（PagingData Flow）、`sortBy`、`sortOrder`、`isLoading`、`error`。
-- **主要方法 / Action**：`setup(parentId, libraryType)`、`loadItems()`、`onAction()`；`OnItemClick`、`OnBackClick`、`ChangeSorting`。
-- **入口**：首页媒体库卡片；点击 `FindroidCollection` / `FindroidFolder` 条目（`PHONE/NavigationRoot.kt:489-504`）。
+- **State 字段**：`items`（PagingData Flow）、`sortBy`、`sortOrder`、`coverMode`（`CoverDisplayMode`，默认竖图）、`isLoading`、`error`。
+- **主要方法 / Action**：`setup(parentId, libraryType)`、`loadItems()`、`onAction()`；`OnItemClick`、`OnBackClick`、`ChangeSorting`、`ChangeCoverMode`。
+- **封面显示模式**：偏好持久化在 `AppPreferences.libraryCoverMode`（`pref_library_cover_mode`）；横图模式走 `Direction.HORIZONTAL`，电影 / 剧集 / 合集 / 媒体库等优先取自身 `backdrop`（分集优先取 16:9 剧照 `primary`），宽高比沿用首页 `BANNER_ASPECT_RATIO`，列数按可用宽度自适应（窄屏一列、折叠屏展开等宽屏两列）；竖图走 `Direction.VERTICAL` 取 `primary`、多列网格；某一类图片缺失时由 `ItemPoster` 用另一类临时补位。
+- **入口**：首页媒体库卡片；点击 `FindroidCollection` / `FindroidFolder` 条目（`PHONE/NavigationRoot.kt`）。
 
 ### CollectionScreen — 合集详情
 
 - **职责**：合集（BoxSet）详情页，按电影 / 剧集 / 单集分组展示合集内条目。
-- **路由**：`CollectionRoute(collectionId, collectionName)`（`PHONE/NavigationRoot.kt:92`），注册于 `PHONE/NavigationRoot.kt:352-362`。
-- **Screen**：`PHONE/presentation/film/CollectionScreen.kt:38`。
+- **路由**：`CollectionRoute(collectionId, collectionName)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/CollectionScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/collection/CollectionViewModel.kt`、`FILM/presentation/collection/CollectionState.kt`、`FILM/presentation/collection/CollectionAction.kt`。
 - **State 字段**：`sections`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadItems(parentId)`；`OnItemClick`、`OnItemDetails`、`OnBackClick`。
-- **入口**：点击 `FindroidBoxSet` 条目（`PHONE/NavigationRoot.kt:480-483`）。
+- **入口**：点击 `FindroidBoxSet` 条目（`PHONE/NavigationRoot.kt`）。
 
 ### FavoritesScreen — 收藏
 
 - **职责**：读取收藏条目，按电影 / 剧集 / 单集分组展示。
-- **路由**：`FavoritesRoute`（`PHONE/NavigationRoot.kt:94`），注册于 `PHONE/NavigationRoot.kt:363-370`。
-- **Screen**：`PHONE/presentation/film/FavoritesScreen.kt:21`。
+- **路由**：`FavoritesRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/FavoritesScreen.kt`。
 - **ViewModel**：`FILM/presentation/favorites/FavoritesViewModel.kt`。
 - **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action）。
 - **State 字段**：`sections`、`isLoading`、`error`。
 - **主要方法**：`loadItems()`（`repository.getFavoriteItems()`）。
-- **入口**：媒体库页的「收藏」入口（`PHONE/NavigationRoot.kt:328`）。
+- **入口**：媒体库页的「收藏」入口（`PHONE/NavigationRoot.kt`）。
 
 ### MovieScreen — 电影详情
 
 - **职责**：加载影片元数据 / 视频信息 / 演员，提供播放、预告、标记已看、收藏、下载、跳转演员，并处理离线模式。
-- **路由**：`MovieRoute(movieId)`（`PHONE/NavigationRoot.kt:96`），注册于 `PHONE/NavigationRoot.kt:371-381`。
-- **Screen**：`PHONE/presentation/film/MovieScreen.kt:65`；副标题下方的文件存放路径由 `PHONE/presentation/film/components/FilePathText.kt` 渲染（默认 1 行，截断时可点击展开 / 收起），已下载时依次显示本地路径与服务器路径。
+- **路由**：`MovieRoute(movieId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/MovieScreen.kt`；副标题下方的文件存放路径由 `PHONE/presentation/film/components/FilePathText.kt` 渲染（默认 1 行，截断时可点击展开 / 收起），已下载时依次显示本地路径与服务器路径。
 - **ViewModel / State / Action**：`FILM/presentation/movie/MovieViewModel.kt`、`FILM/presentation/movie/MovieState.kt`、`FILM/presentation/movie/MovieAction.kt`；另使用 `CORE/presentation/downloader/DownloaderViewModel.kt`。
 - **State 字段**：`movie`、`videoMetadata`、`actors`、`director`、`writers`、`displayExtraInfo`、`error`；派生属性 `localFilePath`（取 `LOCAL` 来源的 `FindroidSource.localFilePath`）、`remoteFilePath`（取 `REMOTE` 来源的 `FindroidSource.remoteFilePath`），各自去重后拼接，无有效路径时为 `null`。
 - **主要方法 / Action**：`loadMovie(movieId)`、`onAction()`；`Play`、`PlayTrailer`、`MarkAsPlayed`、`UnmarkAsPlayed`、`MarkAsFavorite`、`UnmarkAsFavorite`、`OnBackClick`、`OnHomeClick`、`NavigateToPerson`。
-- **入口**：任意列表页点击 `FindroidMovie` 条目（`PHONE/NavigationRoot.kt:484`），如首页、媒体库、下载、收藏、合集、剧集 / 季 / 人物页。
+- **入口**：任意列表页点击 `FindroidMovie` 条目（`PHONE/NavigationRoot.kt`），如首页、媒体库、下载、收藏、合集、剧集 / 季 / 人物页。
 
 ### ShowScreen — 剧集详情
 
 - **职责**：加载剧集、下一集（NextUp）、季列表与演员，提供播放与标记等操作。
-- **路由**：`ShowRoute(showId)`（`PHONE/NavigationRoot.kt:98`），注册于 `PHONE/NavigationRoot.kt:382-395`。
-- **Screen**：`PHONE/presentation/film/ShowScreen.kt:67`。
+- **路由**：`ShowRoute(showId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/ShowScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/show/ShowViewModel.kt`、`FILM/presentation/show/ShowState.kt`、`FILM/presentation/show/ShowAction.kt`。
 - **State 字段**：`show`、`nextUp`、`seasons`、`actors`、`director`、`writers`、`error`。
 - **主要方法 / Action**：`loadShow(showId)`、`onAction()`；`Play`、`PlayTrailer`、`MarkAsPlayed`、`UnmarkAsPlayed`、`MarkAsFavorite`、`UnmarkAsFavorite`、`OnBackClick`、`OnHomeClick`、`NavigateToItem`、`NavigateToPerson`。
-- **入口**：点击 `FindroidShow` 条目（`PHONE/NavigationRoot.kt:485`）；季页的 `navigateToSeries`（`PHONE/NavigationRoot.kt:405-410`）。
+- **入口**：点击 `FindroidShow` 条目（`PHONE/NavigationRoot.kt`）；季页的 `navigateToSeries`（`PHONE/NavigationRoot.kt`）。
 
 ### SeasonScreen — 季详情
 
 - **职责**：加载季信息与其分集列表，提供播放、标记、跳转条目或所属剧集。
-- **路由**：`SeasonRoute(seasonId)`（`PHONE/NavigationRoot.kt:102`），注册于 `PHONE/NavigationRoot.kt:396-412`。
-- **Screen**：`PHONE/presentation/film/SeasonScreen.kt:56`。
+- **路由**：`SeasonRoute(seasonId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/SeasonScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/season/SeasonViewModel.kt`、`FILM/presentation/season/SeasonState.kt`、`FILM/presentation/season/SeasonAction.kt`。
 - **State 字段**：`season`、`episodes`、`error`。
 - **主要方法 / Action**：`loadSeason(seasonId)`、`onAction()`；`Play`、`MarkAsPlayed`、`UnmarkAsPlayed`、`MarkAsFavorite`、`UnmarkAsFavorite`、`OnBackClick`、`OnHomeClick`、`NavigateToItem`、`NavigateToSeries`。
-- **入口**：点击 `FindroidSeason` 条目（`PHONE/NavigationRoot.kt:486`）；分集页的 `navigateToSeason`（`PHONE/NavigationRoot.kt:422-427`）。
+- **入口**：点击 `FindroidSeason` 条目（`PHONE/NavigationRoot.kt`）；分集页的 `navigateToSeason`（`PHONE/NavigationRoot.kt`）。
 
 ### EpisodeScreen — 分集详情
 
 - **职责**：加载分集元数据 / 视频信息 / 演员，提供播放、标记已看、收藏、下载、跳转演员与所属季。
-- **路由**：`EpisodeRoute(episodeId)`（`PHONE/NavigationRoot.kt:100`），注册于 `PHONE/NavigationRoot.kt:413-429`。
-- **Screen**：`PHONE/presentation/film/EpisodeScreen.kt:67`。
+- **路由**：`EpisodeRoute(episodeId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/EpisodeScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/episode/EpisodeViewModel.kt`、`FILM/presentation/episode/EpisodeState.kt`、`FILM/presentation/episode/EpisodeAction.kt`；另使用 `CORE/presentation/downloader/DownloaderViewModel.kt`。
 - **State 字段**：`episode`、`videoMetadata`、`actors`、`displayExtraInfo`、`error`。
 - **主要方法 / Action**：`loadEpisode(episodeId)`、`onAction()`；`Play`、`MarkAsPlayed`、`UnmarkAsPlayed`、`MarkAsFavorite`、`UnmarkAsFavorite`、`OnBackClick`、`OnHomeClick`、`NavigateToPerson`、`NavigateToSeason`。
-- **入口**：点击 `FindroidEpisode` 条目（`PHONE/NavigationRoot.kt:487-488`）。
+- **入口**：点击 `FindroidEpisode` 条目（`PHONE/NavigationRoot.kt`）。
 
 ### PersonScreen — 人物详情
 
 - **职责**：加载人物资料及其参演的电影与剧集。
-- **路由**：`PersonRoute(personId)`（`PHONE/NavigationRoot.kt:104`），注册于 `PHONE/NavigationRoot.kt:430-440`。
-- **Screen**：`PHONE/presentation/film/PersonScreen.kt:55`。
+- **路由**：`PersonRoute(personId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/PersonScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/person/PersonViewModel.kt`、`FILM/presentation/person/PersonState.kt`、`FILM/presentation/person/PersonAction.kt`。注意：VM **无 `onAction`**，`PersonAction` 仅含导航动作，由 Screen 直接处理。
 - **State 字段**：`person`、`starredInMovies`、`starredInShows`、`error`。
 - **主要方法**：`loadPerson(personId)`。
-- **入口**：电影 / 剧集 / 分集详情页点击演员（`PHONE/NavigationRoot.kt:377-379`、`391-393`、`419-421`）。
+- **入口**：电影 / 剧集 / 分集详情页点击演员（见 `PHONE/NavigationRoot.kt` 中 `NavigateToPerson` 的处理）。
 
 ---
 
@@ -250,19 +258,19 @@ else -> WelcomeRoute
 ### SettingsScreen — 设置主页
 
 - **职责**：按 `indexes` 参数展示分组偏好项（开关 / 下拉 / 数字输入 / 文件编辑 / 多选），处理嵌套导航与事件。
-- **路由**：`SettingsRoute(indexes: IntArray)`（`PHONE/NavigationRoot.kt:106`），注册于 `PHONE/NavigationRoot.kt:441-456`。
-- **Screen**：`PHONE/presentation/settings/SettingsScreen.kt:55`。
+- **路由**：`SettingsRoute(indexes: IntArray)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/settings/SettingsScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETTINGS/presentation/settings/SettingsViewModel.kt`、`SETTINGS/presentation/settings/SettingsState.kt`、`SETTINGS/presentation/settings/SettingsAction.kt`、`SETTINGS/presentation/settings/SettingsEvent.kt`。
 - **State 字段**：`isLoading`、`preferenceGroups`。
 - **主要方法 / Action**：`loadPreferences(indexes, deviceType)`、`onAction()`；`OnBackClick`、`OnUpdate`。
 - **Event**：`NavigateToUsers`、`NavigateToServers`、`NavigateToAbout`、`NavigateToSettings`、`NavigateToSettingsFileEdit`、`UpdateTheme`、`LaunchIntent`、`RestartActivity`。
-- **入口**：首页设置按钮（`PHONE/NavigationRoot.kt:312-316`）。
+- **入口**：首页设置按钮（`PHONE/NavigationRoot.kt`）。
 
 ### SettingsFileEditScreen — 设置文件编辑
 
 - **职责**：读取并保存应用 `filesDir` 下的文本文件。
-- **路由**：`SettingsFileEditRoute(filePath)`（`PHONE/NavigationRoot.kt:108`），注册于 `PHONE/NavigationRoot.kt:457-463`。
-- **Screen**：`PHONE/presentation/settings/SettingsFileEditScreen.kt:45`。
+- **路由**：`SettingsFileEditRoute(filePath)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/settings/SettingsFileEditScreen.kt`。
 - **ViewModel / State / Action**：`SETTINGS/presentation/settings/SettingsFileEditViewModel.kt`、`SETTINGS/presentation/settings/SettingsFileEditState.kt`、`SETTINGS/presentation/settings/SettingsFileEditAction.kt`。
 - **State 字段**：`initialText`。
 - **主要方法 / Action**：`loadFile(filePath)`、`onAction()`；`OnBackClick`、`OnSave`。
@@ -271,8 +279,8 @@ else -> WelcomeRoute
 ### AboutScreen — 关于
 
 - **职责**：展示应用 / 开源许可信息与外部链接。
-- **路由**：`AboutRoute`（`PHONE/NavigationRoot.kt:110`），注册于 `PHONE/NavigationRoot.kt:464-466`。
-- **Screen**：`PHONE/presentation/settings/AboutScreen.kt:57`，参数仅 `navigateBack: () -> Unit`。
+- **路由**：`AboutRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/settings/AboutScreen.kt`，参数仅 `navigateBack: () -> Unit`。
 - **ViewModel / State / Action**：**无**（纯静态 UI + `uriHandler` 打开链接）。
 - **入口**：设置页内触发 `NavigateToAbout`。
 
@@ -283,16 +291,16 @@ else -> WelcomeRoute
 ### WelcomeScreen — 欢迎
 
 - **职责**：引导欢迎页，继续进入服务器列表或打开 Jellyfin 官网。
-- **路由**：`WelcomeRoute`（`PHONE/NavigationRoot.kt:67`），注册于 `PHONE/NavigationRoot.kt:230-232`。
-- **Screen**：`PHONE/presentation/setup/welcome/WelcomeScreen.kt:33`。
+- **路由**：`WelcomeRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/setup/welcome/WelcomeScreen.kt`。
 - **ViewModel / State**：**无 ViewModel**；仅有 `SETUP/presentation/welcome/WelcomeAction.kt`（`OnContinueClick`、`OnLearnMoreClick`），由 Screen 内联处理。
 - **入口**：无服务器时的启动路由。
 
 ### ServersScreen — 服务器列表
 
 - **职责**：展示已保存服务器及其地址，切换当前服务器 / 地址、删除服务器、进入地址管理或新增服务器。
-- **路由**：`ServersRoute`（`PHONE/NavigationRoot.kt:69`），注册于 `PHONE/NavigationRoot.kt:233-243`。
-- **Screen**：`PHONE/presentation/setup/servers/ServersScreen.kt:55`。
+- **路由**：`ServersRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/setup/servers/ServersScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETUP/presentation/servers/ServersViewModel.kt`、`SETUP/presentation/servers/ServersState.kt`、`SETUP/presentation/servers/ServersAction.kt`、`SETUP/presentation/servers/ServersEvent.kt`。
 - **State 字段**：`servers`。
 - **主要方法 / Action**：`loadServers()`、`onAction()`；`OnServerClick`、`OnAddressClick`、`NavigateToAddresses`、`DeleteServer`、`OnAddClick`、`OnBackClick`。
@@ -301,28 +309,28 @@ else -> WelcomeRoute
 ### AddServerScreen — 添加服务器
 
 - **职责**：自动发现局域网服务器，或手动输入地址连接。
-- **路由**：`AddServerRoute`（`PHONE/NavigationRoot.kt:71`），注册于 `PHONE/NavigationRoot.kt:244-249`。
-- **Screen**：`PHONE/presentation/setup/addserver/AddServerScreen.kt:58`。
+- **路由**：`AddServerRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/setup/addserver/AddServerScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETUP/presentation/addserver/AddServerViewModel.kt`、`SETUP/presentation/addserver/AddServerState.kt`、`SETUP/presentation/addserver/AddServerAction.kt`、`SETUP/presentation/addserver/AddServerEvent.kt`。
 - **State 字段**：`isLoading`、`discoveredServers`、`error`。
 - **主要方法 / Action**：`discoverServers()`、`onAction()`；`OnConnectClick`、`OnBackClick`。
-- **入口**：服务器列表页的「+」按钮（`PHONE/NavigationRoot.kt:239`）。
+- **入口**：服务器列表页的「+」按钮（`PHONE/NavigationRoot.kt`）。
 
 ### ServerAddressesScreen — 服务器地址管理
 
 - **职责**：管理某个服务器的地址列表，支持增删；禁止删除当前地址，新增时校验 `systemId`。
-- **路由**：`ServerAddressesRoute(serverId)`（`PHONE/NavigationRoot.kt:73`），注册于 `PHONE/NavigationRoot.kt:250-256`。
-- **Screen**：`PHONE/presentation/setup/addresses/ServerAddressesScreen.kt:56`。
+- **路由**：`ServerAddressesRoute(serverId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/setup/addresses/ServerAddressesScreen.kt`。
 - **ViewModel / State / Action**：`SETUP/presentation/addresses/ServerAddressesViewModel.kt`、`SETUP/presentation/addresses/ServerAddressesState.kt`、`SETUP/presentation/addresses/ServerAddressesAction.kt`。
 - **State 字段**：`addresses`。
 - **主要方法 / Action**：`loadAddresses(serverId)`、`onAction()`；`OnServerClick`、`AddAddress`、`DeleteAddress`、`OnBackClick`。
-- **入口**：服务器列表页触发 `NavigateToAddresses`（`PHONE/NavigationRoot.kt:236-238`）。
+- **入口**：服务器列表页触发 `NavigateToAddresses`（`PHONE/NavigationRoot.kt`）。
 
 ### UsersScreen — 用户列表
 
 - **职责**：展示服务器已登录用户与公共用户，支持登录、删除用户、切换服务器、新增登录。
-- **路由**：`UsersRoute`（`PHONE/NavigationRoot.kt:75`），注册于 `PHONE/NavigationRoot.kt:257-273`。
-- **Screen**：`PHONE/presentation/setup/users/UsersScreen.kt:50`。
+- **路由**：`UsersRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/setup/users/UsersScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETUP/presentation/users/UsersViewModel.kt`、`SETUP/presentation/users/UsersState.kt`、`SETUP/presentation/users/UsersAction.kt`、`SETUP/presentation/users/UsersEvent.kt`。
 - **State 字段**：`users`、`publicUsers`、`serverName`。
 - **主要方法 / Action**：`loadUsers()`、`onAction()`；`OnUserClick`、`OnPublicUserClick`、`OnDeleteUser`、`OnChangeServerClick`、`OnAddClick`、`OnBackClick`。
@@ -331,12 +339,12 @@ else -> WelcomeRoute
 ### LoginScreen — 登录
 
 - **职责**：用户名 / 密码登录或 Quick Connect 快速连接，展示服务器名与登录免责声明。
-- **路由**：`LoginRoute(username: String? = null)`（`PHONE/NavigationRoot.kt:77`），注册于 `PHONE/NavigationRoot.kt:274-292`。
-- **Screen**：`PHONE/presentation/setup/login/LoginScreen.kt:61`。
+- **路由**：`LoginRoute(username: String? = null)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/setup/login/LoginScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETUP/presentation/login/LoginViewModel.kt`、`SETUP/presentation/login/LoginState.kt`、`SETUP/presentation/login/LoginAction.kt`、`SETUP/presentation/login/LoginEvent.kt`。
 - **State 字段**：`serverName`、`disclaimer`、`quickConnectEnabled`、`quickConnectCode`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadServer()`、`loadDisclaimer()`、`loadQuickConnectEnabled()`、`onAction()`；`OnLoginClick`、`OnChangeServerClick`、`OnQuickConnectClick`、`OnBackClick`。
-- **入口**：用户列表页「新增登录」或点击公共用户（`PHONE/NavigationRoot.kt:266-270`）。
+- **入口**：用户列表页「新增登录」或点击公共用户（`PHONE/NavigationRoot.kt`）。
 
 ---
 
@@ -346,11 +354,11 @@ else -> WelcomeRoute
 
 - **职责**：视频播放界面（传统 View + Media3 `PlayerView` / ExoPlayer），展示标题、章节，提供跳过片头 / 片尾、PiP、手势以及音轨 / 字幕 / 倍速入口。
 - **路由**：**无 NavHost 路由**，为独立 `Activity`（`class PlayerActivity : BasePlayerActivity()`）。
-- **Screen**：`PHONE/PlayerActivity.kt:54`；第 60 行 `override val viewModel: PlayerViewModel by viewModels()`。
+- **Screen**：`PHONE/PlayerActivity.kt`；其中 `override val viewModel: PlayerViewModel by viewModels()`。
 - **ViewModel**：`PLAYER/presentation/PlayerViewModel.kt`。
-- **State 字段**（`UiState`，`PlayerViewModel.kt:76-83`）：`currentItemTitle`、`currentSegment`、`currentSkipButtonStringRes`、`currentTrickplay`、`currentChapters`、`fileLoaded`；事件流 `eventsChannelFlow`（`PlayerEvents`）。
+- **State 字段**（`UiState`，`PlayerViewModel.kt`）：`currentItemTitle`、`currentSegment`、`currentSkipButtonStringRes`、`currentTrickplay`、`currentChapters`、`fileLoaded`；事件流 `eventsChannelFlow`（`PlayerEvents`）。
 - **主要方法**：`initializePlayer(itemId, itemKind, startFromBeginning)`、`updatePlaybackProgress()`、`updateCurrentSegment()`、`switchToTrack()`、`selectSpeed()`、`skipSegment()`、`seekToNextChapter()`、`seekToPreviousChapter()`、`isLastChapter()`。
-- **辅助弹窗**（非页面）：`PHONE/presentation/player/SpeedSelectionDialogFragment.kt`、`PHONE/presentation/player/TrackSelectionDialogFragment.kt`，通过构造参数接收同一 `PlayerViewModel`（`PlayerActivity.kt:283`、`305`、`310`）。
+- **辅助弹窗**（非页面）：`PHONE/presentation/player/SpeedSelectionDialogFragment.kt`、`PHONE/presentation/player/TrackSelectionDialogFragment.kt`，与 `PlayerActivity` 通过构造参数共享同一 `PlayerViewModel`。
 - **入口**：各详情页的播放动作（`MovieAction.Play`、`EpisodeAction.Play` 等）。
 
 ---
@@ -359,11 +367,11 @@ else -> WelcomeRoute
 
 搜索**不是独立页面**，`PHONE/NavigationRoot.kt` 中没有搜索路由。
 
-- **UI 组件**：`PHONE/presentation/film/components/SearchBar.kt:47`（`FilmSearchBar`）。
-- **挂载位置**：媒体库页内（`MediaScreen.kt:123`；`searchViewModel = hiltViewModel()` 见 `MediaScreen.kt:53`）。
+- **UI 组件**：`PHONE/presentation/film/components/SearchBar.kt`（`FilmSearchBar`）。
+- **挂载位置**：媒体库页内（`MediaScreen.kt`；`searchViewModel = hiltViewModel()` 见 `MediaScreen.kt`）。
 - **ViewModel / State / Action**：`FILM/presentation/search/SearchViewModel.kt`、`FILM/presentation/search/SearchState.kt`、`FILM/presentation/search/SearchAction.kt`。
 - **State 字段**：`items`、`loading`；**Action**：`Search(query)`、`OnItemClick`。
-- **触发方式**：`PHONE/NavigationRoot.kt:160` 的 `searchExpanded` 状态控制搜索栏展开；首页搜索按钮切到 `MediaRoute` 并置 `searchExpanded = true`（`PHONE/NavigationRoot.kt:304-311`）。
+- **触发方式**：`PHONE/NavigationRoot.kt` 的 `searchExpanded` 状态控制搜索栏展开；首页搜索按钮切到 `MediaRoute` 并置 `searchExpanded = true`（`PHONE/NavigationRoot.kt`）。
 
 ---
 
@@ -373,7 +381,7 @@ else -> WelcomeRoute
 - **State / Action 复用**：`DownloadsViewModel` 与 `FavoritesViewModel` 复用 `FILM/presentation/collection/CollectionState.kt` + `FILM/presentation/collection/CollectionAction.kt`，**没有**独立的 `DownloadsState` / `FavoritesState`。
 - **无 ViewModel 的页面**：`WelcomeScreen`（仅 `WelcomeAction`，Screen 内联处理）、`AboutScreen`（纯静态 UI）。
 - **无 `onAction` 的 ViewModel**：`DownloadsViewModel`、`FavoritesViewModel`、`PersonViewModel`。
-- **导航**：统一使用类型安全路由；`navigateToItem(navController, item)`（`PHONE/NavigationRoot.kt:478-507`）按 `FindroidItem` 子类型分发到具体详情页；`safeNavigate` / `safePopBackStack` 仅在生命周期为 `RESUMED` 时执行导航（`PHONE/NavigationRoot.kt:509-530`）。
+- **导航**：统一使用类型安全路由；`navigateToItem(navController, item)`（`PHONE/NavigationRoot.kt`）按 `FindroidItem` 子类型分发到具体详情页；`safeNavigate` / `safePopBackStack` 仅在生命周期为 `RESUMED` 时执行导航（`PHONE/NavigationRoot.kt`）。
 - **离线模式**：由 `LocalOfflineMode` CompositionLocal 控制（`PHONE/presentation/utils/`），离线时隐藏「媒体」标签与仅联网功能。
 
 ---
@@ -385,3 +393,6 @@ else -> WelcomeRoute
 | 2026-10-06 | 首次创建。覆盖手机端 21 个页面（film 11、settings 3、setup 6、player 1）与 1 个搜索组件。 |
 | 2026-10-06 | 电影详情页副标题下方新增文件存放路径（`FilePathText`，`MovieState.filePath` 派生属性），同步 MovieScreen 条目。 |
 | 2026-10-06 | 文件路径改为本地 / 远程分离：`FindroidSource.filePath` 拆为 `remoteFilePath`、`localFilePath`，`MovieState` 改为派生 `localFilePath`、`remoteFilePath`，已下载时两行同时展示。 |
+| 2026-10-06 | 媒体库详情页排序弹窗新增封面显示模式（`CoverDisplayMode`，竖图 / 横图），新增偏好 `pref_library_cover_mode`、Action `ChangeCoverMode`，`ItemPoster` 增加横竖图互相补位；同步 LibraryScreen 条目。 |
+| 2026-10-06 | 媒体库横图封面改用首页 `BANNER_ASPECT_RATIO`，列数按可用宽度自适应（宽屏每行两个）。 |
+| 2026-10-06 | 横图封面选取范围扩展：剧集 / 合集 / 媒体库等非电影条目也优先取 `backdrop`（分集仍优先 16:9 剧照）；全文去除行号引用，并新增「不得写行号」的书写与校验要求。 |

@@ -53,6 +53,7 @@
     <string name="hide">Hide</string>
     <string name="sort_by">Sort by</string>
     <string name="sort_order">Sort order</string>
+    <string name="cover_mode">Cover style</string>
     <string name="close">Close</string>
     <string name="share">Share</string>
     <string name="image_description_poster">%1$s poster</string>
@@ -64,6 +65,8 @@
     <string name="sort_by_options_4">Date Played</string>
     <string name="sort_by_options_5">Release Date</string>
     <string name="sort_by_options_6">Random</string>
+    <string name="cover_mode_options_0">Portrait</string>
+    <string name="cover_mode_options_1">Landscape</string>
     <string name="ascending">Ascending</string>
     <string name="descending">Descending</string>
     <string name="runtime_minutes">%1$d mins</string>

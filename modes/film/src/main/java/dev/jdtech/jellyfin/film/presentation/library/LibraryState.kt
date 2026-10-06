@@ -1,6 +1,7 @@
 package dev.jdtech.jellyfin.film.presentation.library
 
 import androidx.paging.PagingData
+import dev.jdtech.jellyfin.models.CoverDisplayMode
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.SortBy
 import dev.jdtech.jellyfin.models.SortOrder
@@ -11,6 +12,7 @@ data class LibraryState(
     val items: Flow<PagingData<FindroidItem>> = emptyFlow(),
     val sortBy: SortBy = SortBy.NAME,
     val sortOrder: SortOrder = SortOrder.ASCENDING,
+    val coverMode: CoverDisplayMode = CoverDisplayMode.defaultValue,
     val isLoading: Boolean = false,
     val error: Exception? = null,
 )

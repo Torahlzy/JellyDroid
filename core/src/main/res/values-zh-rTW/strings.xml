@@ -35,6 +35,7 @@
     <string name="episodes_label">影集</string>
     <string name="hide">隱藏</string>
     <string name="sort_order">排序</string>
+    <string name="cover_mode">封面顯示</string>
     <string name="close">關閉</string>
     <string name="share">分享</string>
     <string name="image_description_poster">%1$s 海報</string>
@@ -46,6 +47,8 @@
     <string name="sort_by_options_4">播放日期</string>
     <string name="sort_by_options_5">發行日期</string>
     <string name="sort_by_options_6">隨機</string>
+    <string name="cover_mode_options_0">直圖</string>
+    <string name="cover_mode_options_1">橫圖</string>
     <string name="ascending">升序</string>
     <string name="descending">降序</string>
     <string name="runtime_minutes">%1$d 分</string>

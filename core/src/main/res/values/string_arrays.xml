@@ -12,4 +12,8 @@
         <item>@string/ascending</item>
         <item>@string/descending</item>
     </string-array>
+    <string-array name="cover_mode_options">
+        <item>@string/cover_mode_options_0</item>
+        <item>@string/cover_mode_options_1</item>
+    </string-array>
 </resources>

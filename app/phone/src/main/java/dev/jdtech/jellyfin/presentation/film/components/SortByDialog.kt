@@ -41,16 +41,23 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import dev.jdtech.jellyfin.core.R as CoreR
+import dev.jdtech.jellyfin.models.CoverDisplayMode
 import dev.jdtech.jellyfin.models.SortBy
 import dev.jdtech.jellyfin.models.SortOrder
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 
+/**
+ * 列表展示设置弹窗：排序方式（顺序 + 字段）与封面显示模式。
+ *
+ * 每次选择都会把当前的全部选项回传，由调用方按需分发动作。
+ */
 @Composable
 fun SortByDialog(
     currentSortBy: SortBy,
     currentSortOrder: SortOrder,
-    onUpdate: (sortBy: SortBy, sortOrder: SortOrder) -> Unit,
+    currentCoverMode: CoverDisplayMode,
+    onUpdate: (sortBy: SortBy, sortOrder: SortOrder, coverMode: CoverDisplayMode) -> Unit,
     onDismissRequest: () -> Unit,
 ) {
     val optionValues = SortBy.entries
@@ -61,8 +68,13 @@ fun SortByDialog(
     val orderNames = stringArrayResource(CoreR.array.sort_order_options)
     val orderOptions = orderValues.zip(orderNames)
 
+    val coverModeValues = CoverDisplayMode.entries
+    val coverModeNames = stringArrayResource(CoreR.array.cover_mode_options)
+    val coverModeOptions = coverModeValues.zip(coverModeNames)
+
     var selectedOption by remember { mutableStateOf(currentSortBy) }
     var selectedOrder by remember { mutableStateOf(currentSortOrder) }
+    var selectedCoverMode by remember { mutableStateOf(currentCoverMode) }
 
     val lazyListState = rememberLazyListState()
 
@@ -92,42 +104,37 @@ fun SortByDialog(
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 Spacer(modifier = Modifier.height(MaterialTheme.spacings.medium))
-                SingleChoiceSegmentedButtonRow(
+                OptionsSegmentedRow(
+                    options = orderOptions,
+                    selectedOption = selectedOrder,
+                    onSelect = { order ->
+                        selectedOrder = order
+                        onUpdate(selectedOption, selectedOrder, selectedCoverMode)
+                    },
                     modifier =
-                        Modifier.padding(horizontal = MaterialTheme.spacings.default).fillMaxWidth()
-                ) {
-                    orderOptions.forEachIndexed { index, order ->
-                        SegmentedButton(
-                            selected = order.first == selectedOrder,
-                            onClick = {
-                                selectedOrder = order.first
-                                onUpdate(selectedOption, selectedOrder)
-                            },
-                            shape =
-                                SegmentedButtonDefaults.itemShape(
-                                    index = index,
-                                    count = orderOptions.size,
-                                ),
-                            colors =
-                                SegmentedButtonDefaults.colors(
-                                    inactiveContainerColor = Color.Transparent
-                                ),
-                            icon = {
-                                AnimatedVisibility(
-                                    visible = order.first == selectedOrder,
-                                    enter = fadeIn(),
-                                    exit = ExitTransition.None,
-                                ) {
-                                    Icon(
-                                        painter = painterResource(CoreR.drawable.ic_check),
-                                        contentDescription = null,
-                                    )
-                                }
-                            },
-                            label = { Text(order.second) },
-                        )
-                    }
-                }
+                        Modifier.padding(horizontal = MaterialTheme.spacings.default)
+                            .fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(MaterialTheme.spacings.medium))
+                Text(
+                    text = stringResource(CoreR.string.cover_mode),
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .padding(horizontal = MaterialTheme.spacings.default),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(modifier = Modifier.height(MaterialTheme.spacings.small))
+                OptionsSegmentedRow(
+                    options = coverModeOptions,
+                    selectedOption = selectedCoverMode,
+                    onSelect = { coverMode ->
+                        selectedCoverMode = coverMode
+                        onUpdate(selectedOption, selectedOrder, selectedCoverMode)
+                    },
+                    modifier =
+                        Modifier.padding(horizontal = MaterialTheme.spacings.default)
+                            .fillMaxWidth(),
+                )
                 Spacer(modifier = Modifier.height(MaterialTheme.spacings.medium))
                 if (!isAtTop) {
                     HorizontalDivider()
@@ -139,13 +146,49 @@ fun SortByDialog(
                             isSelected = option.first == selectedOption,
                             onSelect = {
                                 selectedOption = option.first
-                                onUpdate(selectedOption, selectedOrder)
+                                onUpdate(selectedOption, selectedOrder, selectedCoverMode)
                             },
                         )
                     }
                 }
                 Spacer(modifier = Modifier.height(MaterialTheme.spacings.medium))
             }
+        }
+    }
+}
+
+/** 单选的横向分段按钮组，用于排序顺序与封面显示模式。 */
+@Composable
+private fun <T> OptionsSegmentedRow(
+    options: List<Pair<T, String>>,
+    selectedOption: T,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SingleChoiceSegmentedButtonRow(modifier = modifier) {
+        options.forEachIndexed { index, option ->
+            SegmentedButton(
+                selected = option.first == selectedOption,
+                onClick = { onSelect(option.first) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                colors =
+                    SegmentedButtonDefaults.colors(
+                        inactiveContainerColor = Color.Transparent
+                    ),
+                icon = {
+                    AnimatedVisibility(
+                        visible = option.first == selectedOption,
+                        enter = fadeIn(),
+                        exit = ExitTransition.None,
+                    ) {
+                        Icon(
+                            painter = painterResource(CoreR.drawable.ic_check),
+                            contentDescription = null,
+                        )
+                    }
+                },
+                label = { Text(option.second) },
+            )
         }
     }
 }
@@ -176,7 +219,8 @@ private fun SortByDialogPreview() {
         SortByDialog(
             currentSortBy = SortBy.NAME,
             currentSortOrder = SortOrder.ASCENDING,
-            onUpdate = { _, _ -> },
+            currentCoverMode = CoverDisplayMode.PORTRAIT,
+            onUpdate = { _, _, _ -> },
             onDismissRequest = {},
         )
     }

@@ -3,9 +3,11 @@ package dev.jdtech.jellyfin.presentation.film.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,9 +41,11 @@ fun ItemCard(
     direction: Direction,
     onClick: (FindroidItem) -> Unit,
     onDetailsClick: ((FindroidItem) -> Unit)? = null,
-    modifier: Modifier = Modifier,
     // 可选宽高比覆盖，透传给封面
     aspectRatio: Float? = null,
+    // 网格布局中宽度由单元格决定时置 true：卡片铺满可用宽度，进度条同步按实际宽度计算
+    isWidthAdaptive: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     val width =
         when (direction) {
@@ -51,44 +55,54 @@ fun ItemCard(
     Column(
         modifier =
             modifier
-                .width(width.dp)
+                .then(
+                    if (isWidthAdaptive) {
+                        Modifier.fillMaxWidth()
+                    } else {
+                        Modifier.width(width.dp)
+                    }
+                )
                 .clip(MaterialTheme.shapes.small)
                 .clickable(onClick = { onClick(item) })
     ) {
         Surface(shape = MaterialTheme.shapes.small) {
-            Box {
-                ItemPoster(item = item, direction = direction, aspectRatio = aspectRatio)
-                Row(
-                    modifier =
-                        Modifier.align(Alignment.TopEnd).padding(MaterialTheme.spacings.small),
-                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.small),
-                ) {
-                    if (item.isDownloaded()) DownloadedBadge()
-                    if (item.played) PlayedBadge()
-                    item.unplayedItemCount?.takeIf { it > 0 }?.let { ItemCountBadge(it) }
-                }
-                if (direction == Direction.HORIZONTAL) {
-                    ProgressBar(
-                        item = item,
-                        width = width,
+            BoxWithConstraints {
+                val cardWidth = if (isWidthAdaptive) maxWidth.value.toInt() else width
+                Box {
+                    ItemPoster(item = item, direction = direction, aspectRatio = aspectRatio)
+                    Row(
                         modifier =
-                            Modifier.align(Alignment.BottomStart)
+                            Modifier.align(Alignment.TopEnd)
                                 .padding(MaterialTheme.spacings.small),
-                    )
-                }
-                if (onDetailsClick != null && item.isDownloaded()) {
-                    IconButton(
-                        onClick = { onDetailsClick.invoke(item) },
-                        modifier =
-                            Modifier.align(Alignment.BottomEnd)
-                                .padding(2.dp)
-                                .size(32.dp),
+                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.small),
                     ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_info),
-                            contentDescription = stringResource(R.string.view_details),
-                            tint = MaterialTheme.colorScheme.onPrimary,
+                        if (item.isDownloaded()) DownloadedBadge()
+                        if (item.played) PlayedBadge()
+                        item.unplayedItemCount?.takeIf { it > 0 }?.let { ItemCountBadge(it) }
+                    }
+                    if (direction == Direction.HORIZONTAL) {
+                        ProgressBar(
+                            item = item,
+                            width = cardWidth,
+                            modifier =
+                                Modifier.align(Alignment.BottomStart)
+                                    .padding(MaterialTheme.spacings.small),
                         )
+                    }
+                    if (onDetailsClick != null && item.isDownloaded()) {
+                        IconButton(
+                            onClick = { onDetailsClick.invoke(item) },
+                            modifier =
+                                Modifier.align(Alignment.BottomEnd)
+                                    .padding(2.dp)
+                                    .size(32.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_info),
+                                contentDescription = stringResource(R.string.view_details),
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        }
                     }
                 }
             }

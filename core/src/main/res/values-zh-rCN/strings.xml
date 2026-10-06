@@ -37,6 +37,7 @@
     <string name="hide">隐藏</string>
     <string name="sort_by">排序</string>
     <string name="sort_order">排序顺序</string>
+    <string name="cover_mode">封面显示</string>
     <string name="close">关闭</string>
     <string name="share">分享</string>
     <string name="image_description_poster">%1$s 海报</string>
@@ -48,6 +49,8 @@
     <string name="sort_by_options_4">播放日期</string>
     <string name="sort_by_options_5">发行日期</string>
     <string name="sort_by_options_6">随机</string>
+    <string name="cover_mode_options_0">竖图</string>
+    <string name="cover_mode_options_1">横图</string>
     <string name="descending">降序</string>
     <string name="runtime_minutes">%1$d 分钟</string>
     <string name="select_video_version_title">选择版本</string>

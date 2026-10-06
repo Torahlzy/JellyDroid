@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.recalculateWindowInsets
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -45,8 +46,10 @@ import dev.jdtech.jellyfin.film.presentation.library.LibraryAction
 import dev.jdtech.jellyfin.film.presentation.library.LibraryState
 import dev.jdtech.jellyfin.film.presentation.library.LibraryViewModel
 import dev.jdtech.jellyfin.models.CollectionType
+import dev.jdtech.jellyfin.models.CoverDisplayMode
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.presentation.components.ErrorDialog
+import dev.jdtech.jellyfin.presentation.film.components.BANNER_ASPECT_RATIO
 import dev.jdtech.jellyfin.presentation.film.components.Direction
 import dev.jdtech.jellyfin.presentation.film.components.ErrorCard
 import dev.jdtech.jellyfin.presentation.film.components.ItemCard
@@ -58,6 +61,9 @@ import dev.jdtech.jellyfin.presentation.utils.plus
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+
+// 横图封面的最小宽度（dp）：窄屏排一列，折叠屏展开等宽屏可放下两列
+private const val LANDSCAPE_COVER_MIN_WIDTH_DP = 300
 
 @Composable
 fun LibraryScreen(
@@ -109,6 +115,13 @@ private fun LibraryScreenLayout(
 
     var showSortByDialog by remember { mutableStateOf(false) }
 
+    val direction =
+        if (state.coverMode == CoverDisplayMode.LANDSCAPE) {
+            Direction.HORIZONTAL
+        } else {
+            Direction.VERTICAL
+        }
+
     Scaffold(
         modifier =
             Modifier.fillMaxSize()
@@ -145,7 +158,13 @@ private fun LibraryScreenLayout(
                 modifier = Modifier.fillMaxWidth().padding(contentPadding + innerPadding),
             )
             LazyVerticalGrid(
-                columns = GridCellsAdaptiveWithMinColumns(minSize = 160.dp, minColumns = 2),
+                columns =
+                    if (direction == Direction.HORIZONTAL) {
+                        // 横图卡片较宽：按可用宽度自适应，窄屏一列铺满，宽屏（折叠屏展开等）每行两个
+                        GridCells.Adaptive(minSize = LANDSCAPE_COVER_MIN_WIDTH_DP.dp)
+                    } else {
+                        GridCellsAdaptiveWithMinColumns(minSize = 160.dp, minColumns = 2)
+                    },
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = contentPadding + innerPadding,
                 horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.default),
@@ -156,9 +175,13 @@ private fun LibraryScreenLayout(
                     item?.let { item ->
                         ItemCard(
                             item = item,
-                            direction = Direction.VERTICAL,
+                            direction = direction,
                             onClick = { onAction(LibraryAction.OnItemClick(item)) },
                             modifier = Modifier.animateItem(),
+                            // 横图封面沿用首页 banner 的宽高比，竖图走默认 2:3
+                            aspectRatio =
+                                if (direction == Direction.HORIZONTAL) BANNER_ASPECT_RATIO else null,
+                            isWidthAdaptive = direction == Direction.HORIZONTAL,
                         )
                     }
                 }
@@ -170,8 +193,10 @@ private fun LibraryScreenLayout(
         SortByDialog(
             currentSortBy = state.sortBy,
             currentSortOrder = state.sortOrder,
-            onUpdate = { sortBy, sortOrder ->
+            currentCoverMode = state.coverMode,
+            onUpdate = { sortBy, sortOrder, coverMode ->
                 onAction(LibraryAction.ChangeSorting(sortBy, sortOrder))
+                onAction(LibraryAction.ChangeCoverMode(coverMode))
             },
             onDismissRequest = { showSortByDialog = false },
         )
