@@ -12,6 +12,7 @@ import dev.jdtech.jellyfin.models.FindroidCollection
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidImages
 import dev.jdtech.jellyfin.models.FindroidItem
+import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidMovie
 import dev.jdtech.jellyfin.models.FindroidPerson
 import dev.jdtech.jellyfin.models.FindroidSeason
@@ -24,6 +25,7 @@ import dev.jdtech.jellyfin.models.toFindroidCollection
 import dev.jdtech.jellyfin.models.toFindroidEpisode
 import dev.jdtech.jellyfin.models.toFindroidImages
 import dev.jdtech.jellyfin.models.toFindroidItem
+import dev.jdtech.jellyfin.models.toFindroidItemImage
 import dev.jdtech.jellyfin.models.toFindroidMovie
 import dev.jdtech.jellyfin.models.toFindroidPerson
 import dev.jdtech.jellyfin.models.toFindroidSeason
@@ -638,6 +640,96 @@ class JellyfinRepositoryImpl(
                 database.setUserDataToBeSynced(jellyfinApi.userId!!, itemId, true)
             }
         }
+    }
+
+    override suspend fun getItemImages(itemId: UUID): List<FindroidItemImage> =
+        withContext(Dispatchers.IO) {
+            // 地址为空说明还没连上服务器，拼出来的是没有 scheme / host 的相对路径，
+            // 图片只会静默加载失败；这里直接报错，让界面把原因显示出来
+            val baseUrl = getBaseUrl()
+            check(baseUrl.isNotEmpty()) { "服务器地址为空，无法获取图片" }
+
+            jellyfinApi.imageApi
+                .getItemImageInfos(itemId)
+                .content
+                .map { it.toFindroidItemImage(itemId, baseUrl) }
+        }
+
+    override suspend fun deleteItemImages(itemId: UUID, images: List<FindroidItemImage>) {
+        withContext(Dispatchers.IO) {
+            images
+                .groupBy { it.imageType }
+                .forEach { (imageType, imagesOfType) ->
+                    // 多图类型（如背景图）删掉一张后索引会前移，从大索引往小删才不会漏删；
+                    // 单图类型的 imageIndex 为 null，SDK 不带索引时服务端按 0 处理
+                    imagesOfType
+                        .sortedByDescending { it.imageIndex ?: 0 }
+                        .forEach { image ->
+                            jellyfinApi.imageApi.deleteItemImage(
+                                itemId,
+                                imageType,
+                                image.imageIndex,
+                            )
+                        }
+                }
+        }
+    }
+
+    // DELETE /Items/{itemId}：服务端会一并删掉条目记录、媒体文件与关联的图片 / nfo
+    override suspend fun deleteItem(itemId: UUID) {
+        withContext(Dispatchers.IO) { jellyfinApi.libraryApi.deleteItem(itemId) }
+    }
+
+    override suspend fun clearItemMetadata(itemId: UUID, name: String?) {
+        withContext(Dispatchers.IO) {
+            // ProviderIds 是外部刮削 ID，被清掉会导致服务器下次刮削重新匹配（可能又匹配错），
+            // 所以先原样读回来随更新写回。读不到条目说明这次读取不可信，直接中止：
+            // 在覆盖式更新下写回空 Map 反而会把原本有效的刮削 ID 删掉
+            val item =
+                getItemWithProviderIds(itemId)
+                    ?: throw IllegalStateException("读取条目信息失败，已取消清空元数据")
+
+            // 该接口是覆盖式更新：请求体里没有出现的字段由服务端置空，所以只填需要保留的内容，
+            // 其余不填即达到「清空 info」的效果。两点注意：
+            // 1) SDK 序列化时 explicitNulls=false，为 null 的字段不会进请求体，因此不能靠传 null 表达清空；
+            // 2) Genres/Tags/People/Studios/Taglines/ProductionLocations 传 null 会被当成「未提供」，
+            //    必须显式传空集合才会被清空
+            jellyfinApi.itemUpdateApi.updateItem(
+                itemId,
+                BaseItemDto(
+                    // id 与 type 是 BaseItemDto 里唯二没有默认值的字段，必须带上（type 保持条目原有类型）
+                    id = itemId,
+                    type = item.type,
+                    name = name,
+                    providerIds = item.providerIds ?: emptyMap(),
+                    genres = emptyList(),
+                    tags = emptyList(),
+                    people = emptyList(),
+                    studios = emptyList(),
+                    taglines = emptyList(),
+                    productionLocations = emptyList(),
+                ),
+            )
+        }
+    }
+
+    /**
+     * 读取条目，用于取回需要保留的外部刮削 ID。
+     *
+     * 查询必须显式指定 [ItemFields.PROVIDER_IDS]，否则服务端不会返回；返回 null 表示条目没查到。
+     */
+    private suspend fun getItemWithProviderIds(itemId: UUID): BaseItemDto? {
+        // 没有当前用户 ID 时无法保证查回的是本人数据，直接放弃读取（上层会中止清空）
+        val userId = jellyfinApi.userId ?: return null
+        return jellyfinApi.itemsApi
+            .getItems(
+                userId,
+                ids = listOf(itemId),
+                fields = listOf(ItemFields.PROVIDER_IDS),
+            )
+            .content
+            .items
+            .firstOrNull()
     }
 
     override fun getBaseUrl() = jellyfinApi.api.baseUrl.orEmpty()

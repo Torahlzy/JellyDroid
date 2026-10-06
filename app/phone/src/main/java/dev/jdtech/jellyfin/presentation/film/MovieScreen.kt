@@ -22,6 +22,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,17 +46,22 @@ import dev.jdtech.jellyfin.core.presentation.downloader.DownloaderViewModel
 import dev.jdtech.jellyfin.core.presentation.dummy.dummyMovie
 import dev.jdtech.jellyfin.core.presentation.dummy.dummyVideoMetadata
 import dev.jdtech.jellyfin.film.presentation.movie.MovieAction
+import dev.jdtech.jellyfin.film.presentation.movie.MovieEvent
 import dev.jdtech.jellyfin.film.presentation.movie.MovieState
 import dev.jdtech.jellyfin.film.presentation.movie.MovieViewModel
 import dev.jdtech.jellyfin.presentation.film.components.ActorsRow
 import dev.jdtech.jellyfin.presentation.film.components.CollapsibleText
+import dev.jdtech.jellyfin.presentation.film.components.DeleteItemImagesDialog
+import dev.jdtech.jellyfin.presentation.film.components.DeleteItemWithFilesDialog
 import dev.jdtech.jellyfin.presentation.film.components.ExtraInfoText
 import dev.jdtech.jellyfin.presentation.film.components.FilePathText
 import dev.jdtech.jellyfin.presentation.film.components.InfoText
 import dev.jdtech.jellyfin.presentation.film.components.ItemButtonsBar
 import dev.jdtech.jellyfin.presentation.film.components.ItemHeader
 import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
+import dev.jdtech.jellyfin.presentation.film.components.MoreMenuDialog
 import dev.jdtech.jellyfin.presentation.film.components.OverviewText
+import dev.jdtech.jellyfin.presentation.film.components.ResetMetadataDialog
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
@@ -79,6 +87,18 @@ fun MovieScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloaderState by downloaderViewModel.state.collectAsStateWithLifecycle()
 
+    // 「更多」菜单与它下面的确认弹窗共用同一个状态，保证同一时刻只开一个；
+    // 用 rememberSaveable 让弹窗在旋转屏幕后仍保持打开（枚举可直接存入 Bundle）
+    var moreDialog by rememberSaveable { mutableStateOf<MoreMenuDialogState?>(null) }
+
+    // 离线模式连不上服务器，删除服务器信息必然失败，直接不显示「更多」按钮
+    val onMoreClick: (() -> Unit)? =
+        if (isOfflineMode) {
+            null
+        } else {
+            { moreDialog = MoreMenuDialogState.MENU }
+        }
+
     LaunchedEffect(true) { viewModel.loadMovie(movieId = movieId) }
 
     LaunchedEffect(state.movie) { state.movie?.let { movie -> downloaderViewModel.update(movie) } }
@@ -95,6 +115,55 @@ fun MovieScreen(
                     viewModel.loadMovie(movieId = movieId)
                 }
             }
+        }
+    }
+
+    // 三个删除操作失败时只需告诉用户「哪一步失败 + 原因」，统一走这里避免重复
+    val showFailureToast: (Int, Exception) -> Unit = { messageResId, error ->
+        Toast.makeText(
+                context,
+                context.getString(
+                    messageResId,
+                    error.localizedMessage ?: context.getString(CoreR.string.unknown_error),
+                ),
+                Toast.LENGTH_LONG,
+            )
+            .show()
+    }
+
+    // 删除服务器文件没有可直接观察的界面状态，用一次性事件把执行结果反馈给用户
+    ObserveAsEvents(viewModel.events) { event ->
+        when (event) {
+            is MovieEvent.ItemImagesDeleted ->
+                Toast.makeText(
+                        context,
+                        context.getString(CoreR.string.item_images_deleted),
+                        Toast.LENGTH_SHORT,
+                    )
+                    .show()
+            is MovieEvent.MetadataReset ->
+                Toast.makeText(
+                        context,
+                        context.getString(CoreR.string.metadata_reset),
+                        Toast.LENGTH_SHORT,
+                    )
+                    .show()
+            is MovieEvent.ItemDeleted -> {
+                Toast.makeText(
+                        context,
+                        context.getString(CoreR.string.item_deleted),
+                        Toast.LENGTH_SHORT,
+                    )
+                    .show()
+                // 条目已从服务器删掉，本页没有可显示的内容了
+                navigateBack()
+            }
+            is MovieEvent.ItemImagesDeleteFailed ->
+                showFailureToast(CoreR.string.delete_item_images_failed, event.error)
+            is MovieEvent.MetadataResetFailed ->
+                showFailureToast(CoreR.string.reset_metadata_failed, event.error)
+            is MovieEvent.ItemDeleteFailed ->
+                showFailureToast(CoreR.string.delete_item_failed, event.error)
         }
     }
 
@@ -124,8 +193,73 @@ fun MovieScreen(
             }
             viewModel.onAction(action)
         },
+        onMoreClick = onMoreClick,
         onDownloaderAction = { action -> downloaderViewModel.onAction(action) },
     )
+
+    when (moreDialog) {
+        MoreMenuDialogState.MENU ->
+            MoreMenuDialog(
+                onDeleteImagesClick = {
+                    moreDialog = MoreMenuDialogState.DELETE_IMAGES
+                    viewModel.loadItemImages()
+                },
+                onResetMetadataClick = { moreDialog = MoreMenuDialogState.RESET_METADATA },
+                onDeleteItemClick = { moreDialog = MoreMenuDialogState.DELETE_ALL },
+                onDismiss = { moreDialog = null },
+            )
+        MoreMenuDialogState.DELETE_IMAGES ->
+            DeleteItemImagesDialog(
+                itemImages = state.itemImages,
+                isLoadingImages = state.isLoadingItemImages,
+                errorText =
+                    state.itemImagesError?.let { error ->
+                        stringResource(
+                            CoreR.string.item_images_load_failed,
+                            error.localizedMessage ?: stringResource(CoreR.string.unknown_error),
+                        )
+                    },
+                onConfirm = { images ->
+                    moreDialog = null
+                    viewModel.onAction(MovieAction.DeleteItemImages(images = images))
+                },
+                onDismiss = { moreDialog = null },
+            )
+        MoreMenuDialogState.RESET_METADATA ->
+            ResetMetadataDialog(
+                serverFileName = state.serverFileName,
+                onConfirm = {
+                    moreDialog = null
+                    viewModel.onAction(MovieAction.ResetItemMetadata)
+                },
+                onDismiss = { moreDialog = null },
+            )
+        MoreMenuDialogState.DELETE_ALL ->
+            DeleteItemWithFilesDialog(
+                itemName = state.movie?.name,
+                onConfirm = {
+                    moreDialog = null
+                    viewModel.onAction(MovieAction.DeleteItemWithFiles)
+                },
+                onDismiss = { moreDialog = null },
+            )
+        null -> Unit
+    }
+}
+
+/** 「更多」菜单的弹窗状态：同一时刻只会打开其中一个。 */
+private enum class MoreMenuDialogState {
+    /** 三个操作入口的菜单。 */
+    MENU,
+
+    /** 删除封面的图片确认列表。 */
+    DELETE_IMAGES,
+
+    /** 重置 nfo 的确认弹窗。 */
+    RESET_METADATA,
+
+    /** 删除全部（含视频文件）的确认弹窗。 */
+    DELETE_ALL,
 }
 
 @Composable
@@ -133,6 +267,7 @@ private fun MovieScreenLayout(
     state: MovieState,
     downloaderState: DownloaderState,
     onAction: (MovieAction) -> Unit,
+    onMoreClick: (() -> Unit)?,
     onDownloaderAction: (DownloaderAction) -> Unit,
 ) {
     val safePadding = rememberSafePadding()
@@ -258,6 +393,7 @@ private fun MovieScreenLayout(
                             onDownloaderAction(DownloaderAction.DeleteDownload(movie))
                         },
                         modifier = Modifier.fillMaxWidth(),
+                        onMoreClick = onMoreClick,
                     )
                     Spacer(Modifier.height(MaterialTheme.spacings.small))
                     if (state.displayExtraInfo && state.videoMetadata != null) {
@@ -303,6 +439,7 @@ private fun EpisodeScreenLayoutPreview() {
             state = MovieState(movie = dummyMovie, videoMetadata = dummyVideoMetadata),
             downloaderState = DownloaderState(),
             onAction = {},
+            onMoreClick = {},
             onDownloaderAction = {},
         )
     }

@@ -2,6 +2,8 @@ package dev.jdtech.jellyfin.utils
 
 import android.app.DownloadManager
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Environment
 import android.os.StatFs
@@ -12,6 +14,7 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.database.ServerDatabaseDao
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.FindroidMovie
@@ -37,7 +40,9 @@ import java.util.UUID
 import kotlin.Exception
 import kotlin.math.ceil
 import kotlinx.coroutines.coroutineScope
-import timber.log.Timber
+
+// 日志去重表最多保留的下载任务数，超出后淘汰最早写入的一条
+private const val LAST_LOGGED_STATUS_LIMIT = 16
 
 class DownloaderImpl(
     private val context: Context,
@@ -47,6 +52,19 @@ class DownloaderImpl(
     private val workManager: WorkManager,
 ) : Downloader {
     private val downloadManager = context.getSystemService(DownloadManager::class.java)
+    private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+
+    /**
+     * 记录每个下载任务上一次已打日志的状态码，避免每秒轮询都刷屏。
+     *
+     * 用带上限的 LinkedHashMap：长期运行会把历史 downloadId 全攒在内存里，超过 [LAST_LOGGED_STATUS_LIMIT]
+     * 时淘汰最早写入的一条（界面同一时刻只跟踪一个下载，没必要保留全部）。
+     */
+    private val lastLoggedStatus =
+        object : LinkedHashMap<Long, Int>() {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Int>?): Boolean =
+                size > LAST_LOGGED_STATUS_LIMIT
+        }
 
     // TODO: We should probably move most (if not all) code to a worker.
     //  At this moment it is possible that some things are not downloaded due to the user leaving
@@ -103,7 +121,9 @@ class DownloaderImpl(
                         DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
                     )
                     .setDestinationUri(path)
+            logNetworkState()
             val downloadId = downloadManager.enqueue(request)
+            AppLog.i("下载已入队：itemId=%s，downloadId=%d", item.id, downloadId)
 
             when (item) {
                 is FindroidMovie -> {
@@ -153,7 +173,7 @@ class DownloaderImpl(
                 val source = jellyfinRepository.getMediaSources(item.id).first { it.id == sourceId }
                 deleteItem(item, source)
             } catch (_: Exception) {}
-            Timber.e(e)
+            AppLog.e(e)
             return@coroutineScope Pair(
                 -1,
                 if (e.message != null) UiText.DynamicString(e.message!!)
@@ -214,6 +234,7 @@ class DownloaderImpl(
         var downloadStatus = -1
         var progress = -1
         if (downloadId == null) {
+            // 本地下载记录里没有 downloadId，无法向 DownloadManager 查询，状态与进度都是未知
             return Pair(downloadStatus, progress)
         }
         val query = DownloadManager.Query().setFilterById(downloadId)
@@ -221,21 +242,31 @@ class DownloaderImpl(
             if (cursor.moveToFirst()) {
                 downloadStatus =
                     cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                val totalBytes =
+                    cursor.getLong(
+                        cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                    )
+                val downloadedBytes =
+                    cursor.getLong(
+                        cursor.getColumnIndexOrThrow(
+                            DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR
+                        )
+                    )
+                // 只在上报状态变化时打日志，避免每秒刷屏；reason 用于区分排队、网络错误重试等内部状态
+                if (lastLoggedStatus.put(downloadId, downloadStatus) != downloadStatus) {
+                    AppLog.i(
+                        "下载 %d 状态=%d，reason=%d，已下载 %d/%d 字节",
+                        downloadId,
+                        downloadStatus,
+                        cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
+                        downloadedBytes,
+                        totalBytes,
+                    )
+                }
                 when (downloadStatus) {
                     DownloadManager.STATUS_RUNNING -> {
-                        val totalBytes =
-                            cursor.getLong(
-                                cursor.getColumnIndexOrThrow(
-                                    DownloadManager.COLUMN_TOTAL_SIZE_BYTES
-                                )
-                            )
+                        // totalBytes<=0 说明 DownloadManager 还没拿到文件总大小，此时进度是未知而不是 0
                         if (totalBytes > 0) {
-                            val downloadedBytes =
-                                cursor.getLong(
-                                    cursor.getColumnIndexOrThrow(
-                                        DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR
-                                    )
-                                )
                             progress = downloadedBytes.times(100).div(totalBytes).toInt()
                         }
                     }
@@ -245,10 +276,29 @@ class DownloaderImpl(
                     }
                 }
             } else {
+                // 记录消失后每秒轮询都会走到这里，复用状态去重只在第一次打日志，避免刷屏
+                if (
+                    lastLoggedStatus.put(downloadId, DownloadManager.STATUS_FAILED) !=
+                        DownloadManager.STATUS_FAILED
+                ) {
+                    AppLog.w("下载 %d 在 DownloadManager 中已不存在", downloadId)
+                }
                 downloadStatus = DownloadManager.STATUS_FAILED
             }
         }
         return Pair(downloadStatus, progress)
+    }
+
+    /** 打印提交下载时的网络形态，便于排查"下载被代理接管导致连不上服务器"这类问题。 */
+    private fun logNetworkState() {
+        val capabilities =
+            connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
+        AppLog.i(
+            "提交下载时网络：已连接=%b，VPN=%b，WLAN=%b",
+            capabilities != null,
+            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ?: false,
+            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ?: false,
+        )
     }
 
     private suspend fun downloadExternalMediaStreams(

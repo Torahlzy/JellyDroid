@@ -3,11 +3,15 @@ package dev.jdtech.jellyfin.core.presentation.downloader
 import android.app.DownloadManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.jdtech.jellyfin.core.R as CoreR
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.FindroidSourceType
+import dev.jdtech.jellyfin.models.UiText
 import dev.jdtech.jellyfin.models.isDownloading
 import dev.jdtech.jellyfin.utils.Downloader
 import javax.inject.Inject
@@ -29,6 +33,12 @@ class DownloaderViewModel @Inject constructor(private val downloader: Downloader
     var downloadId: Long? = null
 
     private val handler = Handler(Looper.getMainLooper())
+
+    /** 本轮轮询的起点，用于识别长时间排不上队的下载。 */
+    private var pollStartedAt = 0L
+
+    /** 是否已就"下载迟迟不开始"提醒过用户，避免反复打日志。 */
+    private var isStallLogged = false
 
     fun update(item: FindroidItem) {
         viewModelScope.launch {
@@ -87,15 +97,35 @@ class DownloaderViewModel @Inject constructor(private val downloader: Downloader
 
     private fun pollDownloadProgress(downloadId: Long?) {
         handler.removeCallbacksAndMessages(null)
+        pollStartedAt = SystemClock.elapsedRealtime()
+        isStallLogged = false
         val downloadProgressRunnable =
             object : Runnable {
                 override fun run() {
                     viewModelScope.launch {
                         val (status, progress) = downloader.getProgress(downloadId)
+                        // progress 为 -1 表示 DownloadManager 还没拿到文件总大小，此时是"进度未知"而不是 0%
+                        val knownProgress = progress.takeIf { it >= 0 }?.div(100f)
+                        // DownloadManager 连不上服务器时会持续处于"等待重试"（对外表现为 PENDING）且不上报错误，
+                        // 只能靠等待时长兜底提醒，否则界面会永远停在"等待中"
+                        val isStalled =
+                            status == DownloadManager.STATUS_PENDING &&
+                                knownProgress == null &&
+                                SystemClock.elapsedRealtime() - pollStartedAt > STALL_TIMEOUT_MS
+                        if (isStalled && !isStallLogged) {
+                            isStallLogged = true
+                            AppLog.w("下载等待 %d 秒仍未开始，请检查网络或代理设置", STALL_TIMEOUT_MS / 1000)
+                        }
                         _state.emit(
                             DownloaderState(
                                 status = status,
-                                progress = progress.coerceAtLeast(0) / 100f,
+                                progress = knownProgress,
+                                errorText =
+                                    if (isStalled) {
+                                        UiText.StringResource(CoreR.string.download_stalled)
+                                    } else {
+                                        null
+                                    },
                             )
                         )
                     }
@@ -123,5 +153,10 @@ class DownloaderViewModel @Inject constructor(private val downloader: Downloader
     override fun onCleared() {
         super.onCleared()
         handler.removeCallbacksAndMessages(null)
+    }
+
+    private companion object {
+        /** 等待超过该时长仍未真正开始下载就认为卡住了（DownloadManager 单次连接超时为 20 秒）。 */
+        const val STALL_TIMEOUT_MS = 60_000L
     }
 }

@@ -4,6 +4,7 @@ import androidx.paging.PagingData
 import dev.jdtech.jellyfin.models.FindroidCollection
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItem
+import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidMovie
 import dev.jdtech.jellyfin.models.FindroidPerson
 import dev.jdtech.jellyfin.models.FindroidSeason
@@ -109,6 +110,18 @@ interface JellyfinRepository {
     suspend fun markAsPlayed(itemId: UUID)
 
     suspend fun markAsUnplayed(itemId: UUID)
+
+    /** 列出条目在服务器上的全部图片（封面、背景等）。 */
+    suspend fun getItemImages(itemId: UUID): List<FindroidItemImage>
+
+    /** 删除条目在服务器上指定的图片，只删 [images] 中列出的那些。 */
+    suspend fun deleteItemImages(itemId: UUID, images: List<FindroidItemImage>)
+
+    /** 清空条目在服务器上的元数据（即 nfo 中的信息），标题改为 [name]，[name] 为空时一并清空。 */
+    suspend fun clearItemMetadata(itemId: UUID, name: String?)
+
+    /** 删除服务器上的条目本身，服务端会连媒体文件与关联的图片、nfo 一起删掉。 */
+    suspend fun deleteItem(itemId: UUID)
 
     fun getBaseUrl(): String
 

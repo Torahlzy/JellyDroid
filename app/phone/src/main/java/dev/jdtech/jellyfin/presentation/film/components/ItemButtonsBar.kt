@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.window.core.layout.WindowSizeClass
@@ -52,6 +53,8 @@ fun ItemButtonsBar(
     modifier: Modifier = Modifier,
     downloaderState: DownloaderState? = null,
     canPlay: Boolean = true,
+    // 传入时在按钮行末尾显示「更多」按钮；不传的页面（剧集、季等）不显示
+    onMoreClick: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
@@ -180,6 +183,15 @@ fun ItemButtonsBar(
                         }
                     }
                 }
+                if (onMoreClick != null) {
+                    FilledTonalIconButton(onClick = onMoreClick) {
+                        Icon(
+                            painter = painterResource(CoreR.drawable.ic_more_vert),
+                            contentDescription =
+                                stringResource(CoreR.string.more_button_description),
+                        )
+                    }
+                }
             }
             if (downloaderState != null) {
                 AnimatedVisibility(downloaderState.isDownloading) {
@@ -251,6 +263,7 @@ private fun ItemButtonsBarPreview() {
             onDownloadCancelClick = {},
             onDownloadDeleteClick = {},
             onTrailerClick = {},
+            onMoreClick = {},
         )
     }
 }

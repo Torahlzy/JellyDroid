@@ -7,6 +7,7 @@ import dev.jdtech.jellyfin.database.ServerDatabaseDao
 import dev.jdtech.jellyfin.models.FindroidCollection
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItem
+import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidMovie
 import dev.jdtech.jellyfin.models.FindroidPerson
 import dev.jdtech.jellyfin.models.FindroidSeason
@@ -293,6 +294,21 @@ class JellyfinRepositoryOfflineImpl(
             database.setPlayed(jellyfinApi.userId!!, itemId, false)
             database.setUserDataToBeSynced(jellyfinApi.userId!!, itemId, true)
         }
+    }
+
+    // 离线时看的是本地库，服务器上的图片本就取不到，返回空列表与「没有图片可删」的界面语义一致
+    override suspend fun getItemImages(itemId: UUID): List<FindroidItemImage> = emptyList()
+
+    override suspend fun deleteItemImages(itemId: UUID, images: List<FindroidItemImage>) {
+        throw Exception("Deleting item images is not available in offline mode")
+    }
+
+    override suspend fun clearItemMetadata(itemId: UUID, name: String?) {
+        throw Exception("Clearing item metadata is not available in offline mode")
+    }
+
+    override suspend fun deleteItem(itemId: UUID) {
+        throw Exception("Deleting items is not available in offline mode")
     }
 
     override fun getBaseUrl(): String {

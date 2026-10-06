@@ -37,7 +37,7 @@ import kotlin.math.roundToInt
 fun DownloaderCard(state: DownloaderState, onCancelClick: () -> Unit, onRetryClick: () -> Unit) {
     val animatedProgress by
         animateFloatAsState(
-            targetValue = state.progress,
+            targetValue = state.progress ?: 0f,
             animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec,
         )
 
@@ -86,14 +86,21 @@ fun DownloaderCard(state: DownloaderState, onCancelClick: () -> Unit, onRetryCli
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Text(
-                        text = animatedProgress.times(100).roundToInt().toString() + "%",
+                        // 进度未知时用占位符，避免让用户误以为已经下载了 0%
+                        text =
+                            if (state.progress == null) {
+                                stringResource(CoreR.string.download_progress_unknown)
+                            } else {
+                                animatedProgress.times(100).roundToInt().toString() + "%"
+                            },
                         color = textColor,
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
                 Spacer(Modifier.height(MaterialTheme.spacings.small))
-                when (state.status) {
-                    DownloadManager.STATUS_PENDING -> {
+                when {
+                    state.status == DownloadManager.STATUS_PENDING || state.progress == null -> {
+                        // 既没开始也没拿到文件总大小时，只能显示不确定进度条
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
                     else -> {
@@ -106,9 +113,9 @@ fun DownloaderCard(state: DownloaderState, onCancelClick: () -> Unit, onRetryCli
                     }
                 }
                 Spacer(Modifier.height(MaterialTheme.spacings.small))
-                if (state.errorText != null) {
+                state.errorText?.let { errorText ->
                     Text(
-                        text = state.errorText!!.asString(),
+                        text = errorText.asString(),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodyMedium,
                     )

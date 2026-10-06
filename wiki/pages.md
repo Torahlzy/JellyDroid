@@ -204,12 +204,12 @@ else -> WelcomeRoute
 
 ### MovieScreen — 电影详情
 
-- **职责**：加载影片元数据 / 视频信息 / 演员，提供播放、预告、标记已看、收藏、下载、跳转演员，并处理离线模式。
+- **职责**：加载影片元数据 / 视频信息 / 演员，提供播放、预告、标记已看、收藏、下载、删除服务器文件（封面 / nfo / 条目本身）、跳转演员，并处理离线模式。
 - **路由**：`MovieRoute(movieId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
-- **Screen**：`PHONE/presentation/film/MovieScreen.kt`；副标题下方的文件存放路径由 `PHONE/presentation/film/components/FilePathText.kt` 渲染（默认 1 行，截断时可点击展开 / 收起），已下载时依次显示本地路径与服务器路径。
-- **ViewModel / State / Action**：`FILM/presentation/movie/MovieViewModel.kt`、`FILM/presentation/movie/MovieState.kt`、`FILM/presentation/movie/MovieAction.kt`；另使用 `CORE/presentation/downloader/DownloaderViewModel.kt`。
-- **State 字段**：`movie`、`videoMetadata`、`actors`、`director`、`writers`、`displayExtraInfo`、`error`；派生属性 `localFilePath`（取 `LOCAL` 来源的 `FindroidSource.localFilePath`）、`remoteFilePath`（取 `REMOTE` 来源的 `FindroidSource.remoteFilePath`），各自去重后拼接，无有效路径时为 `null`。
-- **主要方法 / Action**：`loadMovie(movieId)`、`onAction()`；`Play`、`PlayTrailer`、`MarkAsPlayed`、`UnmarkAsPlayed`、`MarkAsFavorite`、`UnmarkAsFavorite`、`OnBackClick`、`OnHomeClick`、`NavigateToPerson`。
+- **Screen**：`PHONE/presentation/film/MovieScreen.kt`；副标题下方的文件存放路径由 `PHONE/presentation/film/components/FilePathText.kt` 渲染（默认 1 行，截断时可点击展开 / 收起），已下载时依次显示本地路径与服务器路径；按钮行末尾的「更多」按钮（离线模式不显示）打开 `PHONE/presentation/film/components/MoreMenuDialog.kt`，三个入口各自再弹一次确认：「删除封面」→ `PHONE/presentation/film/components/DeleteItemImagesDialog.kt`（列出服务器图片，缩略图 + 类型名，默认全选、可逐张取消）、「重置 nfo」→ `PHONE/presentation/film/components/ResetMetadataDialog.kt`（只读列出待重置字段与重置后的标题，文件名取不到时明确提示标题将被清空）、「删除全部」→ `PHONE/presentation/film/components/DeleteItemWithFilesDialog.kt`（会连服务器上的视频文件一起删，确认按钮为错误色）；弹窗切换由 `MovieScreen.kt` 内的私有枚举 `MoreMenuDialogState` 控制（`rememberSaveable` 保存，旋转屏幕不丢失），结果以 Toast 提示，「删除全部」成功后返回上一页。
+- **ViewModel / State / Action / Event**：`FILM/presentation/movie/MovieViewModel.kt`、`FILM/presentation/movie/MovieState.kt`、`FILM/presentation/movie/MovieAction.kt`、`FILM/presentation/movie/MovieEvent.kt`；另使用 `CORE/presentation/downloader/DownloaderViewModel.kt`。
+- **State 字段**：`movie`、`videoMetadata`、`actors`、`director`、`writers`、`displayExtraInfo`、`itemImages`（服务器图片列表，元素为 `FindroidItemImage`）、`isLoadingItemImages`、`itemImagesError`（图片列表加载失败原因，非空时弹窗内提示失败，不再额外弹 Toast）、`error`；派生属性 `localFilePath`（取 `LOCAL` 来源的 `FindroidSource.localFilePath`）、`remoteFilePath`（取 `REMOTE` 来源的 `FindroidSource.remoteFilePath`，各自去重后拼接，无有效路径时为 `null`）、`serverFileName`（远程路径首行末段，重置 nfo 后作为标题兜底）。
+- **主要方法 / Action**：`loadMovie(movieId)`、`loadItemImages()`、`onAction()`；`Play`、`PlayTrailer`、`MarkAsPlayed`、`UnmarkAsPlayed`、`MarkAsFavorite`、`UnmarkAsFavorite`、`OnBackClick`、`OnHomeClick`、`NavigateToPerson`、`DeleteItemImages(images)`、`ResetItemMetadata`、`DeleteItemWithFiles`；事件 `ItemImagesDeleted`、`MetadataReset`、`ItemDeleted`、`ItemImagesDeleteFailed`、`MetadataResetFailed`、`ItemDeleteFailed`。
 - **入口**：任意列表页点击 `FindroidMovie` 条目（`PHONE/NavigationRoot.kt`），如首页、媒体库、下载、收藏、合集、剧集 / 季 / 人物页。
 
 ### ShowScreen — 剧集详情
@@ -402,3 +402,4 @@ else -> WelcomeRoute
 | 2026-10-06 | 合集封面补齐收口：`getBoxSetCoverImages()` 从 `JellyfinRepository` 接口移入 `JellyfinRepositoryImpl` 私有方法（离线实现不再需要空实现）；`MediaScreen` 的合集库占位图标策略提取为 `FindroidCollection.placeholderIconRes()`；`ItemPoster` / `ItemCard` 的 `placeholderIconRes` 补 `@DrawableRes`。 |
 | 2026-10-06 | 合集卡片加类型角标：`ItemCard` 在条目为 `FindroidBoxSet` 时于封面右上角显示新增的 `BoxSetBadge`（复用 `ic_collection`），实际在 LibraryScreen 合集库列表生效（`CollectionGrid` 的 section 只含电影 / 剧集 / 分集，不出现合集，故不受影响）；新增字符串 `collection`（含 zh-rCN / zh-rTW）。 |
 | 2026-10-06 | 文档与注释校正：修正上条对 `CollectionGrid` 的影响描述；`JellyfinRepositoryImpl.boxSetCoverCache` 注释补充「无上限、不主动清理、仅随进程存活」的缓存策略说明。 |
+| 2026-10-06 | 电影详情页新增「更多」菜单（最终形态）：按钮行末尾的「更多」按钮（离线模式隐藏）打开 `MoreMenuDialog`，三个入口各自二次确认——「删除封面」→ `DeleteItemImagesDialog`（列出服务器图片，缩略图 + 类型名，默认全选、可逐张取消）、「重置 nfo」→ `ResetMetadataDialog`（文件名取不到时提示标题将被清空）、「删除全部」→ `DeleteItemWithFilesDialog`（确认按钮为错误色）；弹窗切换由 `MovieScreen.kt` 内的私有枚举 `MoreMenuDialogState` 控制（`rememberSaveable` 保存，旋转屏幕不丢失）。数据层新增 `JellyfinRepository.getItemImages` / `deleteItemImages` / `clearItemMetadata` / `deleteItem`（离线实现分别返回空列表 / 抛异常；`clearItemMetadata` 为覆盖式更新且保留 `ProviderIds`，读取条目失败即中止；`getItemImages` 校验服务器地址非空），并新增 `FindroidItemImage` 与 `MovieState.serverFileName`（远程路径首行末段）。`MovieAction` 为 `DeleteItemImages(images)` / `ResetItemMetadata` / `DeleteItemWithFiles`，事件为 `ItemImagesDeleted` / `MetadataReset` / `ItemDeleted` / `ItemImagesDeleteFailed` / `MetadataResetFailed` / `ItemDeleteFailed`（按操作分别提示），图片列表加载失败只在弹窗内提示；「删除全部」成功后返回上一页。 |
