@@ -35,6 +35,7 @@ android {
 room3 { schemaDirectory("$projectDir/schemas") }
 
 dependencies {
+    implementation(projects.logging)
     implementation(projects.settings)
     implementation(libs.androidx.paging)
     implementation(libs.androidx.room3.runtime)

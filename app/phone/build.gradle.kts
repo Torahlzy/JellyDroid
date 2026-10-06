@@ -88,6 +88,7 @@ android {
 dependencies {
     implementation(projects.core)
     implementation(projects.data)
+    implementation(projects.logging)
     implementation(projects.player.core)
     implementation(projects.player.local)
     implementation(projects.setup)

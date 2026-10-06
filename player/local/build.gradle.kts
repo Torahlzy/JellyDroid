@@ -26,6 +26,7 @@ android {
 dependencies {
     implementation(projects.player.core)
     implementation(projects.data)
+    implementation(projects.logging)
     implementation(projects.settings)
     implementation(libs.androidx.lifecycle.runtime)
     implementation(libs.androidx.lifecycle.viewmodel)

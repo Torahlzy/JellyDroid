@@ -31,6 +31,7 @@ android {
 
 dependencies {
     implementation(projects.data)
+    implementation(projects.logging)
     implementation(projects.player.core)
     implementation(projects.settings)
     implementation(libs.androidx.appcompat)

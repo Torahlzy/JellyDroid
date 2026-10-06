@@ -22,6 +22,7 @@ android {
 }
 
 dependencies {
+    implementation(projects.logging)
     implementation(libs.timber)
 
     implementation(libs.androidx.compose.foundation)

@@ -22,6 +22,7 @@ import coil3.request.crossfade
 import coil3.svg.SvgDecoder
 import com.google.android.material.color.DynamicColors
 import dagger.hilt.android.HiltAndroidApp
+import dev.jdtech.jellyfin.logging.TorahDebugTree
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.work.MpvCleanupWorker
 import dev.jdtech.jellyfin.work.SyncWorker
@@ -43,7 +44,8 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
         super.onCreate()
 
         if (BuildConfig.DEBUG) {
-            Timber.plant(Timber.DebugTree())
+            // 使用自定义 Tree，使所有日志的 tag 统一带上 torah 前缀
+            Timber.plant(TorahDebugTree())
         }
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
