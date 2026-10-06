@@ -37,6 +37,7 @@ import dev.jdtech.jellyfin.film.presentation.home.HomeViewModel
 import dev.jdtech.jellyfin.models.FindroidCollection
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.presentation.components.ErrorDialog
+import dev.jdtech.jellyfin.presentation.film.components.BANNER_ASPECT_RATIO
 import dev.jdtech.jellyfin.presentation.film.components.HomeCarousel
 import dev.jdtech.jellyfin.presentation.film.components.HomeHeader
 import dev.jdtech.jellyfin.presentation.film.components.HomeSection
@@ -118,6 +119,8 @@ private fun HomeScreenLayout(state: HomeState, onAction: (HomeAction) -> Unit) {
                             itemsPadding = itemsPadding,
                             onAction = onAction,
                             modifier = Modifier.animateItem(),
+                            // 继续观看封面沿用首页 banner 的宽高比
+                            aspectRatio = BANNER_ASPECT_RATIO,
                         )
                     }
                 }

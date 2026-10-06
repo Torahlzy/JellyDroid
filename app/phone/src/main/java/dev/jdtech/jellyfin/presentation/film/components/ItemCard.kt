@@ -40,6 +40,8 @@ fun ItemCard(
     onClick: (FindroidItem) -> Unit,
     onDetailsClick: ((FindroidItem) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    // 可选宽高比覆盖，透传给封面
+    aspectRatio: Float? = null,
 ) {
     val width =
         when (direction) {
@@ -55,7 +57,7 @@ fun ItemCard(
     ) {
         Surface(shape = MaterialTheme.shapes.small) {
             Box {
-                ItemPoster(item = item, direction = direction)
+                ItemPoster(item = item, direction = direction, aspectRatio = aspectRatio)
                 Row(
                     modifier =
                         Modifier.align(Alignment.TopEnd).padding(MaterialTheme.spacings.small),

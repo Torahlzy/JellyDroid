@@ -26,6 +26,8 @@ fun HomeSection(
     itemsPadding: PaddingValues,
     onAction: (HomeAction) -> Unit,
     modifier: Modifier = Modifier,
+    // 可选宽高比覆盖，透传给卡片封面
+    aspectRatio: Float? = null,
 ) {
     Column(modifier = modifier) {
         Box(modifier = Modifier.fillMaxWidth().height(42.dp).padding(itemsPadding)) {
@@ -44,6 +46,7 @@ fun HomeSection(
                 ItemCard(
                     item = item,
                     direction = Direction.HORIZONTAL,
+                    aspectRatio = aspectRatio,
                     onClick = { onAction(HomeAction.OnItemClick(item)) },
                 )
             }

@@ -19,7 +19,13 @@ enum class Direction {
 }
 
 @Composable
-fun ItemPoster(item: FindroidItem, direction: Direction, modifier: Modifier = Modifier) {
+fun ItemPoster(
+    item: FindroidItem,
+    direction: Direction,
+    modifier: Modifier = Modifier,
+    // 可选宽高比覆盖；不传时按方向使用默认值（横向 16:9，纵向 2:3）
+    aspectRatio: Float? = null,
+) {
     val context = LocalContext.current
     var imageUri = item.images.primary
 
@@ -43,13 +49,15 @@ fun ItemPoster(item: FindroidItem, direction: Direction, modifier: Modifier = Mo
                 .build()
     }
 
+    val imageAspectRatio = aspectRatio ?: if (direction == Direction.HORIZONTAL) 1.77f else 0.66f
+
     AsyncImage(
         model = imageUri,
         contentDescription = null,
         contentScale = ContentScale.Crop,
         modifier =
             modifier
-                .aspectRatio(if (direction == Direction.HORIZONTAL) 1.77f else 0.66f)
+                .aspectRatio(imageAspectRatio)
                 .background(MaterialTheme.colorScheme.surfaceContainer),
     )
 }

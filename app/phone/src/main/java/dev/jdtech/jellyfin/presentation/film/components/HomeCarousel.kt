@@ -27,8 +27,8 @@ import kotlinx.coroutines.delay
 // 自动轮播间隔
 private const val AUTO_SCROLL_DELAY = 5000L
 
-// banner 宽高比（宽 / 高），比默认的 16:9 略高
-private const val BANNER_ASPECT_RATIO = 800f / 550f
+// banner 宽高比（宽 / 高），比默认的 16:9 略高；首页「继续观看」封面同样复用该比例
+internal const val BANNER_ASPECT_RATIO = 800f / 550f
 
 // 单屏能容纳两页、三页 banner 的宽度阈值（dp）
 private const val TWO_PAGES_WIDTH_DP = 600f

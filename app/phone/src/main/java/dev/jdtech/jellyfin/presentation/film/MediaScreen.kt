@@ -34,6 +34,7 @@ import dev.jdtech.jellyfin.film.presentation.search.SearchState
 import dev.jdtech.jellyfin.film.presentation.search.SearchViewModel
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.presentation.components.ErrorDialog
+import dev.jdtech.jellyfin.presentation.film.components.BANNER_ASPECT_RATIO
 import dev.jdtech.jellyfin.presentation.film.components.Direction
 import dev.jdtech.jellyfin.presentation.film.components.ErrorCard
 import dev.jdtech.jellyfin.presentation.film.components.FavoritesCard
@@ -151,6 +152,8 @@ private fun MediaScreenLayout(
                     direction = Direction.HORIZONTAL,
                     onClick = { onAction(MediaAction.OnItemClick(library)) },
                     modifier = Modifier.animateItem(),
+                    // 媒体库封面沿用首页 banner 的宽高比
+                    aspectRatio = BANNER_ASPECT_RATIO,
                 )
             }
         }
