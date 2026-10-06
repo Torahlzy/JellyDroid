@@ -2,6 +2,8 @@ package dev.jdtech.jellyfin.presentation.film.components
 
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.pager.rememberPagerState
@@ -9,6 +11,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -19,19 +24,15 @@ import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import kotlinx.coroutines.delay
 
-private val dynamicPageSize =
-    object : PageSize {
-        override fun Density.calculateMainAxisPageSize(availableSpace: Int, pageSpacing: Int): Int {
-            val nPages =
-                when {
-                    availableSpace.toDp() >= 840.dp -> 3
-                    availableSpace.toDp() >= 600.dp -> 2
-                    else -> 1
-                }
+// 自动轮播间隔
+private const val AUTO_SCROLL_DELAY = 5000L
 
-            return (availableSpace - (nPages - 1) * pageSpacing) / nPages
-        }
-    }
+// banner 宽高比（宽 / 高），比默认的 16:9 略高
+private const val BANNER_ASPECT_RATIO = 800f / 550f
+
+// 单屏能容纳两页、三页 banner 的宽度阈值（dp）
+private const val TWO_PAGES_WIDTH_DP = 600f
+private const val THREE_PAGES_WIDTH_DP = 840f
 
 @Composable
 fun HomeCarousel(
@@ -41,13 +42,39 @@ fun HomeCarousel(
 ) {
     val pagerState = rememberPagerState(pageCount = { items.size })
     val pagerIsDragged by pagerState.interactionSource.collectIsDraggedAsState()
+    val layoutDirection = LocalLayoutDirection.current
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val pageSpacing = MaterialTheme.spacings.medium
 
-    val autoScrollDelay = 5000L
+    // 由屏幕宽度直接推算 banner 的最终宽高：
+    // 首次进入时就用这一尺寸渲染，不再先按默认宽高显示、之后再变高
+    val horizontalPadding =
+        itemsPadding.calculateStartPadding(layoutDirection) +
+            itemsPadding.calculateEndPadding(layoutDirection)
+    val availableWidth = (screenWidthDp.dp - horizontalPadding).coerceAtLeast(0.dp)
+    val pages =
+        when {
+            availableWidth >= THREE_PAGES_WIDTH_DP.dp -> 3
+            availableWidth >= TWO_PAGES_WIDTH_DP.dp -> 2
+            else -> 1
+        }
+    val bannerWidth = (availableWidth - pageSpacing * (pages - 1)) / pages
+    val bannerHeight = bannerWidth / BANNER_ASPECT_RATIO
+
+    val pageSize =
+        remember(bannerWidth) {
+            object : PageSize {
+                override fun Density.calculateMainAxisPageSize(
+                    availableSpace: Int,
+                    pageSpacing: Int,
+                ): Int = bannerWidth.roundToPx().coerceAtMost(availableSpace)
+            }
+        }
 
     if (!pagerIsDragged) {
         LaunchedEffect(pagerState) {
             while (true) {
-                delay(autoScrollDelay)
+                delay(AUTO_SCROLL_DELAY)
                 val nextPage =
                     if (pagerState.canScrollForward) {
                         pagerState.currentPage + 1
@@ -62,11 +89,11 @@ fun HomeCarousel(
     HorizontalPager(
         state = pagerState,
         contentPadding = itemsPadding,
-        pageSize = dynamicPageSize,
+        pageSize = pageSize,
         pageSpacing = MaterialTheme.spacings.medium,
     ) { page ->
         val item = items[page]
-        HomeCarouselItem(item = item, onAction = onAction)
+        HomeCarouselItem(item = item, onAction = onAction, height = bannerHeight)
     }
 }
 
