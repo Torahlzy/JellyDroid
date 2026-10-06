@@ -1,20 +1,27 @@
 package dev.jdtech.jellyfin.core.presentation.downloader
 
-import android.app.DownloadManager
 import dev.jdtech.jellyfin.models.UiText
+import dev.jdtech.jellyfin.utils.DownloadStatus
 
 data class DownloaderState(
-    val status: Int = 0,
-    /** 下载进度，null 表示 DownloadManager 尚未返回文件总大小，进度未知（区别于 0%）。 */
+    val status: DownloadStatus = DownloadStatus.UNKNOWN,
+    /** 下载进度，null 表示还没拿到文件总大小，进度未知（区别于 0%）。 */
     val progress: Float? = null,
+    /** 下载速度（字节/秒），仅在下载中且已测出速度时有值。 */
+    val speedBytesPerSecond: Long? = null,
     val errorText: UiText? = null,
 ) {
+    /** 是否处于"未结束"状态；PAUSED 也计入，否则等待重试时界面会失去入口。 */
     val isDownloading: Boolean
-        get() =
-            status in
-                arrayOf(
-                    DownloadManager.STATUS_PENDING,
-                    DownloadManager.STATUS_RUNNING,
-                    DownloadManager.STATUS_FAILED,
-                )
+        get() = status in UNFINISHED_STATUSES
+
+    private companion object {
+        val UNFINISHED_STATUSES =
+            arrayOf(
+                DownloadStatus.QUEUED,
+                DownloadStatus.RUNNING,
+                DownloadStatus.PAUSED,
+                DownloadStatus.FAILED,
+            )
+    }
 }

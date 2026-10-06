@@ -14,7 +14,8 @@ data class FindroidSource(
     val path: String,
     val size: Long,
     val mediaStreams: List<FindroidMediaStream>,
-    val downloadId: Long? = null,
+    /** 下载中的任务 id（WorkManager 的 UUID 字符串），未在下载中时为 null。 */
+    val downloadTaskId: String? = null,
     /** 服务器上的文件路径，仅用于展示；[path] 在远程模式下是播放地址，不代表文件位置。 */
     val remoteFilePath: String = "",
     /** 已下载到本机的文件路径，仅用于展示；未下载时为空。 */
@@ -62,7 +63,7 @@ suspend fun FindroidSourceDto.toFindroidSource(
         size = File(path).length(),
         mediaStreams =
             serverDatabaseDao.getMediaStreamsBySourceId(id).map { it.toFindroidMediaStream() },
-        downloadId = downloadId,
+        downloadTaskId = downloadTaskId,
         // 已下载条目：path 即本地文件路径
         localFilePath = path,
     )

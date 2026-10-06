@@ -80,8 +80,9 @@ fun ItemPoster(
  * 按方向挑选封面地址：竖图优先 primary，横图优先 backdrop。
  *
  * 服务器上缺失首选图片时，用另一种图片临时补位，避免出现空白封面。
+ * 详情页头部背景图同样复用该方法做兜底。
  */
-private fun FindroidItem.coverUri(direction: Direction): Uri? =
+internal fun FindroidItem.coverUri(direction: Direction): Uri? =
     when (direction) {
         // 横图：电影 / 剧集 / 合集 / 媒体库等优先自身宽幅 backdrop，缺失时退回所属剧集宽幅图，
         // 再不行才用竖图；分集自带的 primary 通常就是 16:9 剧照，比剧集 backdrop 更贴合卡片，

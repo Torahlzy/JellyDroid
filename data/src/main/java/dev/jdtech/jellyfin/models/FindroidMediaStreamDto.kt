@@ -21,7 +21,8 @@ data class FindroidMediaStreamDto(
     val height: Int?,
     val width: Int?,
     val videoDoViTitle: String?,
-    val downloadId: Long? = null,
+    /** 对应 WorkManager 的任务 id（UUID 字符串），未在下载中时为 null。 */
+    val downloadTaskId: String? = null,
 )
 
 fun FindroidMediaStream.toFindroidMediaStreamDto(

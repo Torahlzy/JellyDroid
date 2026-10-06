@@ -160,7 +160,7 @@ else -> WelcomeRoute
 
 ### DownloadsScreen — 下载
 
-- **职责**：展示本地已下载条目，分组网格呈现；空列表时提示「无下载」；点击条目弹出 `DownloadDetailsDialog`。
+- **职责**：展示本地已下载条目，分组网格呈现；空列表时提示「无下载」；点击条目进入对应详情页。
 - **路由**：`DownloadsRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/DownloadsScreen.kt`。
 - **ViewModel**：`FILM/presentation/downloads/DownloadsViewModel.kt`。
@@ -405,3 +405,4 @@ else -> WelcomeRoute
 | 2026-10-06 | 电影详情页新增「更多」菜单（最终形态）：按钮行末尾的「更多」按钮（离线模式隐藏）打开 `MoreMenuDialog`，三个入口各自二次确认——「删除封面」→ `DeleteItemImagesDialog`（列出服务器图片，缩略图 + 类型名，默认全选、可逐张取消）、「重置 nfo」→ `ResetMetadataDialog`（文件名取不到时提示标题将被清空）、「删除全部」→ `DeleteItemWithFilesDialog`（确认按钮为错误色）；弹窗切换由 `MovieScreen.kt` 内的私有枚举 `MoreMenuDialogState` 控制（`rememberSaveable` 保存，旋转屏幕不丢失）。数据层新增 `JellyfinRepository.getItemImages` / `deleteItemImages` / `clearItemMetadata` / `deleteItem`（离线实现分别返回空列表 / 抛异常；`clearItemMetadata` 为覆盖式更新且保留 `ProviderIds`，读取条目失败即中止；`getItemImages` 校验服务器地址非空），并新增 `FindroidItemImage` 与 `MovieState.serverFileName`（远程路径首行末段）。`MovieAction` 为 `DeleteItemImages(images)` / `ResetItemMetadata` / `DeleteItemWithFiles`，事件为 `ItemImagesDeleted` / `MetadataReset` / `ItemDeleted` / `ItemImagesDeleteFailed` / `MetadataResetFailed` / `ItemDeleteFailed`（按操作分别提示），图片列表加载失败只在弹窗内提示；「删除全部」成功后返回上一页。 |
 | 2026-10-06 | 电影详情页「更多」菜单的「重置 nfo」改为「编辑 nfo」：只读确认弹窗 `ResetMetadataDialog` 替换为可编辑弹窗 `EditItemMetadataDialog`，回填标题、原名、简介、类型、标签、制片公司、制片国家、宣传语、分级、制作年份、首播日期、社区评分共 12 个字段，多值字段用逗号分隔，底部提供「清空」/「确认」，标题为唯一必填项（为空时提示「必填」并禁用确认，数值 / 日期不合法同样禁用）。数据层 `JellyfinRepository.clearItemMetadata` 替换为 `getItemMetadata` / `updateItemMetadata`：写回时先按 `METADATA_EDIT_FIELDS` 整份读回条目再只覆盖表单字段，演职员、外部刮削 ID、锁定状态等原样保留（`ItemFields.SETTINGS` 取回 `LockData` / `ForcedSortName` / `PreferredMetadata*`，避免被置空或解锁），离线实现分别返回空表单 / 抛异常；新增领域模型 `ItemMetadataEdit`。`MovieState` 移除已无用的 `serverFileName`、新增 `itemMetadata` / `isLoadingItemMetadata` / `itemMetadataError`，`MovieViewModel` 新增 `loadItemMetadata()`；`MovieAction.ResetItemMetadata` → `UpdateItemMetadata(metadata)`，事件 `MetadataReset` / `MetadataResetFailed` → `MetadataUpdated` / `MetadataUpdateFailed`；文案 `reset_*` 系列替换为 `edit_metadata_*`（含 zh-rCN / zh-rTW）。 |
 | 2026-10-06 | 编辑 nfo 收尾：`MoreMenuDialog` 标题由「删除服务器信息」（`delete_server_info`）改为中性的「更多操作」（新键 `more_menu_title`，含 zh-rCN / zh-rTW），与菜单内新增的「编辑 nfo」一致；写回元数据时不再回传演职员——服务端对 `People` 是「传了才更新」，`updateItemMetadata` 显式传 `people = null` 保留原值，`ItemFields.PEOPLE` 随之从 `METADATA_EDIT_FIELDS` 移除。 |
+| 2026-10-06 | 下载页去掉卡片封面右下角的详情入口：删除 `InfoBadge`、`DownloadDetailsDialog` 两个组件，`PHONE/presentation/film/components/ItemCard.kt`、`PHONE/presentation/film/components/CollectionGrid.kt`、`PHONE/presentation/film/DownloadsScreen.kt` 移除 `onDetailsClick` / `onItemDetails` 传参链；下载页点击条目仍进入详情页（`DownloadDetailsDialog` 的文件路径信息与电影页 `FilePathText` 重复，已无用）。 |

@@ -51,18 +51,24 @@ fun ItemHeader(
 ) {
     val context = LocalContext.current
     var backdropAspectRatio by remember(item.id) { mutableStateOf<Float?>(null) }
-    var backdropUri =
+    // 首选宽幅背景图：分集用自身剧照，其余用自身 backdrop
+    val preferredBackdrop =
         when (item) {
             is FindroidEpisode -> item.images.primary
             else -> item.images.backdrop
         }
+    // 首选图缺失时用任意可用图片补位，避免头部整块空白
+    var backdropUri = preferredBackdrop ?: item.coverUri(Direction.HORIZONTAL)
+    // 只有展示自身宽幅背景图时才按图片实际宽高自适应头部高度；
+    // 兜底图（如竖版海报）沿用默认比例，避免头部高度随任意图片尺寸跳变
+    val fitImageBackdrop = fitBackdrop && preferredBackdrop != null
 
-    // Ugly workaround to append the files directory when loading local images
-    if (backdropUri?.scheme == null) {
+    // 本地图片没有 scheme，需要手动补上 filesDir 前缀；无图时保持为空
+    if (backdropUri != null && backdropUri.scheme == null) {
         backdropUri =
             Uri.Builder()
                 .appendEncodedPath("${context.filesDir}")
-                .appendEncodedPath(backdropUri?.path)
+                .appendEncodedPath(backdropUri.path)
                 .build()
     }
 
@@ -85,7 +91,7 @@ fun ItemHeader(
                 contentScale = ContentScale.Crop,
                 // 加载成功后按图片实际宽高比调整容器高度，保证图片完整显示
                 onSuccess = { success ->
-                    if (fitBackdrop) {
+                    if (fitImageBackdrop) {
                         val image = success.result.image
                         if (image.height > 0) {
                             backdropAspectRatio =
@@ -115,19 +121,25 @@ fun ItemHeader(
 ) {
     val context = LocalContext.current
     var backdropAspectRatio by remember(item.id) { mutableStateOf<Float?>(null) }
-    var backdropUri =
+    // 首选宽幅背景图：分集用自身剧照，季用所属剧集宽幅图，其余用自身 backdrop
+    val preferredBackdrop =
         when (item) {
             is FindroidEpisode -> item.images.primary
             is FindroidSeason -> item.images.showBackdrop
             else -> item.images.backdrop
         }
+    // 首选图缺失时用任意可用图片补位，避免头部整块空白
+    var backdropUri = preferredBackdrop ?: item.coverUri(Direction.HORIZONTAL)
+    // 只有展示自身宽幅背景图时才按图片实际宽高自适应头部高度；
+    // 兜底图（如竖版海报）沿用默认比例，避免头部高度随任意图片尺寸跳变
+    val fitImageBackdrop = fitBackdrop && preferredBackdrop != null
 
-    // Ugly workaround to append the files directory when loading local images
-    if (backdropUri?.scheme == null) {
+    // 本地图片没有 scheme，需要手动补上 filesDir 前缀；无图时保持为空
+    if (backdropUri != null && backdropUri.scheme == null) {
         backdropUri =
             Uri.Builder()
                 .appendEncodedPath("${context.filesDir}")
-                .appendEncodedPath(backdropUri?.path)
+                .appendEncodedPath(backdropUri.path)
                 .build()
     }
 
@@ -150,7 +162,7 @@ fun ItemHeader(
                 contentScale = ContentScale.Crop,
                 // 加载成功后按图片实际宽高比调整容器高度，保证图片完整显示
                 onSuccess = { success ->
-                    if (fitBackdrop) {
+                    if (fitImageBackdrop) {
                         val image = success.result.image
                         if (image.height > 0) {
                             backdropAspectRatio =

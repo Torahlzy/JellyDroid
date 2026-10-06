@@ -24,7 +24,6 @@ fun CollectionGrid(
     sections: List<CollectionSection>,
     innerPadding: PaddingValues,
     onAction: (CollectionAction) -> Unit,
-    onItemDetails: ((FindroidItem) -> Unit)? = null,
 ) {
     LazyVerticalGrid(
         columns = GridCellsAdaptiveWithMinColumns(minSize = 160.dp, minColumns = 2),
@@ -54,7 +53,6 @@ fun CollectionGrid(
                     direction =
                         if (item is FindroidEpisode) Direction.HORIZONTAL else Direction.VERTICAL,
                     onClick = { onAction(CollectionAction.OnItemClick(item)) },
-                    onDetailsClick = onItemDetails,
                     modifier = Modifier.animateItem(),
                 )
             }

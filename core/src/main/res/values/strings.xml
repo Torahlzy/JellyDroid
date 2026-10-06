@@ -114,9 +114,12 @@
     <string name="download_downloading">Downloading…</string>
     <string name="download_failed">Failed to download</string>
     <string name="download_stalled">Download never starts, check network or proxy settings</string>
+    <string name="download_waiting_to_retry">Failed to reach the server, retrying…</string>
+    <string name="download_waiting_for_network">Waiting for network…</string>
     <string name="download_progress_unknown">--</string>
-    <string name="download_details">Download details</string>
-    <string name="download_file_path">File path</string>
+    <string name="download_speed">%1$s/s</string>
+    <string name="download_notification_channel">Downloads</string>
+    <string name="download_notification_title">Downloading</string>
     <string name="more_button_description">More</string>
     <string name="more_menu_title">More actions</string>
     <string name="delete_server_info_message">The following will be deleted from the Jellyfin server. This cannot be undone.</string>

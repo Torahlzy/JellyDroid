@@ -6,6 +6,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import java.io.File
 import java.io.IOException
@@ -14,7 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import timber.log.Timber
 
 @HiltWorker
 class ImagesDownloaderWorker
@@ -47,7 +47,7 @@ constructor(
             try {
                 baseDir.mkdirs()
             } catch (e: IOException) {
-                Timber.e(e)
+                AppLog.e(e)
                 return@withContext
             }
 
@@ -62,14 +62,14 @@ constructor(
                     try {
                         client.newCall(request).execute().use { response ->
                             if (!response.isSuccessful) {
-                                Timber.e("Failed to download image: ${response.code}")
+                                AppLog.e("下载封面图失败，HTTP %d", response.code)
                                 continue
                             }
 
                             response.body.bytes()
                         }
                     } catch (e: IOException) {
-                        Timber.e(e)
+                        AppLog.e(e)
                         continue
                     }
 
@@ -77,7 +77,7 @@ constructor(
                     val file = File(appContext.filesDir, "$basePath/$name")
                     file.writeBytes(imageBytes)
                 } catch (e: IOException) {
-                    Timber.e(e)
+                    AppLog.e(e)
                 }
             }
         }

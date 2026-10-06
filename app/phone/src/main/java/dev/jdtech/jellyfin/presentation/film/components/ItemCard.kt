@@ -11,10 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -22,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -42,7 +38,6 @@ fun ItemCard(
     item: FindroidItem,
     direction: Direction,
     onClick: (FindroidItem) -> Unit,
-    onDetailsClick: ((FindroidItem) -> Unit)? = null,
     // 可选宽高比覆盖，透传给封面
     aspectRatio: Float? = null,
     // 无封面时展示的占位图标（drawable 资源），透传给封面
@@ -99,21 +94,6 @@ fun ItemCard(
                                 Modifier.align(Alignment.BottomStart)
                                     .padding(MaterialTheme.spacings.small),
                         )
-                    }
-                    if (onDetailsClick != null && item.isDownloaded()) {
-                        IconButton(
-                            onClick = { onDetailsClick.invoke(item) },
-                            modifier =
-                                Modifier.align(Alignment.BottomEnd)
-                                    .padding(2.dp)
-                                    .size(32.dp),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_info),
-                                contentDescription = stringResource(R.string.view_details),
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                            )
-                        }
                     }
                 }
             }

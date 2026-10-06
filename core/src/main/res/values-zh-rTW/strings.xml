@@ -113,7 +113,10 @@
     <string name="download_downloading">下載中…</string>
     <string name="download_failed">下載失敗</string>
     <string name="download_stalled">下載一直無法開始，請檢查網路或代理設定</string>
+    <string name="download_waiting_to_retry">連線伺服器失敗，正在自動重試…</string>
+    <string name="download_waiting_for_network">等待網路連線…</string>
     <string name="download_progress_unknown">--</string>
+    <string name="download_speed">%1$s/s</string>
     <string name="more_button_description">更多</string>
     <string name="more_menu_title">更多操作</string>
     <string name="delete_server_info_message">將從 Jellyfin 伺服器刪除以下內容，操作無法復原。</string>
