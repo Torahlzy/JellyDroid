@@ -53,6 +53,11 @@ var isControlsLocked: Boolean = false
 @AndroidEntryPoint
 class PlayerActivity : BasePlayerActivity() {
 
+    companion object {
+        /** 指定播放条目下的哪个来源（多版本时由用户选择），未携带该 extra 时由播放器按默认规则挑选。 */
+        const val EXTRA_MEDIA_SOURCE_INDEX = "mediaSourceIndex"
+    }
+
     @Inject lateinit var appPreferences: AppPreferences
 
     lateinit var binding: ActivityPlayerBinding
@@ -93,6 +98,9 @@ class PlayerActivity : BasePlayerActivity() {
         val itemId = UUID.fromString(intent.extras!!.getString("itemId"))
         val itemKind = intent.extras!!.getString("itemKind")
         val startFromBeginning = intent.extras!!.getBoolean("startFromBeginning")
+        // 未携带来源索引（-1）时置为 null，交给播放器按默认规则选源
+        val mediaSourceIndex =
+            intent.extras!!.getInt(EXTRA_MEDIA_SOURCE_INDEX, -1).takeIf { index -> index >= 0 }
 
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -328,6 +336,7 @@ class PlayerActivity : BasePlayerActivity() {
             itemId = itemId,
             itemKind = itemKind ?: "",
             startFromBeginning = startFromBeginning,
+            mediaSourceIndex = mediaSourceIndex,
         )
         hideSystemUI()
     }
@@ -339,11 +348,14 @@ class PlayerActivity : BasePlayerActivity() {
         val itemId = UUID.fromString(intent.extras!!.getString("itemId"))
         val itemKind = intent.extras!!.getString("itemKind")
         val startFromBeginning = intent.extras!!.getBoolean("startFromBeginning")
+        val mediaSourceIndex =
+            intent.extras!!.getInt(EXTRA_MEDIA_SOURCE_INDEX, -1).takeIf { index -> index >= 0 }
 
         viewModel.initializePlayer(
             itemId = itemId,
             itemKind = itemKind ?: "",
             startFromBeginning = startFromBeginning,
+            mediaSourceIndex = mediaSourceIndex,
         )
     }
 

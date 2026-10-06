@@ -2,12 +2,13 @@ package dev.jdtech.jellyfin.player.local.domain
 
 import androidx.core.net.toUri
 import androidx.media3.common.MimeTypes
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.FindroidChapter
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.FindroidMovie
-import dev.jdtech.jellyfin.models.FindroidSourceType
 import dev.jdtech.jellyfin.models.FindroidSources
+import dev.jdtech.jellyfin.models.pickPlaybackSource
 import dev.jdtech.jellyfin.player.core.domain.models.ExternalSubtitle
 import dev.jdtech.jellyfin.player.core.domain.models.PlayerChapter
 import dev.jdtech.jellyfin.player.core.domain.models.PlayerItem
@@ -18,7 +19,6 @@ import javax.inject.Inject
 import org.jellyfin.sdk.model.api.BaseItemKind
 import org.jellyfin.sdk.model.api.ItemFields
 import org.jellyfin.sdk.model.api.MediaStreamType
-import timber.log.Timber
 
 class PlaylistManager @Inject internal constructor(private val repository: JellyfinRepository) {
     private var startItem: FindroidItem? = null
@@ -32,7 +32,7 @@ class PlaylistManager @Inject internal constructor(private val repository: Jelly
         mediaSourceIndex: Int? = null,
         startFromBeginning: Boolean = false,
     ): PlayerItem? {
-        Timber.d("Retrieving initial player item")
+        AppLog.d("Retrieving initial player item")
 
         val initialItem =
             when (itemKind) {
@@ -129,7 +129,7 @@ class PlaylistManager @Inject internal constructor(private val repository: Jelly
     }
 
     suspend fun getPreviousPlayerItem(): PlayerItem? {
-        Timber.d("Retrieving previous player item")
+        AppLog.d("Retrieving previous player item")
 
         val itemIndex = currentItemIndex - 1
         val playerItem =
@@ -144,7 +144,7 @@ class PlaylistManager @Inject internal constructor(private val repository: Jelly
                             try {
                                 item.toPlayerItem(null, 0L)
                             } catch (e: Exception) {
-                                Timber.e("Failed to retrieve previous player item: $e")
+                                AppLog.e(e, "Failed to retrieve previous player item")
                                 null
                             }
                         } else {
@@ -163,7 +163,7 @@ class PlaylistManager @Inject internal constructor(private val repository: Jelly
     }
 
     suspend fun getNextPlayerItem(): PlayerItem? {
-        Timber.d("Retrieving next player item")
+        AppLog.d("Retrieving next player item")
 
         val itemIndex = currentItemIndex + 1
         val playerItem =
@@ -178,7 +178,7 @@ class PlaylistManager @Inject internal constructor(private val repository: Jelly
                             try {
                                 item.toPlayerItem(null, 0L)
                             } catch (e: Exception) {
-                                Timber.e("Failed to retrieve next player item: $e")
+                                AppLog.e(e, "Failed to retrieve next player item")
                                 null
                             }
                         } else {
@@ -204,15 +204,15 @@ class PlaylistManager @Inject internal constructor(private val repository: Jelly
         mediaSourceIndex: Int?,
         playbackPosition: Long,
     ): PlayerItem {
-        Timber.d("Converting FindroidItem ${this.id} to PlayerItem")
+        AppLog.d("Converting FindroidItem ${this.id} to PlayerItem")
 
         val mediaSources = repository.getMediaSources(id, true)
         val mediaSource =
             if (mediaSourceIndex == null) {
-                mediaSources.firstOrNull { it.type == FindroidSourceType.LOCAL } ?: mediaSources[0]
+                mediaSources.pickPlaybackSource()
             } else {
-                mediaSources[mediaSourceIndex]
-            }
+                mediaSources.getOrNull(mediaSourceIndex)
+            } ?: throw IllegalStateException("No media source available for item ${this.id}")
         val externalSubtitles =
             mediaSource.mediaStreams
                 .filter { mediaStream ->

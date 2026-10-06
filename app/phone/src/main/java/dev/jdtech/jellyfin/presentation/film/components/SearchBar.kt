@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,9 +55,14 @@ fun FilmSearchBar(
     paddingEnd: Dp = 0.dp,
 ) {
     val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
     val safePadding = rememberSafePadding()
 
     var query by rememberSaveable { mutableStateOf("") }
+
+    // 记录本次展开是否已自动聚焦：从子页面返回时本组件会重新进入组合，
+    // 若无条件再次 requestFocus，会又把输入法拉起来，而用户只希望手动点击输入框时才拉起。
+    var hasAutoFocused by rememberSaveable { mutableStateOf(false) }
 
     val searchBarPaddingStart by
         animateDpAsState(
@@ -83,9 +89,14 @@ fun FilmSearchBar(
         )
 
     LaunchedEffect(expanded) {
-        if (expanded) {
-            focusRequester.requestFocus()
+        if (!expanded) {
+            // 收起后清空标记，下次展开时恢复自动聚焦
+            hasAutoFocused = false
+            return@LaunchedEffect
         }
+        if (hasAutoFocused) return@LaunchedEffect
+        hasAutoFocused = true
+        focusRequester.requestFocus()
     }
 
     LaunchedEffect(query) {
@@ -101,7 +112,8 @@ fun FilmSearchBar(
             SearchBarDefaults.InputField(
                 query = query,
                 onQueryChange = { query = it },
-                onSearch = { onExpand(true) },
+                // 按下输入法搜索键后收起输入法，让结果完整可见；搜索栏保持展开，避免结果一起消失
+                onSearch = { focusManager.clearFocus() },
                 expanded = expanded,
                 onExpandedChange = { onExpand(it) },
                 modifier =

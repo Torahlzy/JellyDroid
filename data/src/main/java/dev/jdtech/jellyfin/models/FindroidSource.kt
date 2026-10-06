@@ -73,3 +73,14 @@ enum class FindroidSourceType {
     REMOTE,
     LOCAL,
 }
+
+/**
+ * 按播放端的选源规则挑出实际用于播放的来源：优先已下载的本地来源，否则取列表首个，列表为空时返回 null。
+ *
+ * 详情页展示与播放端共用这一规则，避免两处各写一套导致「界面上展示的路径」与「实际播放的那个源」对不上。
+ *
+ * 归到 `:data` 而非 `:core`：本规则同时被 `:modes:film` 与 `:player:local` 使用，而后者不依赖 `:core`，
+ * 两者的公共依赖只有 `:data`。
+ */
+fun List<FindroidSource>.pickPlaybackSource(): FindroidSource? =
+    firstOrNull { it.type == FindroidSourceType.LOCAL } ?: firstOrNull()

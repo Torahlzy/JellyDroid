@@ -8,7 +8,9 @@ import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.models.FindroidMovie
+import dev.jdtech.jellyfin.models.FindroidSource
 import dev.jdtech.jellyfin.models.ItemMetadataEdit
+import dev.jdtech.jellyfin.models.pickPlaybackSource
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import java.util.UUID
@@ -43,7 +45,19 @@ constructor(
         viewModelScope.launch {
             try {
                 val movie = repository.getMovie(movieId)
-                val videoMetadata = videoMetadataParser.parse(movie.sources.first())
+                // 可选播放来源改用与播放端相同的接口：条目自带的 sources 与 getPostedPlaybackInfo 的顺序未必一致，
+                // 而播放端是按下标取源，多这一次请求换「界面下标 = 播放端下标」，不会选错版本；
+                // 接口失败时退回条目自带的来源，至少让详情页能正常显示
+                val playbackSources =
+                    runCatching { repository.getMediaSources(movieId, false) }
+                        .getOrElse { e ->
+                            AppLog.e(e, "加载可播放来源失败，回退到条目自带来源：%s", movieId)
+                            movie.sources
+                        }
+                logSources(movie, playbackSources)
+                // 与播放端选源规则保持一致：解析实际会播放的那个来源，避免详情页展示的清晰度 / 编码与实际播放的不符
+                val videoMetadata =
+                    playbackSources.pickPlaybackSource()?.let { videoMetadataParser.parse(it) }
                 val actors = getActors(movie)
                 val director = getDirector(movie)
                 val writers = getWriters(movie)
@@ -56,11 +70,36 @@ constructor(
                         director = director,
                         writers = writers,
                         displayExtraInfo = displayExtraInfo,
+                        playbackSources = playbackSources,
                     )
                 )
             } catch (e: Exception) {
                 _state.emit(_state.value.copy(error = e))
             }
+        }
+    }
+
+    /**
+     * 打印将要用于展示与播放的来源列表，便于核对服务器上的多个版本是否被归入同一条影片。
+     *
+     * 形如：
+     * ```
+     * Playback sources of XXX (uuid): 3
+     * Source[0] type=REMOTE id=xxx remote=/media/movies/xxx.mkv local=
+     * Source[1] type=LOCAL  id=xxx remote= local=/storage/emulated/0/xxx.mkv
+     * ```
+     */
+    private fun logSources(movie: FindroidMovie, sources: List<FindroidSource>) {
+        AppLog.d("Playback sources of %s (%s): %d", movie.name, movie.id, sources.size)
+        sources.forEachIndexed { index, source ->
+            AppLog.d(
+                "Source[%d] type=%s id=%s remote=%s local=%s",
+                index,
+                source.type,
+                source.id,
+                source.remoteFilePath,
+                source.localFilePath,
+            )
         }
     }
 

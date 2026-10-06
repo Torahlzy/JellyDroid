@@ -27,11 +27,14 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
 
 /**
  * 文件存放路径：默认只显示 1 行，内容被截断时点击可在展开 / 收起之间切换，并在末尾显示状态图标。
+ * 服务端路径用云图标，本地已下载路径用文件夹图标。
  */
 @Composable
-fun FilePathText(path: String, modifier: Modifier = Modifier) {
+fun FilePathText(path: String, isRemote: Boolean, modifier: Modifier = Modifier) {
     var isExpanded by remember(path) { mutableStateOf(false) }
     var hasOverflow by remember(path) { mutableStateOf(false) }
+    // 服务端路径没有本地实体文件，用云图标区分，避免和已下载路径混淆
+    val iconRes = if (isRemote) CoreR.drawable.ic_cloud else CoreR.drawable.ic_folder
 
     Row(
         modifier =
@@ -43,7 +46,7 @@ fun FilePathText(path: String, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.Top,
     ) {
         Icon(
-            painter = painterResource(CoreR.drawable.ic_folder),
+            painter = painterResource(iconRes),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 3.dp).size(14.dp),
@@ -85,7 +88,8 @@ fun FilePathText(path: String, modifier: Modifier = Modifier) {
 private fun FilePathTextPreview() {
     FindroidTheme {
         FilePathText(
-            path = "/media/movies/Alita Battle Angel (2019)/Alita.Battle.Angel.2019.1080p.mkv"
+            isRemote = true,
+            path = "/media/movies/Alita Battle Angel (2019)/Alita.Battle.Angel.2019.1080p.mkv",
         )
     }
 }

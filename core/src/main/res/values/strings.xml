@@ -128,6 +128,7 @@
     <string name="delete_item_with_files">Delete all (incl. video file)</string>
     <string name="delete_all_message">The video file and its cover images / nfo will be deleted from the server. This cannot be undone.</string>
     <string name="delete_all_item_name">Item: %1$s</string>
+    <string name="select_playback_source">Select version</string>
     <string name="item_images_title">Cover images</string>
     <string name="item_images_empty">No images on the server</string>
     <string name="item_images_load_failed">Failed to load images: %1$s</string>

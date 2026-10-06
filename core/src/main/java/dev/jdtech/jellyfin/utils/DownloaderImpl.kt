@@ -211,6 +211,8 @@ class DownloaderImpl(
         }
 
         database.deleteSource(source.id)
+        // 分片下载会留下 `<临时文件>.partN` 中间文件，删主文件时一并清掉，避免占用磁盘
+        DownloadWorker.deleteSegmentFiles(source.path)
         File(source.path).delete()
 
         val mediaStreams = database.getMediaStreamsBySourceId(source.id)

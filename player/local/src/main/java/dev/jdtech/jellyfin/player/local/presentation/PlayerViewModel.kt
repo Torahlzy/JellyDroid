@@ -17,6 +17,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.FindroidSegment
 import dev.jdtech.jellyfin.models.FindroidSegmentType
 import dev.jdtech.jellyfin.player.core.domain.models.PlayerChapter
@@ -43,7 +44,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jellyfin.sdk.model.api.BaseItemKind
-import timber.log.Timber
 
 @HiltViewModel
 class PlayerViewModel
@@ -174,7 +174,12 @@ constructor(
             }
     }
 
-    fun initializePlayer(itemId: UUID, itemKind: String, startFromBeginning: Boolean) {
+    fun initializePlayer(
+        itemId: UUID,
+        itemKind: String,
+        startFromBeginning: Boolean,
+        mediaSourceIndex: Int? = null,
+    ) {
         player.addListener(this)
 
         viewModelScope.launch {
@@ -183,17 +188,17 @@ constructor(
                     playlistManager.getInitialItem(
                         itemId = itemId,
                         itemKind = BaseItemKind.fromName(itemKind),
-                        mediaSourceIndex = null,
+                        mediaSourceIndex = mediaSourceIndex,
                         startFromBeginning = startFromBeginning,
                     )
                 } catch (e: Exception) {
-                    Timber.e(e)
+                    AppLog.e(e)
                     Toast.makeText(application, e.localizedMessage, Toast.LENGTH_LONG).show()
                     null
                 }
 
             if (startItem == null) {
-                Timber.e("No start item, stopping player initialization")
+                AppLog.e("No start item, stopping player initialization")
                 return@launch
             }
 
@@ -206,7 +211,7 @@ constructor(
                     mediaItems.add(item.toMediaItem())
                 }
             } catch (e: Exception) {
-                Timber.e(e)
+                AppLog.e(e)
             }
 
             val startPosition =
@@ -234,7 +239,7 @@ constructor(
                 .build()
         }
 
-        Timber.d("Stream url: $streamUrl")
+        AppLog.d("Stream url: $streamUrl")
         val mediaItem =
             MediaItem.Builder()
                 .setMediaId(itemId.toString())
@@ -255,7 +260,7 @@ constructor(
             delay(200L)
             try {
                 if (mediaId != null && duration != C.TIME_UNSET) {
-                    Timber.d("Sending playback stop")
+                    AppLog.d("Sending playback stop")
                     repository.postPlaybackStop(
                         UUID.fromString(mediaId),
                         position.times(10000),
@@ -263,7 +268,7 @@ constructor(
                     )
                 }
             } catch (e: Exception) {
-                Timber.e(e)
+                AppLog.e(e)
             }
         }
 
@@ -276,7 +281,7 @@ constructor(
     }
 
     fun updatePlaybackProgress() {
-        Timber.d("Updating playback progress")
+        AppLog.d("Updating playback progress")
         viewModelScope.launch(Dispatchers.Main) {
             savedStateHandle["position"] = player.currentPosition
             if (player.currentMediaItem != null && player.currentMediaItem!!.mediaId.isNotEmpty()) {
@@ -288,14 +293,14 @@ constructor(
                         !player.isPlaying,
                     )
                 } catch (e: Exception) {
-                    Timber.e(e)
+                    AppLog.e(e)
                 }
             }
         }
     }
 
     fun updateCurrentSegment() {
-        Timber.d("Updating current segment")
+        AppLog.d("Updating current segment")
         viewModelScope.launch(Dispatchers.Main) {
             if (currentMediaItemSegments.isEmpty()) {
                 return@launch
@@ -316,7 +321,7 @@ constructor(
                 return@launch
             }
 
-            Timber.tag("SegmentInfo").d("currentSegment: %s", currentSegment)
+            AppLog.tag("SegmentInfo").d("currentSegment: %s", currentSegment)
 
             if (
                 segmentsAutoSkip &&
@@ -342,7 +347,7 @@ constructor(
     }
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-        Timber.d("Playing MediaItem: ${mediaItem?.mediaId}")
+        AppLog.d("Playing MediaItem: ${mediaItem?.mediaId}")
         savedStateHandle["mediaItemIndex"] = player.currentMediaItemIndex
         viewModelScope.launch {
             try {
@@ -398,10 +403,10 @@ constructor(
                             )
                         }
 
-                        Timber.tag("PlayerItems").d(items.map { it.indexNumber }.toString())
+                        AppLog.tag("PlayerItems").d(items.map { it.indexNumber }.toString())
                     }
             } catch (e: Exception) {
-                Timber.e(e)
+                AppLog.e(e)
             }
         }
     }
@@ -424,7 +429,7 @@ constructor(
                         position.div(duration.toFloat()).times(100).toInt(),
                     )
                 } catch (e: Exception) {
-                    Timber.e(e)
+                    AppLog.e(e)
                 }
                 player.seekToNextMediaItem()
                 player.play()
@@ -450,12 +455,12 @@ constructor(
                 eventsChannel.trySend(PlayerEvents.NavigateBack)
             }
         }
-        Timber.d("Changed player state to $stateString")
+        AppLog.d("Changed player state to $stateString")
     }
 
     override fun onCleared() {
         super.onCleared()
-        Timber.d("Clearing Player ViewModel")
+        AppLog.d("Clearing Player ViewModel")
         releasePlayer()
     }
 
@@ -495,13 +500,13 @@ constructor(
             currentMediaItemSegments = repository.getSegments(itemId)
         } catch (e: Exception) {
             currentMediaItemSegments = emptyList()
-            Timber.e(e)
+            AppLog.e(e)
         }
     }
 
     private suspend fun getTrickplay(item: PlayerItem) {
         val trickplayInfo = item.trickplayInfo ?: return
-        Timber.d("Trickplay Resolution: ${trickplayInfo.width}")
+        AppLog.d("Trickplay Resolution: ${trickplayInfo.width}")
 
         withContext(Dispatchers.Default) {
             val maxIndex =

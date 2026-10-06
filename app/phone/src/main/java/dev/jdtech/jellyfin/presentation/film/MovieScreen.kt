@@ -1,5 +1,6 @@
 package dev.jdtech.jellyfin.presentation.film
 
+import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +63,7 @@ import dev.jdtech.jellyfin.presentation.film.components.ItemHeader
 import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
 import dev.jdtech.jellyfin.presentation.film.components.MoreMenuDialog
 import dev.jdtech.jellyfin.presentation.film.components.OverviewText
+import dev.jdtech.jellyfin.presentation.film.components.PlaybackSourceDialog
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
@@ -90,6 +92,11 @@ fun MovieScreen(
     // 「更多」菜单与它下面的确认弹窗共用同一个状态，保证同一时刻只开一个；
     // 用 rememberSaveable 让弹窗在旋转屏幕后仍保持打开（枚举可直接存入 Bundle）
     var moreDialog by rememberSaveable { mutableStateOf<MoreMenuDialogState?>(null) }
+
+    // 「选择播放版本」弹窗：条目在服务器上存在多个来源时，播放前先让用户选一个
+    var showPlaybackSourceDialog by rememberSaveable { mutableStateOf(false) }
+    // 记住本次点击是「从头播放」还是「继续播放」，选完版本后照此启动播放器
+    var playFromBeginningAfterSelect by rememberSaveable { mutableStateOf(false) }
 
     // 离线模式连不上服务器，删除服务器信息必然失败，直接不显示「更多」按钮
     val onMoreClick: (() -> Unit)? =
@@ -181,11 +188,19 @@ fun MovieScreen(
         onAction = { action ->
             when (action) {
                 is MovieAction.Play -> {
-                    val intent = Intent(context, PlayerActivity::class.java)
-                    intent.putExtra("itemId", movieId.toString())
-                    intent.putExtra("itemKind", BaseItemKind.MOVIE.serialName)
-                    intent.putExtra("startFromBeginning", action.startFromBeginning)
-                    context.startActivity(intent)
+                    // 服务器把同一影片识别成多个版本时先让用户选；只有一个来源就直接开播，不多一步
+                    if (state.playbackSources.size > 1) {
+                        playFromBeginningAfterSelect = action.startFromBeginning
+                        showPlaybackSourceDialog = true
+                    } else {
+                        startPlayer(
+                            context = context,
+                            itemId = movieId,
+                            itemKind = BaseItemKind.MOVIE,
+                            startFromBeginning = action.startFromBeginning,
+                            mediaSourceIndex = null,
+                        )
+                    }
                 }
                 is MovieAction.PlayTrailer -> {
                     try {
@@ -261,6 +276,23 @@ fun MovieScreen(
             )
         null -> Unit
     }
+
+    if (showPlaybackSourceDialog) {
+        PlaybackSourceDialog(
+            sources = state.playbackSources,
+            onSelect = { index ->
+                showPlaybackSourceDialog = false
+                startPlayer(
+                    context = context,
+                    itemId = movieId,
+                    itemKind = BaseItemKind.MOVIE,
+                    startFromBeginning = playFromBeginningAfterSelect,
+                    mediaSourceIndex = index,
+                )
+            },
+            onDismiss = { showPlaybackSourceDialog = false },
+        )
+    }
 }
 
 /** 「更多」菜单的弹窗状态：同一时刻只会打开其中一个。 */
@@ -327,15 +359,15 @@ private fun MovieScreenLayout(
                             )
                         }
                     }
-                    // 文件存放路径：已下载时先显示本地路径，再显示服务器路径
-                    // 每行默认只显示 1 行，超出时可点击展开 / 收起
+                    // 文件存放路径：已下载时先显示本地路径（文件夹图标），再显示服务器路径（云图标）
+                    // 多个版本会各自占一行（在 State 里去重后拼接），每行默认只显示 1 行，超出时可点击展开 / 收起
                     state.localFilePath?.let { filePath ->
                         Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
-                        FilePathText(path = filePath)
+                        FilePathText(path = filePath, isRemote = false)
                     }
                     state.remoteFilePath?.let { filePath ->
                         Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
-                        FilePathText(path = filePath)
+                        FilePathText(path = filePath, isRemote = true)
                     }
                     Spacer(Modifier.height(MaterialTheme.spacings.small))
                     Row(
@@ -452,11 +484,38 @@ private fun MovieScreenLayout(
 private fun EpisodeScreenLayoutPreview() {
     FindroidTheme {
         MovieScreenLayout(
-            state = MovieState(movie = dummyMovie, videoMetadata = dummyVideoMetadata),
+            state =
+                MovieState(
+                    movie = dummyMovie,
+                    videoMetadata = dummyVideoMetadata,
+                    // 预览用：详情页的文件路径与「选择版本」弹窗都由此列表派生
+                    playbackSources = dummyMovie.sources,
+                ),
             downloaderState = DownloaderState(),
             onAction = {},
             onMoreClick = {},
             onDownloaderAction = {},
         )
     }
+}
+
+/**
+ * 启动播放器。
+ *
+ * [mediaSourceIndex] 指定播放条目下的哪个来源（多版本时由用户选择），
+ * 传 null 则由播放器按默认规则挑选（已下载的本地来源优先，其次列表首个）。
+ */
+private fun startPlayer(
+    context: Context,
+    itemId: UUID,
+    itemKind: BaseItemKind,
+    startFromBeginning: Boolean,
+    mediaSourceIndex: Int?,
+) {
+    val intent = Intent(context, PlayerActivity::class.java)
+    intent.putExtra("itemId", itemId.toString())
+    intent.putExtra("itemKind", itemKind.serialName)
+    intent.putExtra("startFromBeginning", startFromBeginning)
+    mediaSourceIndex?.let { intent.putExtra(PlayerActivity.EXTRA_MEDIA_SOURCE_INDEX, it) }
+    context.startActivity(intent)
 }

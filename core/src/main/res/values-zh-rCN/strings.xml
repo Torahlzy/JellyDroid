@@ -125,6 +125,7 @@
     <string name="delete_item_with_files">删除全部（含视频文件）</string>
     <string name="delete_all_message">将从服务器删除该视频文件及关联的封面 / nfo 文件，操作不可撤销。</string>
     <string name="delete_all_item_name">条目：%1$s</string>
+    <string name="select_playback_source">选择播放版本</string>
     <string name="item_images_title">封面图片</string>
     <string name="item_images_empty">服务器上没有图片</string>
     <string name="item_images_load_failed">加载图片列表失败：%1$s</string>
