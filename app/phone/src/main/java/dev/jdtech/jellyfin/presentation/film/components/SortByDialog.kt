@@ -60,7 +60,7 @@ fun SortByDialog(
     onUpdate: (sortBy: SortBy, sortOrder: SortOrder, coverMode: CoverDisplayMode) -> Unit,
     onDismissRequest: () -> Unit,
 ) {
-    val optionValues = SortBy.entries
+    val optionValues = SortBy.selectableValues
     val optionNames = stringArrayResource(CoreR.array.sort_by_options)
     val options = optionValues.zip(optionNames)
 
@@ -111,6 +111,8 @@ fun SortByDialog(
                         selectedOrder = order
                         onUpdate(selectedOption, selectedOrder, selectedCoverMode)
                     },
+                    // 随机排序的结果与顺序无关，禁用顺序按钮以免用户点了没有反应
+                    enabled = selectedOption != SortBy.RANDOM,
                     modifier =
                         Modifier.padding(horizontal = MaterialTheme.spacings.default)
                             .fillMaxWidth(),
@@ -157,12 +159,13 @@ fun SortByDialog(
     }
 }
 
-/** 单选的横向分段按钮组，用于排序顺序与封面显示模式。 */
+/** 单选的横向分段按钮组，用于排序顺序与封面显示模式；整体可禁用。 */
 @Composable
 private fun <T> OptionsSegmentedRow(
     options: List<Pair<T, String>>,
     selectedOption: T,
     onSelect: (T) -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     SingleChoiceSegmentedButtonRow(modifier = modifier) {
@@ -170,6 +173,7 @@ private fun <T> OptionsSegmentedRow(
             SegmentedButton(
                 selected = option.first == selectedOption,
                 onClick = { onSelect(option.first) },
+                enabled = enabled,
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                 colors =
                     SegmentedButtonDefaults.colors(

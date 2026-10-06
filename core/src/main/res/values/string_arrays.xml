@@ -7,6 +7,7 @@
         <item>@string/sort_by_options_3</item>
         <item>@string/sort_by_options_4</item>
         <item>@string/sort_by_options_5</item>
+        <item>@string/sort_by_options_6</item>
     </string-array>
     <string-array name="sort_order_options">
         <item>@string/ascending</item>

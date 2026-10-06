@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-10-06**
+**最后更新：2026-10-07**
 
 ---
 
@@ -171,7 +171,7 @@ else -> WelcomeRoute
 
 ### LibraryScreen — 媒体库详情
 
-- **职责**：单个媒体库的内容列表，支持分页加载、排序切换与封面显示模式切换（右上角 `SortByDialog` 同时承载两项设置），条目点击进入详情。
+- **职责**：单个媒体库的内容列表，支持分页加载、排序切换（含随机排序）与封面显示模式切换（右上角 `SortByDialog` 同时承载两项设置），条目点击进入详情。
 - **路由**：`LibraryRoute(libraryId, libraryName, libraryType)`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/LibraryScreen.kt`；设置弹窗为 `PHONE/presentation/film/components/SortByDialog.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/library/LibraryViewModel.kt`、`FILM/presentation/library/LibraryState.kt`、`FILM/presentation/library/LibraryAction.kt`。
@@ -179,6 +179,7 @@ else -> WelcomeRoute
 - **主要方法 / Action**：`setup(parentId, libraryType)`、`loadItems()`、`onAction()`；`OnItemClick`、`OnBackClick`、`ChangeSorting`、`ChangeCoverMode`。
 - **封面显示模式**：偏好持久化在 `AppPreferences.libraryCoverMode`（`pref_library_cover_mode`）；横图模式走 `Direction.HORIZONTAL`，电影 / 剧集 / 合集 / 媒体库等优先取自身 `backdrop`（分集优先取 16:9 剧照 `primary`），宽高比沿用首页 `BANNER_ASPECT_RATIO`，列数按可用宽度自适应（窄屏一列、折叠屏展开等宽屏两列）；竖图走 `Direction.VERTICAL` 取 `primary`、多列网格；某一类图片缺失时由 `ItemPoster` 用另一类临时补位。
 - **合集列表封面**：合集（`FindroidBoxSet`）在服务器上没有图片，`JellyfinRepositoryImpl` 内的私有方法 `getBoxSetCoverImages()` 取合集内部条目的图片作为封面（并行补齐并限制并发、按服务器地址 + 合集 id 在进程内缓存），补齐在 `JellyfinRepositoryImpl.getItems()` 内完成，单次试探失败不影响列表加载。该方法不进 `JellyfinRepository` 接口（离线模式没有合集数据，无需为其写空实现）。合集卡片（`ItemCard`，条目为 `FindroidBoxSet`）封面右上角叠加合集角标 `BoxSetBadge`（复用 `ic_collection`），用于和普通影片区分。
+- **随机排序**：排序菜单的「随机」由 `data/src/main/java/dev/jdtech/jellyfin/repository/ItemsPagingSource.kt` 在客户端实现——以服务端随机排序一次取回一批（上限 `RANDOM_SNAPSHOT_SIZE = 500`）并本地打乱，作为本次会话的固定顺序，之后各页只做本地切片；不沿用偏移量分页，避免服务端每次请求重新洗牌造成的重复与遗漏。菜单可选排序项由 `SortBy.selectableValues` 提供（`data/src/main/java/dev/jdtech/jellyfin/models/SortBy.kt`），已排除仅供内部使用的 `SERIES_DATE_PLAYED`；随机排序下 `SortByDialog` 会禁用排序顺序按钮（结果与顺序无关）。
 - **入口**：首页媒体库卡片；点击 `FindroidCollection` / `FindroidFolder` 条目（`PHONE/NavigationRoot.kt`）。
 
 ### CollectionScreen — 合集详情
@@ -409,3 +410,5 @@ else -> WelcomeRoute
 | 2026-10-06 | 下载页去掉卡片封面右下角的详情入口：删除 `InfoBadge`、`DownloadDetailsDialog` 两个组件，`PHONE/presentation/film/components/ItemCard.kt`、`PHONE/presentation/film/components/CollectionGrid.kt`、`PHONE/presentation/film/DownloadsScreen.kt` 移除 `onDetailsClick` / `onItemDetails` 传参链；下载页点击条目仍进入详情页（`DownloadDetailsDialog` 的文件路径信息与电影页 `FilePathText` 重复，已无用）。 |
 | 2026-10-06 | 电影详情页文件路径图标按来源区分：`FilePathText` 新增 `isRemote` 参数，服务端路径改用新增的云图标 `ic_cloud`（`:core` drawable，描边风格对齐 `ic_folder`），本地已下载路径仍用文件夹图标。 |
 | 2026-10-06 | 电影详情页支持「选择播放版本」：`MovieState` 新增 `playbackSources`（由 `getMediaSources()` 获取，保证与播放端顺序一致），`localFilePath` / `remoteFilePath` 改由它派生并恢复列出全部来源；新增 `PHONE/presentation/film/components/PlaybackSourceDialog.kt`，来源多于一个时点播放先弹窗选择，选中索引经 Intent extra `mediaSourceIndex` 传给 `PlayerActivity` → `PlayerViewModel.initializePlayer(..., mediaSourceIndex)` → `PlaylistManager.getInitialItem`；新增字符串 `select_playback_source`（含 zh-rCN）。 |
+| 2026-10-07 | 媒体库详情页排序菜单新增「随机」：`SortBy` 增加 `RANDOM`（服务端 `Random`）与 `isSelectable` 标记，菜单项改由 `SortBy.selectableValues` 提供并排除内部项 `SERIES_DATE_PLAYED`，`sort_by_options` 补齐第 7 项；随机排序由 `ItemsPagingSource` 客户端实现——服务端随机排序一次取回一批（上限 500）后本地打乱并本地分页，避免偏移分页重复。 |
+| 2026-10-07 | 随机排序细节收敛：选中随机时 `PHONE/presentation/film/components/SortByDialog.kt` 禁用排序顺序按钮；`ItemsPagingSource` 随机分支复用 `emittedItemIds` 去重兜底；`SortBy.selectableValues` 改为惰性求值。 |
