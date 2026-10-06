@@ -3,8 +3,8 @@ package dev.jdtech.jellyfin.presentation.film.components
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -42,6 +43,12 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.GridCellsAdaptiveWithMinColumns
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
 import kotlinx.coroutines.delay
+
+/** 搜索框右侧进度指示器的直径，需明显小于图标按钮，避免抢走清除按钮的视觉位置 */
+private val PROGRESS_INDICATOR_SIZE = 20.dp
+
+/** 小尺寸进度指示器的线宽，用默认值会显得过于粗重 */
+private val PROGRESS_INDICATOR_STROKE_WIDTH = 2.dp
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -148,14 +155,23 @@ fun FilmSearchBar(
                     }
                 },
                 trailingIcon = {
-                    if (state.loading) {
-                        Box(modifier = Modifier.size(32.dp)) { CircularProgressIndicator() }
-                    } else if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }) {
-                            Icon(
-                                painter = painterResource(CoreR.drawable.ic_x),
-                                contentDescription = null,
-                            )
+                    // 进度指示器与清除按钮并列：加载中不再顶掉 X，两者互换位置会造成图标闪烁
+                    if (state.loading || query.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (state.loading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(PROGRESS_INDICATOR_SIZE),
+                                    strokeWidth = PROGRESS_INDICATOR_STROKE_WIDTH,
+                                )
+                            }
+                            if (query.isNotEmpty()) {
+                                IconButton(onClick = { query = "" }) {
+                                    Icon(
+                                        painter = painterResource(CoreR.drawable.ic_x),
+                                        contentDescription = null,
+                                    )
+                                }
+                            }
                         }
                     }
                 },
