@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +33,7 @@ import dev.jdtech.jellyfin.presentation.utils.parallaxLayoutModifier
 fun ItemHeader(
     item: FindroidItem,
     scrollState: ScrollState,
+    modifier: Modifier = Modifier,
     showLogo: Boolean = false,
     content: @Composable (BoxScope.() -> Unit) = {},
 ) {
@@ -53,6 +55,7 @@ fun ItemHeader(
 
     ItemHeaderBase(
         item = item,
+        modifier = modifier,
         showLogo = showLogo,
         backdropImage = {
             AsyncImage(
@@ -73,6 +76,7 @@ fun ItemHeader(
 fun ItemHeader(
     item: FindroidItem,
     lazyListState: LazyListState,
+    modifier: Modifier = Modifier,
     showLogo: Boolean = false,
     content: @Composable (BoxScope.() -> Unit) = {},
 ) {
@@ -95,6 +99,7 @@ fun ItemHeader(
 
     ItemHeaderBase(
         item = item,
+        modifier = modifier,
         showLogo = showLogo,
         backdropImage = {
             AsyncImage(
@@ -114,6 +119,7 @@ fun ItemHeader(
 @Composable
 private fun ItemHeaderBase(
     item: FindroidItem,
+    modifier: Modifier = Modifier,
     showLogo: Boolean = false,
     backdropImage: @Composable (() -> Unit),
     content: @Composable (BoxScope.() -> Unit) = {},
@@ -126,7 +132,7 @@ private fun ItemHeaderBase(
             else -> item.images.logo
         }
 
-    Box(modifier = Modifier.height(288.dp).clipToBounds()) {
+    Box(modifier = modifier.heightIn(min = 288.dp).clipToBounds()) {
         backdropImage()
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawRect(Color.Black.copy(alpha = 0.1f))

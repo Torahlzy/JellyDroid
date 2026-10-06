@@ -29,8 +29,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
+import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -46,6 +46,7 @@ import dev.jdtech.jellyfin.film.presentation.movie.MovieAction
 import dev.jdtech.jellyfin.film.presentation.movie.MovieState
 import dev.jdtech.jellyfin.film.presentation.movie.MovieViewModel
 import dev.jdtech.jellyfin.presentation.film.components.ActorsRow
+import dev.jdtech.jellyfin.presentation.film.components.CollapsibleText
 import dev.jdtech.jellyfin.presentation.film.components.ExtraInfoText
 import dev.jdtech.jellyfin.presentation.film.components.InfoText
 import dev.jdtech.jellyfin.presentation.film.components.ItemButtonsBar
@@ -147,32 +148,29 @@ private fun MovieScreenLayout(
                 ItemHeader(
                     item = movie,
                     scrollState = scrollState,
-                    content = {
-                        Column(
-                            modifier =
-                                Modifier.align(Alignment.BottomStart)
-                                    .padding(start = paddingStart, end = paddingEnd)
-                        ) {
-                            Text(
-                                text = movie.name,
-                                overflow = TextOverflow.Ellipsis,
-                                maxLines = 3,
-                                style = MaterialTheme.typography.headlineMedium,
-                            )
-                            movie.originalTitle?.let { originalTitle ->
-                                if (originalTitle != movie.name) {
-                                    Text(
-                                        text = originalTitle,
-                                        overflow = TextOverflow.Ellipsis,
-                                        maxLines = 1,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                }
-                            }
-                        }
-                    },
+                    // 头部图片上方留出状态栏高度
+                    modifier = Modifier.padding(top = safePadding.top),
                 )
                 Column(modifier = Modifier.padding(start = paddingStart, end = paddingEnd)) {
+                    Spacer(Modifier.height(MaterialTheme.spacings.small))
+                    // 标题：默认收起 3 行，超出时可点击展开 / 收起
+                    CollapsibleText(
+                        text = movie.name,
+                        collapsedMaxLines = 3,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontSize = (MaterialTheme.typography.headlineMedium.fontSize.value - 2).sp,
+                    )
+                    movie.originalTitle?.let { originalTitle ->
+                        if (originalTitle != movie.name) {
+                            Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
+                            // 副标题（原名）：默认收起 2 行，超出时可点击展开 / 收起
+                            CollapsibleText(
+                                text = originalTitle,
+                                collapsedMaxLines = 2,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(MaterialTheme.spacings.small))
                     Row(
                         modifier = Modifier.fillMaxWidth(),

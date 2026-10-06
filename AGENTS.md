@@ -7,11 +7,30 @@
 - **修改代码后不要默认运行编译/构建。** 除非用户明确要求，否则不要执行 `./gradlew assemble*`、`./gradlew build`、`./gradlew check` 等命令。该仓库编译耗时较长，且 `check` 仅验证 ktfmt 格式，项目中没有单元测试或插桩测试。
 - 需要格式化 Kotlin 代码时，可使用 `./gradlew ktfmtFormat`；仅在用户要求时才运行。
 - 保持修改最小化、聚焦，避免不必要的重构或大范围重写。
+- **默认只改手机版（`:app:phone`），不考虑 TV 版（`:app:tv`）。** 修改界面或功能时，不要同步维护 TV 版界面，也不必把 TV 版纳入考虑范围；只有与界面无关的通用逻辑（如 `:core`、`:data`、`:player` 等共享模块）才可一并影响 TV 版。当前分支只维护手机版，一切从简。
 - **注释一律使用中文**，不要新增英文注释（包括代码注释、KDoc、TODO 说明）。
 
 ## 项目概述
 
 Findroid 是 Jellyfin 的第三方 Android 应用——使用原生 Jetpack Compose 界面浏览和播放电影/剧集。支持两种视频后端：ExoPlayer 和 mpv。
+
+## Wiki 知识库
+
+`wiki/` 目录存放按代码生成的项目知识文档，用于快速定位功能实现：
+
+| 文档 | 内容 |
+|---|---|
+| [wiki/pages.md](wiki/pages.md) | 手机端（`:app:phone`）主要页面的路由、Screen、ViewModel / State / Action 路径与职责 |
+
+**使用方式**：需要定位某个页面或功能时，先查 `wiki/pages.md` 的「页面总览」表，再按表中路径读取源码，避免全库盲目搜索。
+
+**更新机制（重要）**：出现以下任一改动后，必须同步更新 `wiki/pages.md`，否则文档会失真：
+
+- 新增 / 删除 / 重命名页面（Screen、ViewModel、State、Action 文件）。
+- 新增 / 修改 / 删除路由（`NavigationRoot.kt` 中的 `@Serializable` 路由类或 `composable<...>` 注册块）。
+- 页面职责变化（新增 section、更换数据来源、改变入口页面）。
+
+更新步骤：以 `NavigationRoot.kt` 为准核对「页面总览」表 → 更新对应条目 → 在 `wiki/pages.md` 文末「变更记录」追加一行 → 更新其开头「最后更新」日期。文档中引用的 `.kt` 路径必须真实存在，校验命令见该文档的「维护与更新机制」一节。
 
 ## 构建命令
 

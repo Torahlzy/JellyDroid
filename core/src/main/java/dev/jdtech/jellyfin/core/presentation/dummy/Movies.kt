@@ -13,7 +13,8 @@ val dummyMovie =
     FindroidMovie(
         id = UUID.randomUUID(),
         name = "Alita: Battle Angel",
-        originalTitle = null,
+        // 预览用：原始标题需非空且与 name 不同，详情页才会渲染标题下方的原名
+        originalTitle = "アリータ：バトル・エンジェル",
         overview =
             "When Alita awakens with no memory of who she is in a future world she does not recognize, she is taken in by Ido, a compassionate doctor who realizes that somewhere in this abandoned cyborg shell is the heart and soul of a young woman with an extraordinary past.",
         sources =
