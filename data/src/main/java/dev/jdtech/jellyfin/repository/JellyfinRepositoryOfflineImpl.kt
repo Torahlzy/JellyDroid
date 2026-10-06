@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
+import org.jellyfin.sdk.model.api.ImageType
 import org.jellyfin.sdk.model.api.ItemFields
 import org.jellyfin.sdk.model.api.PublicSystemInfo
 import org.jellyfin.sdk.model.api.UserConfiguration
@@ -302,6 +303,15 @@ class JellyfinRepositoryOfflineImpl(
 
     override suspend fun deleteItemImages(itemId: UUID, images: List<FindroidItemImage>) {
         throw Exception("Deleting item images is not available in offline mode")
+    }
+
+    // 离线时没有可写的服务器，图片上传无法完成
+    override suspend fun setItemImage(
+        itemId: UUID,
+        imageType: ImageType,
+        imageBytes: ByteArray,
+    ) {
+        throw Exception("Setting item images is not available in offline mode")
     }
 
     // 离线时读的是本地库，服务器上的 nfo 本就不存在，返回空表单与「无内容可编辑」的界面语义一致

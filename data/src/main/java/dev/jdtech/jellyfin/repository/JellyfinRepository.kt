@@ -18,6 +18,7 @@ import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
+import org.jellyfin.sdk.model.api.ImageType
 import org.jellyfin.sdk.model.api.ItemFields
 import org.jellyfin.sdk.model.api.PublicSystemInfo
 import org.jellyfin.sdk.model.api.UserConfiguration
@@ -117,6 +118,13 @@ interface JellyfinRepository {
 
     /** 删除条目在服务器上指定的图片，只删 [images] 中列出的那些。 */
     suspend fun deleteItemImages(itemId: UUID, images: List<FindroidItemImage>)
+
+    /**
+     * 把 [imageBytes]（JPEG 字节）上传为条目 [imageType] 类型的图片，如把播放截图设为横屏封面。
+     *
+     * 该类型已有图片时服务端会直接覆盖，是否需要先让用户确认由调用方负责。
+     */
+    suspend fun setItemImage(itemId: UUID, imageType: ImageType, imageBytes: ByteArray)
 
     /** 读取条目在服务器上可编辑的 nfo 元数据，用于编辑弹窗回填。 */
     suspend fun getItemMetadata(itemId: UUID): ItemMetadataEdit

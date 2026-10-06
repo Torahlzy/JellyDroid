@@ -1,6 +1,7 @@
 package dev.jdtech.jellyfin.repository
 
 import android.content.Context
+import android.util.Base64
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -51,6 +52,7 @@ import org.jellyfin.sdk.model.api.BaseItemKind
 import org.jellyfin.sdk.model.api.DeviceOptionsDto
 import org.jellyfin.sdk.model.api.DeviceProfile
 import org.jellyfin.sdk.model.api.GeneralCommandType
+import org.jellyfin.sdk.model.api.ImageType
 import org.jellyfin.sdk.model.api.ItemFields
 import org.jellyfin.sdk.model.api.ItemFilter
 import org.jellyfin.sdk.model.api.ItemSortBy
@@ -68,6 +70,10 @@ import org.jellyfin.sdk.model.api.SortOrder as ItemSortOrder
 import org.jellyfin.sdk.model.api.SubtitleDeliveryMethod
 import org.jellyfin.sdk.model.api.SubtitleProfile
 import org.jellyfin.sdk.model.api.UserConfiguration
+import org.jellyfin.sdk.model.toFileInfo
+
+// 上传图片的 Content-Type：服务端用它映射落盘扩展名（image/jpeg → .jpg），必须与实际字节格式一致
+private const val JPEG_MEDIA_TYPE = "image/jpeg"
 
 // 查找合集封面时最多试探的子条目数量：合集内排序最前的条目也可能没有图片
 private const val BOX_SET_COVER_CANDIDATE_LIMIT = 3
@@ -696,6 +702,21 @@ class JellyfinRepositoryImpl(
                             )
                         }
                 }
+        }
+    }
+
+    override suspend fun setItemImage(itemId: UUID, imageType: ImageType, imageBytes: ByteArray) {
+        withContext(Dispatchers.IO) {
+            // 迁就服务端 ImageController 的实现：它拿到请求体后会先做 Base64 解码（CryptoStream +
+            // FromBase64Transform），所以必须发 Base64 文本而不是原始字节，否则解码失败、接口回 500。
+            // 注意 Content-Type 仍为 image/jpeg（服务端据此决定落盘扩展名），与实际的 ASCII 正文并不一致；
+            // 若目标服务端版本取消了解码，这里要改回发送原始字节。
+            val base64 = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+            jellyfinApi.imageApi.setItemImage(
+                itemId,
+                imageType,
+                base64.toByteArray(Charsets.US_ASCII).toFileInfo(JPEG_MEDIA_TYPE),
+            )
         }
     }
 

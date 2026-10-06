@@ -90,44 +90,14 @@
                 android:layout_height="0dp" />
 
             <ImageButton
-                android:id="@+id/btn_speed"
+                android:id="@+id/btn_menu"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="end"
                 android:background="@drawable/transparent_circle_background"
-                android:contentDescription="@string/select_playback_speed"
+                android:contentDescription="@string/player_controls_menu"
                 android:padding="16dp"
-                android:src="@drawable/ic_gauge"
-                app:tint="@android:color/white" />
-
-            <Space
-                android:layout_width="16dp"
-                android:layout_height="0dp" />
-
-            <ImageButton
-                android:id="@+id/btn_audio_track"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="end"
-                android:background="@drawable/transparent_circle_background"
-                android:contentDescription="@string/select_audio_track"
-                android:padding="16dp"
-                android:src="@drawable/ic_speaker"
-                app:tint="@android:color/white" />
-
-            <Space
-                android:layout_width="16dp"
-                android:layout_height="0dp" />
-
-            <ImageButton
-                android:id="@+id/btn_subtitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="end"
-                android:background="@drawable/transparent_circle_background"
-                android:contentDescription="@string/select_subtitle_track"
-                android:padding="16dp"
-                android:src="@drawable/ic_closed_caption"
+                android:src="@drawable/ic_more_vert"
                 app:tint="@android:color/white" />
 
         </LinearLayout>

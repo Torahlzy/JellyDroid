@@ -23,4 +23,10 @@
     <string name="player_controls_skip_commercial">跳过广告</string>
     <string name="player_controls_skip_unknown">跳过</string>
     <string name="player_controls_skip_preview">跳过预告</string>
+    <string name="player_controls_menu">播放器菜单</string>
+    <string name="player_menu_capture_backdrop">截取当前画面设为横屏封面</string>
+    <string name="player_backdrop_already_exists">该视频已有横屏封面，请先删除现有封面后再试</string>
+    <string name="player_backdrop_set_success">已用当前画面设置横屏封面</string>
+    <string name="player_backdrop_set_failed">设置横屏封面失败</string>
+    <string name="player_backdrop_frame_unavailable">视频画面尚未就绪，请稍后再试</string>
 </resources>

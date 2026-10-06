@@ -23,4 +23,10 @@
     <string name="player_controls_skip_preview">法解 Jellyfin</string>
     <string name="player_controls_skip_commercial">跳過廣告</string>
     <string name="player_controls_skip_unknown">跳過</string>
+    <string name="player_controls_menu">播放器選單</string>
+    <string name="player_menu_capture_backdrop">擷取目前畫面設為橫向封面</string>
+    <string name="player_backdrop_already_exists">此影片已有橫向封面，請先刪除現有封面後再試</string>
+    <string name="player_backdrop_set_success">已用目前畫面設定橫向封面</string>
+    <string name="player_backdrop_set_failed">設定橫向封面失敗</string>
+    <string name="player_backdrop_frame_unavailable">影片畫面尚未就緒，請稍後再試</string>
 </resources>

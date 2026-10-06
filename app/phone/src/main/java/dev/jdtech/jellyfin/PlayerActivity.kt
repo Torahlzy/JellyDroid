@@ -24,29 +24,31 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.Space
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.media3.common.C
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerControlView
 import androidx.media3.ui.PlayerView
 import dagger.hilt.android.AndroidEntryPoint
 import dev.jdtech.jellyfin.databinding.ActivityPlayerBinding
+import dev.jdtech.jellyfin.logging.AppLog
+import dev.jdtech.jellyfin.player.local.R as PlayerR
 import dev.jdtech.jellyfin.player.local.presentation.PlayerEvents
 import dev.jdtech.jellyfin.player.local.presentation.PlayerViewModel
-import dev.jdtech.jellyfin.presentation.player.SpeedSelectionDialogFragment
-import dev.jdtech.jellyfin.presentation.player.TrackSelectionDialogFragment
+import dev.jdtech.jellyfin.presentation.player.PlayerMenuDialogFragment
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.utils.PlayerGestureHelper
 import dev.jdtech.jellyfin.utils.PreviewScrubListener
+import dev.jdtech.jellyfin.utils.captureFrameAsJpeg
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import timber.log.Timber
 
 var isControlsLocked: Boolean = false
 
@@ -139,9 +141,7 @@ class PlayerActivity : BasePlayerActivity() {
 
         val videoNameTextView = binding.playerView.findViewById<TextView>(R.id.video_name)
 
-        val audioButton = binding.playerView.findViewById<ImageButton>(R.id.btn_audio_track)
-        val subtitleButton = binding.playerView.findViewById<ImageButton>(R.id.btn_subtitle)
-        val speedButton = binding.playerView.findViewById<ImageButton>(R.id.btn_speed)
+        val menuButton = binding.playerView.findViewById<ImageButton>(R.id.btn_menu)
         skipSegmentButton = binding.playerView.findViewById(R.id.btn_skip_segment)
         val pipButton = binding.playerView.findViewById<ImageButton>(R.id.btn_pip)
         val lockButton = binding.playerView.findViewById<ImageButton>(R.id.btn_lockview)
@@ -151,7 +151,7 @@ class PlayerActivity : BasePlayerActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
                     viewModel.uiState.collect { uiState ->
-                        Timber.d("$uiState")
+                        AppLog.d("$uiState")
                         uiState.apply {
                             // Title
                             videoNameTextView.text = currentItemTitle
@@ -207,14 +207,10 @@ class PlayerActivity : BasePlayerActivity() {
 
                             // File Loaded
                             if (fileLoaded) {
-                                audioButton.isEnabled = true
-                                audioButton.imageAlpha = 255
+                                menuButton.isEnabled = true
+                                menuButton.imageAlpha = 255
                                 lockButton.isEnabled = true
                                 lockButton.imageAlpha = 255
-                                subtitleButton.isEnabled = true
-                                subtitleButton.imageAlpha = 255
-                                speedButton.isEnabled = true
-                                speedButton.imageAlpha = 255
                                 pipButton.isEnabled = true
                                 pipButton.imageAlpha = 255
                             }
@@ -266,17 +262,11 @@ class PlayerActivity : BasePlayerActivity() {
             }
         }
 
-        audioButton.isEnabled = false
-        audioButton.imageAlpha = 75
+        menuButton.isEnabled = false
+        menuButton.imageAlpha = 75
 
         lockButton.isEnabled = false
         lockButton.imageAlpha = 75
-
-        subtitleButton.isEnabled = false
-        subtitleButton.imageAlpha = 75
-
-        speedButton.isEnabled = false
-        speedButton.imageAlpha = 75
 
         if (isPipSupported) {
             pipButton.isEnabled = false
@@ -287,9 +277,16 @@ class PlayerActivity : BasePlayerActivity() {
             pipSpace.isVisible = false
         }
 
-        audioButton.setOnClickListener {
-            TrackSelectionDialogFragment(C.TRACK_TYPE_AUDIO, viewModel)
-                .show(supportFragmentManager, "trackselectiondialog")
+        menuButton.setOnClickListener {
+            // 离线模式下没有可写的服务器，截图设封面必然失败，直接不提供该入口
+            val onCaptureBackdrop: (() -> Unit)? =
+                if (appPreferences.getValue(appPreferences.offlineMode)) {
+                    null
+                } else {
+                    ::captureBackdrop
+                }
+            PlayerMenuDialogFragment(viewModel, onCaptureBackdrop)
+                .show(supportFragmentManager, "playermenudialog")
         }
 
         val exoPlayerControlView = findViewById<FrameLayout>(R.id.player_controls)
@@ -307,16 +304,6 @@ class PlayerActivity : BasePlayerActivity() {
             lockedLayout.visibility = View.GONE
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             isControlsLocked = false
-        }
-
-        subtitleButton.setOnClickListener {
-            TrackSelectionDialogFragment(C.TRACK_TYPE_TEXT, viewModel)
-                .show(supportFragmentManager, "trackselectiondialog")
-        }
-
-        speedButton.setOnClickListener {
-            SpeedSelectionDialogFragment(viewModel)
-                .show(supportFragmentManager, "speedselectiondialog")
         }
 
         pipButton.setOnClickListener { pictureInPicture() }
@@ -371,13 +358,111 @@ class PlayerActivity : BasePlayerActivity() {
         }
     }
 
+    /**
+     * 菜单里的「截图设为横屏封面」：先确认服务器上还没有横屏封面，再截取当前画面上传。
+     *
+     * 已有封面时不覆盖服务器数据，只提示用户先去删除，避免把服务器上已挑好的封面冲掉。
+     */
+    private fun captureBackdrop() {
+        val itemId = viewModel.currentItemId
+        val surfaceView = binding.playerView.videoSurfaceView as? SurfaceView
+        if (itemId == null || surfaceView == null) {
+            Toast.makeText(this, PlayerR.string.player_backdrop_frame_unavailable, Toast.LENGTH_SHORT)
+                .show()
+            return
+        }
+
+        lifecycleScope.launch {
+            val hasBackdrop =
+                try {
+                    viewModel.hasBackdrop(itemId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLog.e(e, "检查横屏封面失败")
+                    Toast.makeText(
+                            this@PlayerActivity,
+                            PlayerR.string.player_backdrop_set_failed,
+                            Toast.LENGTH_SHORT,
+                        )
+                        .show()
+                    return@launch
+                }
+
+            if (hasBackdrop) {
+                Toast.makeText(
+                        this@PlayerActivity,
+                        PlayerR.string.player_backdrop_already_exists,
+                        Toast.LENGTH_LONG,
+                    )
+                    .show()
+                return@launch
+            }
+
+            surfaceView.captureFrameAsJpeg(displayAspectRatio()) { imageBytes ->
+                if (imageBytes == null) {
+                    Toast.makeText(
+                            this@PlayerActivity,
+                            PlayerR.string.player_backdrop_frame_unavailable,
+                            Toast.LENGTH_SHORT,
+                        )
+                        .show()
+                    return@captureFrameAsJpeg
+                }
+                uploadBackdrop(itemId, imageBytes)
+            }
+        }
+    }
+
+    /** 把截图字节上传为横屏封面，并提示结果。 */
+    private fun uploadBackdrop(itemId: UUID, imageBytes: ByteArray) {
+        lifecycleScope.launch {
+            try {
+                viewModel.setBackdrop(itemId, imageBytes)
+                Toast.makeText(
+                        this@PlayerActivity,
+                        PlayerR.string.player_backdrop_set_success,
+                        Toast.LENGTH_SHORT,
+                    )
+                    .show()
+            } catch (e: CancellationException) {
+                // Activity 销毁会取消本协程，不是上传失败，直接放行
+                throw e
+            } catch (e: Exception) {
+                AppLog.e(e, "设置横屏封面失败")
+                Toast.makeText(
+                        this@PlayerActivity,
+                        PlayerR.string.player_backdrop_set_failed,
+                        Toast.LENGTH_SHORT,
+                    )
+                    .show()
+            }
+        }
+    }
+
+    /** 视频的显示宽高比（已折算 90/270 度旋转），用于裁掉 fit 缩放留下的黑边；尺寸未知时返回 null。 */
+    private fun displayAspectRatio(): Float? {
+        val videoSize = viewModel.player.videoSize
+        if (videoSize.width <= 0 || videoSize.height <= 0) {
+            return null
+        }
+
+        val ratio = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+        if (ratio <= 0f) {
+            return null
+        }
+        val isRotated =
+            videoSize.unappliedRotationDegrees == 90 || videoSize.unappliedRotationDegrees == 270
+        return if (isRotated) 1f / ratio else ratio
+    }
+
     private fun finishPlayback() {
         try {
             viewModel.player.clearVideoSurfaceView(
                 binding.playerView.videoSurfaceView as SurfaceView
             )
         } catch (e: Exception) {
-            Timber.e(e)
+            AppLog.e(e)
         }
         handler.removeCallbacks(skipButtonTimeout)
         finish()

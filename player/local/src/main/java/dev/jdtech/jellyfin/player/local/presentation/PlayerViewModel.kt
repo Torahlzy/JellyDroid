@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jellyfin.sdk.model.api.BaseItemKind
+import org.jellyfin.sdk.model.api.ImageType
 
 @HiltViewModel
 class PlayerViewModel
@@ -493,6 +494,22 @@ constructor(
     fun selectSpeed(speed: Float) {
         player.setPlaybackSpeed(speed)
         playbackSpeed = speed
+    }
+
+    /** 当前播放条目在服务器上的 id；尚未开始播放时为 null。 */
+    val currentItemId: UUID?
+        get() =
+            player.currentMediaItem?.mediaId
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+
+    /** 判断条目是否已有横屏封面，截图前用它避免覆盖服务器上的现有封面。 */
+    suspend fun hasBackdrop(itemId: UUID): Boolean =
+        repository.getItemImages(itemId).any { it.imageType == ImageType.BACKDROP }
+
+    /** 把播放画面截图上传为条目的横屏封面。 */
+    suspend fun setBackdrop(itemId: UUID, data: ByteArray) {
+        repository.setItemImage(itemId, ImageType.BACKDROP, data)
     }
 
     private suspend fun getSegments(itemId: UUID) {

@@ -22,4 +22,10 @@
     <string name="player_controls_skip_preview">Skip preview</string>
     <string name="player_controls_skip_commercial">Skip commercial</string>
     <string name="player_controls_skip_unknown">Skip</string>
+    <string name="player_controls_menu">Player menu</string>
+    <string name="player_menu_capture_backdrop">Set current frame as backdrop</string>
+    <string name="player_backdrop_already_exists">This item already has a backdrop. Delete the existing backdrop first.</string>
+    <string name="player_backdrop_set_success">Backdrop set from the current frame</string>
+    <string name="player_backdrop_set_failed">Failed to set the backdrop</string>
+    <string name="player_backdrop_frame_unavailable">The video frame is not ready yet</string>
 </resources>

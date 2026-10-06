@@ -354,13 +354,13 @@ else -> WelcomeRoute
 
 ### PlayerActivity — 视频播放
 
-- **职责**：视频播放界面（传统 View + Media3 `PlayerView` / ExoPlayer），展示标题、章节，提供跳过片头 / 片尾、PiP、手势以及音轨 / 字幕 / 倍速入口。
+- **职责**：视频播放界面（传统 View + Media3 `PlayerView` / ExoPlayer），展示标题、章节，提供跳过片头 / 片尾、PiP、手势，以及右上角菜单（字幕 / 倍速 / 音轨 / 截取当前画面设为横屏封面）。
 - **路由**：**无 NavHost 路由**，为独立 `Activity`（`class PlayerActivity : BasePlayerActivity()`）。
-- **Screen**：`PHONE/PlayerActivity.kt`；其中 `override val viewModel: PlayerViewModel by viewModels()`。
+- **Screen**：`PHONE/PlayerActivity.kt`；其中 `override val viewModel: PlayerViewModel by viewModels()`。菜单里的「截取当前画面设为横屏封面」由 `PlayerActivity.captureBackdrop()` 先经 `PlayerViewModel.hasBackdrop()` 确认服务器上没有 `BACKDROP`，再截帧上传（离线模式下不显示该菜单项）；截帧工具为 `PHONE/utils/VideoFrameCapture.kt`（`SurfaceView.captureFrameAsJpeg()`，PixelCopy + 按视频显示比例居中裁掉黑边 + JPEG 压缩）。
 - **ViewModel**：`PLAYER/presentation/PlayerViewModel.kt`。
 - **State 字段**（`UiState`，`PlayerViewModel.kt`）：`currentItemTitle`、`currentSegment`、`currentSkipButtonStringRes`、`currentTrickplay`、`currentChapters`、`fileLoaded`；事件流 `eventsChannelFlow`（`PlayerEvents`）。
-- **主要方法**：`initializePlayer(itemId, itemKind, startFromBeginning, mediaSourceIndex)`（`mediaSourceIndex` 由详情页「选择播放版本」经 Intent extra `mediaSourceIndex` 传入，为 `null` 时按默认规则选源）、`updatePlaybackProgress()`、`updateCurrentSegment()`、`switchToTrack()`、`selectSpeed()`、`skipSegment()`、`seekToNextChapter()`、`seekToPreviousChapter()`、`isLastChapter()`。
-- **辅助弹窗**（非页面）：`PHONE/presentation/player/SpeedSelectionDialogFragment.kt`、`PHONE/presentation/player/TrackSelectionDialogFragment.kt`，与 `PlayerActivity` 通过构造参数共享同一 `PlayerViewModel`。
+- **主要方法**：`initializePlayer(itemId, itemKind, startFromBeginning, mediaSourceIndex)`（`mediaSourceIndex` 由详情页「选择播放版本」经 Intent extra `mediaSourceIndex` 传入，为 `null` 时按默认规则选源）、`updatePlaybackProgress()`、`updateCurrentSegment()`、`switchToTrack()`、`selectSpeed()`、`skipSegment()`、`seekToNextChapter()`、`seekToPreviousChapter()`、`isLastChapter()`、`hasBackdrop(itemId)`、`setBackdrop(itemId, imageBytes)`；属性 `currentItemId`（当前播放条目的服务器 id，未开始播放时为 `null`）。
+- **辅助弹窗**（非页面）：`PHONE/presentation/player/PlayerMenuDialogFragment.kt`（右上角菜单，汇总字幕 / 倍速 / 音轨入口，并把截图设封面的动作回调给宿主 `PlayerActivity`）、`PHONE/presentation/player/SpeedSelectionDialogFragment.kt`、`PHONE/presentation/player/TrackSelectionDialogFragment.kt`，与 `PlayerActivity` 通过构造参数共享同一 `PlayerViewModel`。
 - **入口**：各详情页的播放动作（`MovieAction.Play`、`EpisodeAction.Play` 等）。
 
 ---
@@ -412,3 +412,6 @@ else -> WelcomeRoute
 | 2026-10-06 | 电影详情页支持「选择播放版本」：`MovieState` 新增 `playbackSources`（由 `getMediaSources()` 获取，保证与播放端顺序一致），`localFilePath` / `remoteFilePath` 改由它派生并恢复列出全部来源；新增 `PHONE/presentation/film/components/PlaybackSourceDialog.kt`，来源多于一个时点播放先弹窗选择，选中索引经 Intent extra `mediaSourceIndex` 传给 `PlayerActivity` → `PlayerViewModel.initializePlayer(..., mediaSourceIndex)` → `PlaylistManager.getInitialItem`；新增字符串 `select_playback_source`（含 zh-rCN）。 |
 | 2026-10-07 | 媒体库详情页排序菜单新增「随机」：`SortBy` 增加 `RANDOM`（服务端 `Random`）与 `isSelectable` 标记，菜单项改由 `SortBy.selectableValues` 提供并排除内部项 `SERIES_DATE_PLAYED`，`sort_by_options` 补齐第 7 项；随机排序由 `ItemsPagingSource` 客户端实现——服务端随机排序一次取回一批（上限 500）后本地打乱并本地分页，避免偏移分页重复。 |
 | 2026-10-07 | 随机排序细节收敛：选中随机时 `PHONE/presentation/film/components/SortByDialog.kt` 禁用排序顺序按钮；`ItemsPagingSource` 随机分支复用 `emittedItemIds` 去重兜底；`SortBy.selectableValues` 改为惰性求值。 |
+| 2026-10-07 | 修复播放器截图设封面返回 500：Jellyfin 服务端的图片上传接口（`ImageController.SetItemImage`）会对请求体做 Base64 解码（`CryptoStream` + `FromBase64Transform`），SDK 自动生成的 `setItemImage` 发的是原始二进制因而解码失败；`JellyfinRepositoryImpl.setItemImage` 改为发送 Base64 文本（`Content-Type` 保持 `image/jpeg`，服务端据此落盘为 `.jpg`）。 |
+| 2026-10-07 | 播放器右上角改为菜单入口：布局 `exo_main_controls.xml` 的字幕 / 倍速 / 音轨三个按钮合并为 `btn_menu`，点击弹出新增的 `PHONE/presentation/player/PlayerMenuDialogFragment.kt`，由它再打开原有的 `TrackSelectionDialogFragment` / `SpeedSelectionDialogFragment`；菜单新增「截取当前画面设为横屏封面」——`PlayerActivity.captureBackdrop()` 先经 `PlayerViewModel.hasBackdrop()` 确认服务器上没有 `BACKDROP`（已有则提示先删除、不上传），再用 `PHONE/utils/VideoFrameCapture.kt` 的 `SurfaceView.captureFrameAsJpeg()`（PixelCopy + 等比缩放为 JPEG）截帧，经 `PlayerViewModel.setBackdrop()` → `JellyfinRepository.setItemImage()` 上传；`:data` 新增 `setItemImage`（离线实现抛异常），新增字符串 `player_controls_menu`、`player_menu_capture_backdrop`、`player_backdrop_already_exists`、`player_backdrop_set_success`、`player_backdrop_set_failed`、`player_backdrop_frame_unavailable`（含 zh-rCN）。 |
+| 2026-10-07 | 截图设封面收尾：离线模式（`appPreferences.offlineMode`）下 `PlayerMenuDialogFragment` 不再展示截图入口；截图改用 `PlayerActivity.displayAspectRatio()`（读 `player.videoSize`，折算 90/270 度旋转）在 `VideoFrameCapture.kt` 内居中裁掉 fit 缩放的黑边后再缩放压缩；`captureBackdrop()` / `uploadBackdrop()` 单独放行 `CancellationException`，避免 Activity 销毁时误报失败。 |
