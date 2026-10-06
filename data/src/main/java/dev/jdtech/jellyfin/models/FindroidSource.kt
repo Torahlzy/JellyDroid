@@ -15,6 +15,10 @@ data class FindroidSource(
     val size: Long,
     val mediaStreams: List<FindroidMediaStream>,
     val downloadId: Long? = null,
+    /** 服务器上的文件路径，仅用于展示；[path] 在远程模式下是播放地址，不代表文件位置。 */
+    val remoteFilePath: String = "",
+    /** 已下载到本机的文件路径，仅用于展示；未下载时为空。 */
+    val localFilePath: String = "",
 )
 
 suspend fun MediaSourceInfo.toFindroidSource(
@@ -42,6 +46,8 @@ suspend fun MediaSourceInfo.toFindroidSource(
         size = size ?: 0,
         mediaStreams =
             mediaStreams?.map { it.toFindroidMediaStream(jellyfinRepository) } ?: emptyList(),
+        // 服务器返回的原始路径（局域网文件 / 直链地址），仅用于展示
+        remoteFilePath = this.path.orEmpty(),
     )
 }
 
@@ -57,6 +63,8 @@ suspend fun FindroidSourceDto.toFindroidSource(
         mediaStreams =
             serverDatabaseDao.getMediaStreamsBySourceId(id).map { it.toFindroidMediaStream() },
         downloadId = downloadId,
+        // 已下载条目：path 即本地文件路径
+        localFilePath = path,
     )
 }
 

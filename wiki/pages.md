@@ -197,9 +197,9 @@ else -> WelcomeRoute
 
 - **职责**：加载影片元数据 / 视频信息 / 演员，提供播放、预告、标记已看、收藏、下载、跳转演员，并处理离线模式。
 - **路由**：`MovieRoute(movieId)`（`PHONE/NavigationRoot.kt:96`），注册于 `PHONE/NavigationRoot.kt:371-381`。
-- **Screen**：`PHONE/presentation/film/MovieScreen.kt:65`。
+- **Screen**：`PHONE/presentation/film/MovieScreen.kt:65`；副标题下方的文件存放路径由 `PHONE/presentation/film/components/FilePathText.kt` 渲染（默认 1 行，截断时可点击展开 / 收起），已下载时依次显示本地路径与服务器路径。
 - **ViewModel / State / Action**：`FILM/presentation/movie/MovieViewModel.kt`、`FILM/presentation/movie/MovieState.kt`、`FILM/presentation/movie/MovieAction.kt`；另使用 `CORE/presentation/downloader/DownloaderViewModel.kt`。
-- **State 字段**：`movie`、`videoMetadata`、`actors`、`director`、`writers`、`displayExtraInfo`、`error`。
+- **State 字段**：`movie`、`videoMetadata`、`actors`、`director`、`writers`、`displayExtraInfo`、`error`；派生属性 `localFilePath`（取 `LOCAL` 来源的 `FindroidSource.localFilePath`）、`remoteFilePath`（取 `REMOTE` 来源的 `FindroidSource.remoteFilePath`），各自去重后拼接，无有效路径时为 `null`。
 - **主要方法 / Action**：`loadMovie(movieId)`、`onAction()`；`Play`、`PlayTrailer`、`MarkAsPlayed`、`UnmarkAsPlayed`、`MarkAsFavorite`、`UnmarkAsFavorite`、`OnBackClick`、`OnHomeClick`、`NavigateToPerson`。
 - **入口**：任意列表页点击 `FindroidMovie` 条目（`PHONE/NavigationRoot.kt:484`），如首页、媒体库、下载、收藏、合集、剧集 / 季 / 人物页。
 
@@ -383,3 +383,5 @@ else -> WelcomeRoute
 | 日期 | 变更摘要 |
 |---|---|
 | 2026-10-06 | 首次创建。覆盖手机端 21 个页面（film 11、settings 3、setup 6、player 1）与 1 个搜索组件。 |
+| 2026-10-06 | 电影详情页副标题下方新增文件存放路径（`FilePathText`，`MovieState.filePath` 派生属性），同步 MovieScreen 条目。 |
+| 2026-10-06 | 文件路径改为本地 / 远程分离：`FindroidSource.filePath` 拆为 `remoteFilePath`、`localFilePath`，`MovieState` 改为派生 `localFilePath`、`remoteFilePath`，已下载时两行同时展示。 |

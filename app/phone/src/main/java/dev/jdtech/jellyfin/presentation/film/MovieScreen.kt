@@ -48,6 +48,7 @@ import dev.jdtech.jellyfin.film.presentation.movie.MovieViewModel
 import dev.jdtech.jellyfin.presentation.film.components.ActorsRow
 import dev.jdtech.jellyfin.presentation.film.components.CollapsibleText
 import dev.jdtech.jellyfin.presentation.film.components.ExtraInfoText
+import dev.jdtech.jellyfin.presentation.film.components.FilePathText
 import dev.jdtech.jellyfin.presentation.film.components.InfoText
 import dev.jdtech.jellyfin.presentation.film.components.ItemButtonsBar
 import dev.jdtech.jellyfin.presentation.film.components.ItemHeader
@@ -150,9 +151,13 @@ private fun MovieScreenLayout(
                     scrollState = scrollState,
                     // 头部图片上方留出状态栏高度
                     modifier = Modifier.padding(top = safePadding.top),
+                    // 标题已移到图片下方，不再需要底部渐隐，避免图片下方出现空白
+                    fadeToBackground = false,
+                    // 按图片实际宽高比自适应高度，完整显示背景图、不裁切左右
+                    fitBackdrop = true,
                 )
                 Column(modifier = Modifier.padding(start = paddingStart, end = paddingEnd)) {
-                    Spacer(Modifier.height(MaterialTheme.spacings.small))
+                    Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
                     // 标题：默认收起 3 行，超出时可点击展开 / 收起
                     CollapsibleText(
                         text = movie.name,
@@ -170,6 +175,16 @@ private fun MovieScreenLayout(
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                         }
+                    }
+                    // 文件存放路径：已下载时先显示本地路径，再显示服务器路径
+                    // 每行默认只显示 1 行，超出时可点击展开 / 收起
+                    state.localFilePath?.let { filePath ->
+                        Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
+                        FilePathText(path = filePath)
+                    }
+                    state.remoteFilePath?.let { filePath ->
+                        Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
+                        FilePathText(path = filePath)
                     }
                     Spacer(Modifier.height(MaterialTheme.spacings.small))
                     Row(

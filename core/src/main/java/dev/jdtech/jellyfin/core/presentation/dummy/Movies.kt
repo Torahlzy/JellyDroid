@@ -24,6 +24,8 @@ val dummyMovie =
                     name = "",
                     type = FindroidSourceType.REMOTE,
                     path = "",
+                    // 预览用：详情页会展示文件存放路径
+                    remoteFilePath = "/media/movies/Alita - Battle Angel (2019)/Alita.2019.2160p.mkv",
                     size = 0L,
                     mediaStreams =
                         listOf(
