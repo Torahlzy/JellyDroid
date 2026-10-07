@@ -203,6 +203,8 @@ fun MovieScreen(
                 showFailureToast(CoreR.string.delete_item_images_failed, event.error)
             is MovieEvent.MetadataUpdateFailed ->
                 showFailureToast(CoreR.string.update_metadata_failed, event.error)
+            is MovieEvent.MetadataTranslateFailed ->
+                showFailureToast(CoreR.string.translate_failed, event.error)
             is MovieEvent.ItemImagesUploadFailed ->
                 showFailureToast(CoreR.string.item_images_upload_failed, event.error)
             is MovieEvent.ItemDeleteFailed ->
@@ -291,6 +293,8 @@ fun MovieScreen(
                 scrapedMetadata = state.scrapedMetadata,
                 fileName = state.fileName,
                 isLoading = state.isLoadingItemMetadata,
+                isTranslating = state.isTranslating,
+                translateSettings = state.translateSettings,
                 errorText =
                     state.itemMetadataError?.let { error ->
                         stringResource(
@@ -303,6 +307,14 @@ fun MovieScreen(
                     viewModel.onAction(MovieAction.UpdateItemMetadata(metadata = metadata))
                 },
                 onScrapeClick = { showScrapeKeywordDialog = true },
+                onTranslateSettingsChange = { settings ->
+                    viewModel.onAction(MovieAction.UpdateTranslateSettings(settings = settings))
+                },
+                onTranslateExisting = { metadata, settings ->
+                    viewModel.onAction(
+                        MovieAction.TranslateMetadata(metadata = metadata, settings = settings)
+                    )
+                },
                 onDismiss = { moreDialog = null },
             )
         MoreMenuDialogState.DELETE_ALL ->
@@ -356,6 +368,7 @@ fun MovieScreen(
             title = stringResource(CoreR.string.scrape_progress_title),
             steps = state.scrapeSteps,
             isRunning = state.isScraping,
+            isTranslating = state.isTranslating,
             failureSummary = stringResource(CoreR.string.scrape_all_failed),
             onCancel = {
                 showScrapeProgressDialog = false

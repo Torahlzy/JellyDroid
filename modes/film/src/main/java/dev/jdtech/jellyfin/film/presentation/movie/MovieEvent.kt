@@ -25,4 +25,7 @@ sealed interface MovieEvent {
 
     /** 删除服务器条目失败，[error] 用于向用户展示失败原因。 */
     data class ItemDeleteFailed(val error: Exception) : MovieEvent
+
+    /** 翻译抓取结果失败，[error] 用于向用户展示失败原因；此时相应字段保留的是原文。 */
+    data class MetadataTranslateFailed(val error: Exception) : MovieEvent
 }

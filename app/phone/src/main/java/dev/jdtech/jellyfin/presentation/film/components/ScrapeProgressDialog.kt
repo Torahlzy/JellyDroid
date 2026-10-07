@@ -34,12 +34,16 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
  * [title] 与 [failureSummary] 由调用方给出，用于区分抓的是 nfo 还是封面。
  * 抓取中只能点「取消」中断；抓取成功由上层直接把弹窗从界面上移除；
  * 全部失败时保留弹窗并给出「关闭」，让用户看清每个站点的失败原因。
+ *
+ * [isTranslating] 为 true 表示抓取已经抓完、正在调大模型翻译，此时把提示换成「正在翻译」，
+ * 否则用户会以为还卡在抓取上。
  */
 @Composable
 fun ScrapeProgressDialog(
     title: String,
     steps: List<ScrapeProgress>,
     isRunning: Boolean,
+    isTranslating: Boolean,
     failureSummary: String,
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
@@ -74,7 +78,14 @@ fun ScrapeProgressDialog(
                     )
                     Spacer(Modifier.width(MaterialTheme.spacings.small))
                     Text(
-                        text = stringResource(CoreR.string.scrape_in_progress),
+                        text =
+                            stringResource(
+                                if (isTranslating) {
+                                    CoreR.string.translate_in_progress
+                                } else {
+                                    CoreR.string.scrape_in_progress
+                                }
+                            ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -153,6 +164,7 @@ private fun ScrapeProgressDialogPreview() {
                     ScrapeProgress.Succeeded(ScraperSite.JAVBUS),
                 ),
             isRunning = false,
+            isTranslating = false,
             failureSummary = "No data was found on any site",
             onCancel = {},
             onDismiss = {},

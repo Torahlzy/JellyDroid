@@ -1,9 +1,10 @@
 package dev.jdtech.jellyfin.settings.domain
 
 import android.content.SharedPreferences
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.settings.domain.models.Preference
+import dev.jdtech.jellyfin.settings.domain.models.TranslateSettings
 import javax.inject.Inject
-import timber.log.Timber
 
 class AppPreferences @Inject constructor(val sharedPreferences: SharedPreferences) {
     // Server
@@ -94,6 +95,14 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     // Network - nfo 抓取专用代理（只作用于抓取，不影响 Jellyfin 接口与下载），留空表示直连
     val scrapeProxy = Preference("pref_scrape_proxy", "")
 
+    // nfo 翻译（OpenAI 兼容接口）：只在「编辑 nfo」弹窗里配置，作用范围同抓取代理
+    val translateUrl = Preference("pref_translate_url", Constants.TRANSLATE_DEFAULT_URL)
+    val translateApiKey = Preference("pref_translate_api_key", "")
+    val translateModel = Preference("pref_translate_model", Constants.TRANSLATE_DEFAULT_MODEL)
+    val translateTitle = Preference("pref_translate_title", true)
+    val translatePlot = Preference("pref_translate_plot", true)
+    val translateAuto = Preference("pref_translate_auto", true)
+
     // Cache
     val imageCache = Preference("pref_image_cache", true)
     val imageCacheSize = Preference("pref_image_cache_size", 20)
@@ -108,6 +117,27 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
 
     // Migrations
     val mpvMigrated = Preference("mpv_migrated", false)
+
+    /** 一次性读出整套翻译设置，供状态初始化与界面回填。 */
+    fun getTranslateSettings(): TranslateSettings =
+        TranslateSettings(
+            url = getValue(translateUrl),
+            apiKey = getValue(translateApiKey),
+            model = getValue(translateModel),
+            translateTitle = getValue(translateTitle),
+            translatePlot = getValue(translatePlot),
+            autoTranslate = getValue(translateAuto),
+        )
+
+    /** 整套写回翻译设置，弹窗确认时调用一次。 */
+    fun setTranslateSettings(settings: TranslateSettings) {
+        setValue(translateUrl, settings.url)
+        setValue(translateApiKey, settings.apiKey)
+        setValue(translateModel, settings.model)
+        setValue(translateTitle, settings.translateTitle)
+        setValue(translatePlot, settings.translatePlot)
+        setValue(translateAuto, settings.autoTranslate)
+    }
 
     inline fun <reified T> getValue(preference: Preference<T>): T {
         return try {
@@ -133,8 +163,9 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
                 else -> preference.defaultValue
             }
         } catch (_: Exception) {
-            Timber.w(
-                "Failed to load ${preference.backendName} preference. Resetting to default value..."
+            AppLog.w(
+                "Failed to load %s preference. Resetting to default value...",
+                preference.backendName,
             )
             setValue(preference, preference.defaultValue)
             preference.defaultValue

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -22,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +36,7 @@ import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
+import dev.jdtech.jellyfin.settings.domain.models.TranslateSettings
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeParseException
@@ -48,9 +51,12 @@ private val METADATA_FORM_MAX_HEIGHT = 360.dp
 /**
  * 「编辑 nfo」弹窗。
  *
- * 打开时用服务器上的元数据回填全部可编辑字段：标题行右侧「清空」，按钮行左下角「抓取」，
+ * 打开时用服务器上的元数据回填全部可编辑字段：标题行右侧「清空」，按钮行左下角「抓取」「翻译」，
  * 右下角「取消 / 确认」。「标题」是唯一必填项，为空时给出必填提示并禁用确认；
  * 演职员、外部刮削 ID 等不在表单里的内容不会被改动。
+ *
+ * 「翻译」打开翻译设置弹窗（OpenAI 兼容接口），本身不直接翻译；真正的翻译有两个入口：
+ * 勾了自动翻译时由抓取触发，或在设置弹窗里点「翻译现有」翻当前表单的内容（[onTranslateExisting]）。
  *
  * [scrapedMetadata] 非空表示表单已被抓取结果覆盖、但还没保存，此时标题改为「已更新（未保存）」。
  * [fileName] 是影片文件的名字，「清空」会把标题填成它：抓不到信息时文件名是唯一还能用的标题。
@@ -61,9 +67,13 @@ fun EditItemMetadataDialog(
     scrapedMetadata: ItemMetadataEdit?,
     fileName: String?,
     isLoading: Boolean,
+    isTranslating: Boolean,
+    translateSettings: TranslateSettings,
     errorText: String?,
     onConfirm: (ItemMetadataEdit) -> Unit,
     onScrapeClick: () -> Unit,
+    onTranslateSettingsChange: (TranslateSettings) -> Unit,
+    onTranslateExisting: (ItemMetadataEdit, TranslateSettings) -> Unit,
     onDismiss: () -> Unit,
 ) {
     // 「清空」的结果不是空表单，而是只剩标题（用文件名兜底）——其余字段确实清掉了
@@ -77,11 +87,22 @@ fun EditItemMetadataDialog(
     }
 
     val isConfirmEnabled =
-        !isLoading && (scrapedMetadata != null || metadata != null) && form.isValid
+        !isLoading &&
+            !isTranslating &&
+            (scrapedMetadata != null || metadata != null) &&
+            form.isValid
 
     // 表单里是抓取结果、还没保存时，标题用提醒色，提示用户记得确认
     val titleColor =
         if (scrapedMetadata != null) MaterialTheme.colorScheme.tertiary else Color.Unspecified
+
+    var showTranslateSettings by rememberSaveable { mutableStateOf(false) }
+
+    // 「翻译现有」翻的是当前表单，翻译结果又是整份回填，所以表单本身得是合法的
+    // （数值 / 日期填错时回填会把用户填了一半的内容丢掉）；再按字段说明哪些字段有内容可翻，
+    // 由设置弹窗与它当场勾选的值合起来判断——只勾了标题而标题为空时就该禁用
+    val hasTranslatableTitle = form.isValid && form.name.isNotBlank()
+    val hasTranslatableOverview = form.isValid && form.overview.isNotBlank()
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -153,7 +174,7 @@ fun EditItemMetadataDialog(
                     }
                 }
                 Spacer(Modifier.height(MaterialTheme.spacings.default))
-                // 按钮行：抓取在左下角，取消 / 确认在右下角
+                // 按钮行：抓取 / 翻译在左下角，取消 / 确认在右下角
                 Row(
                     modifier =
                         Modifier.fillMaxWidth()
@@ -161,8 +182,31 @@ fun EditItemMetadataDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = onScrapeClick, enabled = !isLoading) {
-                        Text(text = stringResource(CoreR.string.scrape))
+                    // 翻译期间左侧换成进度提示：这两个按钮本来就用不了，占着位置不如说明在等什么
+                    if (isTranslating) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(MaterialTheme.spacings.default),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(MaterialTheme.spacings.small))
+                            Text(
+                                text = stringResource(CoreR.string.translate_in_progress),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.small)) {
+                            TextButton(onClick = onScrapeClick, enabled = !isLoading) {
+                                Text(text = stringResource(CoreR.string.scrape))
+                            }
+                            TextButton(
+                                onClick = { showTranslateSettings = true },
+                                enabled = !isLoading,
+                            ) {
+                                Text(text = stringResource(CoreR.string.translate))
+                            }
+                        }
                     }
                     Row {
                         TextButton(onClick = onDismiss) {
@@ -178,6 +222,24 @@ fun EditItemMetadataDialog(
                 }
             }
         }
+    }
+
+    // 设置弹窗叠在编辑弹窗之上：设置改完先落本地，再按用户点的动作决定要不要立刻翻一遍
+    if (showTranslateSettings) {
+        TranslateSettingsDialog(
+            settings = translateSettings,
+            hasTranslatableTitle = hasTranslatableTitle,
+            hasTranslatableOverview = hasTranslatableOverview,
+            onConfirm = { settings ->
+                showTranslateSettings = false
+                onTranslateSettingsChange(settings)
+            },
+            onTranslateExisting = { settings ->
+                showTranslateSettings = false
+                onTranslateExisting(form.toMetadataEdit(), settings)
+            },
+            onDismiss = { showTranslateSettings = false },
+        )
     }
 }
 
@@ -422,9 +484,13 @@ private fun EditItemMetadataDialogPreview() {
             scrapedMetadata = null,
             fileName = "ABC-123",
             isLoading = false,
+            isTranslating = false,
+            translateSettings = TranslateSettings(),
             errorText = null,
             onConfirm = {},
             onScrapeClick = {},
+            onTranslateSettingsChange = {},
+            onTranslateExisting = { _, _ -> },
             onDismiss = {},
         )
     }

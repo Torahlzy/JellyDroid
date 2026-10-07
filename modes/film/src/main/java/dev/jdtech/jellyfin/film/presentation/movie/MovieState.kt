@@ -10,6 +10,7 @@ import dev.jdtech.jellyfin.models.FindroidSource
 import dev.jdtech.jellyfin.models.FindroidSourceType
 import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.models.VideoMetadata
+import dev.jdtech.jellyfin.settings.domain.models.TranslateSettings
 
 data class MovieState(
     val movie: FindroidMovie? = null,
@@ -38,8 +39,12 @@ data class MovieState(
     val scrapeFailed: Boolean = false,
     /** 抓到的元数据，非空表示表单已被抓取结果覆盖且尚未保存。 */
     val scrapedMetadata: ItemMetadataEdit? = null,
+    /** 抓取已完成、正在翻译抓取结果；抓取进度弹窗据此把提示从「处理中」换成「正在翻译」。 */
+    val isTranslating: Boolean = false,
     /** 抓取使用的本地代理地址，留空表示直连；入口在抓取关键词弹窗里，不影响其它网络请求。 */
     val scrapeProxy: String = "",
+    /** 翻译设置（OpenAI 兼容的大模型接口），入口在「编辑 nfo」弹窗里；只存本地，与服务器无关。 */
+    val translateSettings: TranslateSettings = TranslateSettings(),
     /** 本地配了地址、抓取时会被尝试的站点，进入「编辑封面」时取一次，供界面先把站点列出来。 */
     val imageScrapeSites: List<ScraperSite> = emptyList(),
     /**

@@ -3,6 +3,7 @@ package dev.jdtech.jellyfin.film.presentation.movie
 import dev.jdtech.jellyfin.core.scraper.ScrapedImage
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.ItemMetadataEdit
+import dev.jdtech.jellyfin.settings.domain.models.TranslateSettings
 import java.util.UUID
 
 sealed interface MovieAction {
@@ -50,6 +51,19 @@ sealed interface MovieAction {
 
     /** 保存抓取使用的本地代理地址，[address] 为空表示直连。 */
     data class UpdateScrapeProxy(val address: String) : MovieAction
+
+    /** 保存翻译设置，决定之后的抓取要不要、以及怎么自动翻译。 */
+    data class UpdateTranslateSettings(val settings: TranslateSettings) : MovieAction
+
+    /**
+     * 保存翻译设置，并把编辑 nfo 弹窗里当前的内容（[metadata]）翻一遍再回填。
+     *
+     * 设置与内容一起传：设置先落本地、再按同一份设置翻译，避免中间隔着一次状态更新。
+     */
+    data class TranslateMetadata(
+        val metadata: ItemMetadataEdit,
+        val settings: TranslateSettings,
+    ) : MovieAction
 
     /** 删除服务器上的条目本身，含视频文件与关联的封面、nfo。 */
     data object DeleteItemWithFiles : MovieAction

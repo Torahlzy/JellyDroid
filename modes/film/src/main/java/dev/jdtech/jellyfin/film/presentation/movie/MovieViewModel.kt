@@ -10,6 +10,7 @@ import dev.jdtech.jellyfin.core.scraper.ScrapeProgress
 import dev.jdtech.jellyfin.core.scraper.ScrapedImage
 import dev.jdtech.jellyfin.core.scraper.SiteImageScrapeResult
 import dev.jdtech.jellyfin.core.scraper.toItemMetadataEdit
+import dev.jdtech.jellyfin.core.translator.MetadataTranslator
 import dev.jdtech.jellyfin.film.domain.VideoMetadataParser
 import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.FindroidItemImage
@@ -21,6 +22,7 @@ import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.models.pickPlaybackSource
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
+import dev.jdtech.jellyfin.settings.domain.models.TranslateSettings
 import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -43,10 +45,18 @@ constructor(
     private val videoMetadataParser: VideoMetadataParser,
     private val metadataScraper: MetadataScraper,
     private val imageScraper: ImageScraper,
+    private val translator: MetadataTranslator,
 ) : ViewModel() {
     // 抓取站点来自本地配置（BuildConfig），整个会话内不会变，直接放进初始 state，
-    // 免得打开「编辑封面」弹窗时要等一次异步加载、先闪一下「没配站点」的空态
-    private val _state = MutableStateFlow(MovieState(imageScrapeSites = imageScraper.sites))
+    // 免得打开「编辑封面」弹窗时要等一次异步加载、先闪一下「没配站点」的空态；
+    // 翻译设置同理，只取决于本地偏好，与具体影片无关
+    private val _state =
+        MutableStateFlow(
+            MovieState(
+                imageScrapeSites = imageScraper.sites,
+                translateSettings = appPreferences.getTranslateSettings(),
+            )
+        )
     val state = _state.asStateFlow()
 
     private val eventsChannel = Channel<MovieEvent>()
@@ -206,6 +216,12 @@ constructor(
             is MovieAction.UpdateScrapeProxy -> {
                 updateScrapeProxy(action.address)
             }
+            is MovieAction.UpdateTranslateSettings -> {
+                updateTranslateSettings(action.settings)
+            }
+            is MovieAction.TranslateMetadata -> {
+                translateExistingMetadata(action.metadata, action.settings)
+            }
             is MovieAction.ScrapeItemImages -> {
                 scrapeItemImages(action.keyword)
             }
@@ -341,6 +357,8 @@ constructor(
                         scrapeSteps = emptyList(),
                         scrapeFailed = false,
                         scrapedMetadata = null,
+                        // 上一轮的翻译提示可能因为中途取消没清掉，这里统一归零
+                        isTranslating = false,
                     )
                 )
                 val steps = mutableListOf<ScrapeProgress>()
@@ -358,11 +376,16 @@ constructor(
                         null
                     }
                 // 标题兜底传番号：极端情况下站点整页给不出标题，用番号占位，别让表单卡在必填校验
+                val metadata = scraped?.toItemMetadataEdit(keyword.trim())
+                // 翻译期间沿用 isScraping = true：抓取进度弹窗是靠 scrapedMetadata 变成非空才关掉的，
+                // 提前置回 false 会让它短暂显示「没抓到任何信息」的总结，用户也可能在这几秒里白编辑表单
+                val translated = metadata?.let { translateScrapedMetadata(it) }
                 _state.emit(
                     _state.value.copy(
                         isScraping = false,
+                        isTranslating = false,
                         scrapeFailed = scraped == null,
-                        scrapedMetadata = scraped?.toItemMetadataEdit(keyword.trim()),
+                        scrapedMetadata = translated,
                     )
                 )
             }
@@ -381,6 +404,7 @@ constructor(
             _state.emit(
                 _state.value.copy(
                     isScraping = false,
+                    isTranslating = false,
                     scrapeSteps = emptyList(),
                     scrapeFailed = false,
                 )
@@ -393,6 +417,88 @@ constructor(
         appPreferences.setValue(appPreferences.scrapeProxy, address)
         viewModelScope.launch { _state.emit(_state.value.copy(scrapeProxy = address)) }
     }
+
+    /** 保存翻译设置；只落本地偏好，不动已经抓到的内容。 */
+    private fun updateTranslateSettings(settings: TranslateSettings) {
+        appPreferences.setTranslateSettings(settings)
+        viewModelScope.launch { _state.emit(_state.value.copy(translateSettings = settings)) }
+    }
+
+    /**
+     * 抓取后自动翻译抓到的标题 / 简介。
+     *
+     * 关掉自动翻译、设置没填全、或要翻的字段都是空的，都直接返回原文。
+     * 翻译失败时也返回原文：抓到的内容比译文更重要，不能因为翻译挂了就丢掉。
+     */
+    private suspend fun translateScrapedMetadata(metadata: ItemMetadataEdit): ItemMetadataEdit {
+        val settings = _state.value.translateSettings
+        if (!settings.autoTranslate || !settings.isConfigured) return metadata
+        val requested = translatableFields(metadata, settings)
+        if (requested.isEmpty()) return metadata
+        // 翻译要跑好几秒，先让进度弹窗把提示切成「正在翻译」，别让用户以为卡在抓取上
+        _state.emit(_state.value.copy(isTranslating = true))
+        return translateFields(metadata, requested) ?: metadata
+    }
+
+    /**
+     * 「翻译现有」：用弹窗里刚填好的设置，把编辑 nfo 表单里的标题 / 简介翻一遍再填回去。
+     *
+     * 与抓取后的自动翻译共用同一条链路，区别只在内容来源与失败处理：
+     * 这里翻不出来就什么都不动，用户手里的内容原样留着，也不标成「已更新（未保存）」。
+     */
+    private fun translateExistingMetadata(metadata: ItemMetadataEdit, settings: TranslateSettings) {
+        viewModelScope.launch {
+            appPreferences.setTranslateSettings(settings)
+            _state.emit(_state.value.copy(translateSettings = settings))
+            // 已经在翻就只落设置，不再叠一次请求：两次结果会把同一个表单先后覆盖一遍
+            if (_state.value.isTranslating) return@launch
+            val requested = translatableFields(metadata, settings)
+            if (requested.isEmpty()) return@launch
+            _state.emit(_state.value.copy(isTranslating = true))
+            val translated = translateFields(metadata, requested)
+            _state.emit(
+                _state.value.copy(
+                    isTranslating = false,
+                    scrapedMetadata = translated ?: _state.value.scrapedMetadata,
+                )
+            )
+        }
+    }
+
+    /** 按设置挑出要翻译的字段（「字段名 -> 原文」）；没勾或原文为空都不放进来。 */
+    private fun translatableFields(
+        metadata: ItemMetadataEdit,
+        settings: TranslateSettings,
+    ): Map<String, String> =
+        buildMap {
+            if (settings.translateTitle && metadata.name.isNotBlank()) put(FIELD_NAME, metadata.name)
+            if (settings.translatePlot && metadata.overview.isNotBlank()) {
+                put(FIELD_OVERVIEW, metadata.overview)
+            }
+        }
+
+    /**
+     * 调接口翻译 [requested]，把译文落回 [metadata]；响应里缺哪个字段就用哪个字段的原文。
+     *
+     * 请求失败时返回 null（原因已记日志并发成事件），由调用方决定是退回原文还是干脆不动现有内容。
+     */
+    private suspend fun translateFields(
+        metadata: ItemMetadataEdit,
+        requested: Map<String, String>,
+    ): ItemMetadataEdit? =
+        try {
+            val translated = translator.translate(requested)
+            metadata.copy(
+                name = translated[FIELD_NAME] ?: metadata.name,
+                overview = translated[FIELD_OVERVIEW] ?: metadata.overview,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.e(e, "翻译元数据失败：%s", movieId)
+            eventsChannel.send(MovieEvent.MetadataTranslateFailed(e))
+            null
+        }
 
     /**
      * 以 [keyword] 为关键词逐个站点抓取封面图片（横图 + 竖图），配了地址的站点都会尝试一遍。
@@ -505,5 +611,11 @@ constructor(
                 eventsChannel.send(MovieEvent.ItemDeleteFailed(e))
             }
         }
+    }
+
+    private companion object {
+        /** 一次翻译请求里区分标题与简介的键名，接口按同样的键把译文回传。 */
+        const val FIELD_NAME = "title"
+        const val FIELD_OVERVIEW = "plot"
     }
 }
