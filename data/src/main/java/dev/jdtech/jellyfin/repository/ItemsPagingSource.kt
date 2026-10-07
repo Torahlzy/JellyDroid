@@ -9,6 +9,12 @@ import dev.jdtech.jellyfin.models.SortOrder
 import java.util.UUID
 import org.jellyfin.sdk.model.api.BaseItemKind
 
+/**
+ * 条目偏移分页。
+ *
+ * 除媒体库浏览外，也支撑按元数据维度（类别、标签、制片公司、分级、年份、人物）筛选结果的加载，
+ * 因此除父级与类型外还携带一组服务端筛选条件，构造时未给出的条件不参与过滤。
+ */
 class ItemsPagingSource(
     private val jellyfinRepository: JellyfinRepository,
     private val parentId: UUID?,
@@ -16,6 +22,12 @@ class ItemsPagingSource(
     private val recursive: Boolean,
     private val sortBy: SortBy,
     private val sortOrder: SortOrder,
+    private val genreIds: List<UUID>? = null,
+    private val studioIds: List<UUID>? = null,
+    private val tags: List<String>? = null,
+    private val officialRatings: List<String>? = null,
+    private val years: List<Int>? = null,
+    private val personIds: List<UUID>? = null,
 ) : PagingSource<Int, FindroidItem>() {
     /**
      * 已输出过的项目 id。服务端基于偏移量的分页并不保证稳定：当排序字段存在大量相同值时（例如
@@ -54,16 +66,7 @@ class ItemsPagingSource(
     ): LoadResult<Int, FindroidItem> {
         AppLog.d("Retrieving position: %d", position)
 
-        val items =
-            jellyfinRepository.getItems(
-                parentId = parentId,
-                includeTypes = includeTypes,
-                recursive = recursive,
-                sortBy = sortBy,
-                sortOrder = sortOrder,
-                startIndex = position,
-                limit = loadSize,
-            )
+        val items = loadItems(sortBy = sortBy, sortOrder = sortOrder, position, loadSize)
 
         return LoadResult.Page(
             data = items.filter { emittedItemIds.add(it.id) },
@@ -96,20 +99,35 @@ class ItemsPagingSource(
      */
     private suspend fun loadRandomSnapshot(): List<FindroidItem> {
         val items =
-            jellyfinRepository.getItems(
-                parentId = parentId,
-                includeTypes = includeTypes,
-                recursive = recursive,
-                sortBy = SortBy.RANDOM,
-                sortOrder = SortOrder.ASCENDING,
-                startIndex = 0,
-                limit = RANDOM_SNAPSHOT_SIZE,
-            )
+            loadItems(sortBy = SortBy.RANDOM, sortOrder = SortOrder.ASCENDING, 0, RANDOM_SNAPSHOT_SIZE)
 
         AppLog.d("随机排序快照 %d 项（媒体库 %s）", items.size, parentId)
 
         return items.shuffled()
     }
+
+    /** 把构造参数与分页参数一起转给仓库，随机快照与普通分页共用同一套筛选条件。 */
+    private suspend fun loadItems(
+        sortBy: SortBy,
+        sortOrder: SortOrder,
+        position: Int,
+        loadSize: Int,
+    ): List<FindroidItem> =
+        jellyfinRepository.getItems(
+            parentId = parentId,
+            includeTypes = includeTypes,
+            recursive = recursive,
+            sortBy = sortBy,
+            sortOrder = sortOrder,
+            startIndex = position,
+            limit = loadSize,
+            genreIds = genreIds,
+            studioIds = studioIds,
+            tags = tags,
+            officialRatings = officialRatings,
+            years = years,
+            personIds = personIds,
+        )
 
     override fun getRefreshKey(state: PagingState<Int, FindroidItem>): Int {
         return 0

@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="jellyfin_banner">Jellyfin 横幅</string>
-    <string name="writers">作者</string>
+    <string name="writers">编剧</string>
     <string name="remove">删除</string>
     <string name="cancel">取消</string>
     <string name="title_media">我的媒体</string>
-    <string name="title_favorite">收藏</string>
+    <string name="title_favorite">我喜欢</string>
     <string name="view_all">查看所有</string>
     <string name="error_loading_data">加载数据错误</string>
     <string name="retry">重试</string>
     <string name="director">导演</string>
-    <string name="genres">风格</string>
+    <string name="genres">类型</string>
     <string name="cast_amp_crew"><![CDATA[演职人员]]></string>
     <string name="seasons">季</string>
     <string name="play_button_description">播放媒体</string>
@@ -184,4 +184,17 @@
     <string name="image_type_thumb">缩略图</string>
     <string name="image_type_banner">横幅</string>
     <string name="image_type_art">艺术图</string>
+    <string name="tags">标签</string>
+    <string name="actors">演员</string>
+    <string name="studios">制片公司</string>
+    <string name="official_ratings">分级</string>
+    <string name="years">年份</string>
+    <string name="navigate_back">返回</string>
+    <string name="browse_section_title">浏览</string>
+    <string name="no_metadata_values">暂无内容</string>
+    <string name="no_filtered_items">没有符合该筛选的条目</string>
+    <string name="no_persons">暂无人物</string>
+    <string name="search_values_hint">搜索筛选值</string>
+    <string name="search_persons_hint">搜索人物</string>
+    <string name="load_more">加载更多</string>
 </resources>

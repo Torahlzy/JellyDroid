@@ -84,7 +84,7 @@ Select-String -Path wiki/pages.md -Pattern '\b(PHONE|CORE|FILM|SETUP|SETTINGS|PL
   }
 ```
 
-无输出即表示文档中的所有路径均有效。此外，页面数量应与 `PHONE/NavigationRoot.kt` 中 `composable<...>` 注册块数量一致（当前为 20 个注册块 + 1 个播放 Activity）。
+无输出即表示文档中的所有路径均有效。此外，`PHONE/NavigationRoot.kt` 中 `composable<...>` 注册块当前为 22 个（另有 1 个播放 Activity）；下表按「页面」列出，同一路由承载多个页面时会有多行（如 `MetadataBrowseRoute` 对应 3 个列表页），因此行数可以多于注册块数。
 
 校验文档中不含行号引用（无输出为通过）：
 
@@ -109,6 +109,10 @@ Select-String -Path wiki/pages.md -Pattern '\.kt:\d+' -AllMatches
 | 内容 | 季详情 | `SeasonRoute` | `PHONE/presentation/film/SeasonScreen.kt` | `FILM/presentation/season/SeasonViewModel.kt` |
 | 内容 | 分集详情 | `EpisodeRoute` | `PHONE/presentation/film/EpisodeScreen.kt` | `FILM/presentation/episode/EpisodeViewModel.kt` |
 | 内容 | 人物详情 | `PersonRoute` | `PHONE/presentation/film/PersonScreen.kt` | `FILM/presentation/person/PersonViewModel.kt` |
+| 内容 | 类别 / 制片公司列表 | `MetadataBrowseRoute` | `PHONE/presentation/film/NamedItemListScreen.kt` | `FILM/presentation/nameditem/NamedItemListViewModel.kt` |
+| 内容 | 人物列表（演员 / 导演 / 编剧） | `MetadataBrowseRoute` | `PHONE/presentation/film/PersonListScreen.kt` | `FILM/presentation/personlist/PersonListViewModel.kt` |
+| 内容 | 标签 / 分级 / 年份列表 | `MetadataBrowseRoute` | `PHONE/presentation/film/FilterValueListScreen.kt` | `FILM/presentation/filtervalue/FilterValueListViewModel.kt` |
+| 内容 | 元数据筛选结果 | `ItemFilterRoute` | `PHONE/presentation/film/ItemFilterScreen.kt` | `FILM/presentation/itemfilter/ItemFilterViewModel.kt` |
 | 设置 | 设置 | `SettingsRoute` | `PHONE/presentation/settings/SettingsScreen.kt` | `SETTINGS/presentation/settings/SettingsViewModel.kt` |
 | 设置 | 文件编辑 | `SettingsFileEditRoute` | `PHONE/presentation/settings/SettingsFileEditScreen.kt` | `SETTINGS/presentation/settings/SettingsFileEditViewModel.kt` |
 | 设置 | 关于 | `AboutRoute` | `PHONE/presentation/settings/AboutScreen.kt` | 无 |
@@ -148,13 +152,14 @@ else -> WelcomeRoute
 
 ### MediaScreen — 媒体库总览
 
-- **职责**：展示「收藏」入口与全部媒体库网格；顶部内嵌搜索栏（`FilmSearchBar`）。媒体库卡片为横图（`BANNER_ASPECT_RATIO`）；合集库（`CollectionType.BoxSets`）服务器上不提供封面，卡片改用通用图标 `CoreR.drawable.ic_collection` 占位。
+- **职责**：展示全部媒体库网格；顶部内嵌搜索栏（`FilmSearchBar`），网格末尾依次是「我喜欢」入口与浏览入口区块。媒体库卡片为横图（`BANNER_ASPECT_RATIO`），列数固定为手机 2 列、折叠屏展开（宽度 ≥ 600dp）4 列——横图卡片列数翻倍时宽度与高度都减半；合集库（`CollectionType.BoxSets`）服务器上不提供封面，卡片改用通用图标 `CoreR.drawable.ic_collection` 占位。
 - **路由**：`MediaRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/MediaScreen.kt`；搜索栏挂载于 `MediaScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/media/MediaViewModel.kt`、`FILM/presentation/media/MediaState.kt`、`FILM/presentation/media/MediaAction.kt`。
 - **State 字段**：`libraries`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadData()`；`OnItemClick`、`OnFavoritesClick`、`OnRetryClick`。
 - **入口**：底部「媒体」标签；首页搜索按钮会切到此页并置 `searchExpanded = true`（`PHONE/NavigationRoot.kt`）。
+- **浏览入口**：网格末尾追加 `PHONE/presentation/film/components/MediaBrowseSection.kt`——按 nfo 已入库的维度（类别 / 标签 / 分级 / 年份 / 演员 / 导演 / 编剧 / 制片公司，枚举为 `data/src/main/java/dev/jdtech/jellyfin/models/MetadataFacet.kt`）列出入口，固定每行两个、随列表一起滚动，点击进入 `MetadataBrowseRoute`。
 
 ### DownloadsScreen — 下载
 
@@ -259,6 +264,49 @@ else -> WelcomeRoute
 - **State 字段**：`person`、`starredInMovies`、`starredInShows`、`error`。
 - **主要方法**：`loadPerson(personId)`。
 - **入口**：电影 / 剧集 / 分集详情页点击演员（见 `PHONE/NavigationRoot.kt` 中 `NavigateToPerson` 的处理）。
+- **查看全部作品**：头部下方提供「查看全部」按钮（`PersonAction.NavigateToAllItems`），跳转到 `ItemFilterRoute(facet = ACTOR)`；本页仍只展示前若干部作品，人物没有任何作品时不显示该按钮。
+
+### NamedItemListScreen — 类别 / 制片公司列表
+
+- **职责**：列出全库的类别或制片公司，顶部提供本地过滤输入，点击某项进入该值下的筛选结果页。
+- **路由**：`MetadataBrowseRoute`（`facet` 为 `MetadataFacet.GENRE` / `MetadataFacet.STUDIO`），定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/NamedItemListScreen.kt`。
+- **ViewModel / State / Action**：`FILM/presentation/nameditem/NamedItemListViewModel.kt`、`FILM/presentation/nameditem/NamedItemListState.kt`、`FILM/presentation/nameditem/NamedItemListAction.kt`。
+- **State 字段**：`facet`、`items`、`searchQuery`、`isLoading`、`error`；派生属性 `visibleItems`（本地过滤结果）。
+- **主要方法 / Action**：`loadItems(facet)`、`onAction()`；`OnItemClick`、`OnSearchQueryChange`、`Retry`、`OnBackClick`。
+- **入口**：我的媒体页底部的浏览入口区块。
+
+### PersonListScreen — 人物列表
+
+- **职责**：按人物类型列出演员 / 导演 / 编剧，顶部搜索走服务端（输入防抖）；点击某人进入人物详情页。
+- **路由**：`MetadataBrowseRoute`（`facet` 为 `MetadataFacet.ACTOR` / `MetadataFacet.DIRECTOR` / `MetadataFacet.WRITER`），定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/PersonListScreen.kt`。
+- **ViewModel / State / Action**：`FILM/presentation/personlist/PersonListViewModel.kt`、`FILM/presentation/personlist/PersonListState.kt`、`FILM/presentation/personlist/PersonListAction.kt`。
+- **State 字段**：`persons`、`searchQuery`、`isLoading`、`canLoadMore`、`error`；`PersonListState.PAGE_SIZE` 为首屏数量，同时也是「加载更多」的步长。
+- **主要方法 / Action**：`loadPersons(facet)`、`onAction()`；`OnPersonClick`、`Search`、`OnLoadMore`、`Retry`、`OnBackClick`。
+- **伪分页**：服务端人物接口既不支持偏移分页也不支持排序，`OnLoadMore` 只是把 `limit` 加大后整体重取，因此页码越大响应体越大。
+- **入口**：我的媒体页底部的浏览入口区块；点击某人跳到 `PersonRoute`。
+
+### FilterValueListScreen — 标签 / 分级 / 年份列表
+
+- **职责**：列出服务端给出的可用标签、分级或年份，顶部本地过滤，点击某个值进入该值下的筛选结果页。
+- **路由**：`MetadataBrowseRoute`（`facet` 为 `MetadataFacet.TAG` / `MetadataFacet.OFFICIAL_RATING` / `MetadataFacet.YEAR`），定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/FilterValueListScreen.kt`。
+- **ViewModel / State / Action**：`FILM/presentation/filtervalue/FilterValueListViewModel.kt`、`FILM/presentation/filtervalue/FilterValueListState.kt`、`FILM/presentation/filtervalue/FilterValueListAction.kt`。
+- **State 字段**：`facet`、`values`、`searchQuery`、`isLoading`、`error`；派生属性 `visibleValues`。
+- **主要方法 / Action**：`loadValues(facet)`、`onAction()`；`OnValueClick`、`OnSearchQueryChange`、`Retry`、`OnBackClick`。
+- **入口**：我的媒体页底部的浏览入口区块。
+
+### ItemFilterScreen — 元数据筛选结果
+
+- **职责**：按单个元数据值筛选影片与剧集并分页展示，右上角弹窗同时承载排序与封面显示模式。
+- **路由**：`ItemFilterRoute(facet, key, title)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/film/ItemFilterScreen.kt`。
+- **ViewModel / State / Action**：`FILM/presentation/itemfilter/ItemFilterViewModel.kt`、`FILM/presentation/itemfilter/ItemFilterState.kt`、`FILM/presentation/itemfilter/ItemFilterAction.kt`。
+- **State 字段**：`items`（PagingData Flow）、`facet`、`sortBy`、`sortOrder`、`coverMode`、`error`；列表的加载中 / 出错状态由分页流的 `loadState` 承载（界面渲染同一套）。
+- **主要方法 / Action**：`loadItems(facet, key)`、`onAction()`；`OnItemClick`、`OnBackClick`、`ChangeSorting`、`ChangeCoverMode`。
+- **筛选参数**：类别、制片公司、人物按实体 id 过滤，标签、分级、年份按文本值过滤；范围固定为 `MOVIE` + `SERIES`、递归、全库。
+- **入口**：三个浏览列表页点击具体值；人物详情页的「查看全部」。
 
 ---
 

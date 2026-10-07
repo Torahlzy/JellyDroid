@@ -46,11 +46,18 @@ class JavDbScraper(private val http: ScraperHttp, private val baseUrl: String) {
             container.selectFirst("h2 strong.current-title")?.text()?.trim().orEmpty().takeIf {
                 it.isNotBlank()
             } ?: throw ScraperException.WebsiteError("JavDB: 影片页没有标题")
+        // 番号在标题同级的另一个 <strong> 里（形如 `<strong>SSIS-001 </strong>`），单独取出来；
+        // 不能走 valueAfterLabel：番號那一行紧跟的是空文本节点，取出来会是一个不换行的空格
+        val number =
+            container.selectFirst("h2 strong:not(.current-title)")?.text()?.trim()?.takeIf {
+                it.isNotEmpty()
+            }
 
         return ScrapedMovie(
             site = ScraperSite.JAVDB,
-            // 站点标题里带着番号，原样保留：番号是识别影片的关键，剥掉后还得从文件名里猜回来
-            title = title,
+            number = number,
+            // 片名里不含番号，剥掉尾部的女优名即可，番号由上层拼在片名前
+            title = stripTrailingActors(stripNumberPrefix(title, number), readActresses(info)),
             originalTitle =
                 container.selectFirst("h2 span.origin-title")?.text()?.trim()?.takeIf {
                     it.isNotEmpty()
@@ -76,6 +83,9 @@ class JavDbScraper(private val http: ScraperHttp, private val baseUrl: String) {
         val value = category.parent() ?: return emptyList()
         return value.select("span a").texts()
     }
+
+    /** 女优名供清理标题尾部使用；站点用 `actor-female` 标女优，男优不带这个 class。 */
+    private fun readActresses(info: Element): List<String> = info.select("a.actor-female").texts()
 
     /** 评分形如 `4.5分, 由 123 人評價`，站点给的是 5 分制，乘 2 统一到 10 分制。 */
     private fun readScore(html: Document): Float? {

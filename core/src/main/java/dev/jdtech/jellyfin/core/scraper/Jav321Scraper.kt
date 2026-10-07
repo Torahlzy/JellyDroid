@@ -45,11 +45,14 @@ class Jav321Scraper(private val http: ScraperHttp, private val baseUrl: String) 
         val info =
             html.selectFirst("div.col-md-9")
                 ?: throw ScraperException.WebsiteError("Jav321: 页面结构变化，找不到信息面板")
-        // 标题后面跟着的 <small> 里是番号，整段取下来：番号是识别影片的关键，不剥掉
-        val title =
-            html.selectFirst("div.panel-heading h3")?.text()?.trim().orEmpty().takeIf {
+        // h3 形如「片名 女优名<small>番号 女优名</small>」：只能取直接文本（ownText），
+        // 用 text() 会把 <small> 里的番号与女优名再拼一遍，标题就变成「片名 女优名 番号 女优名」
+        val rawTitle =
+            html.selectFirst("div.panel-heading h3")?.ownText()?.trim().orEmpty().takeIf {
                 it.isNotBlank()
             } ?: throw ScraperException.WebsiteError("Jav321: 页面没有标题")
+        // 番号在「品番」字段里，站点给的是小写，统一成大写，与其它站点及识别出的关键词一致
+        val number = info.bTagValue("品番")?.uppercase()
 
         val gallery =
             html.select("div.col-xs-12.col-md-12 p a img.img-responsive").mapNotNull {
@@ -58,7 +61,8 @@ class Jav321Scraper(private val http: ScraperHttp, private val baseUrl: String) 
 
         return ScrapedMovie(
             site = ScraperSite.JAV321,
-            title = title,
+            number = number,
+            title = stripTrailingActors(rawTitle, info.select("a[href*='/star/']").texts()),
             originalTitle = null,
             plot = readPlot(info),
             genres = info.select("a[href*='/genre/']").texts(),

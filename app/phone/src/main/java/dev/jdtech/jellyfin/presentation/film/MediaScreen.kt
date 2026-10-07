@@ -37,6 +37,7 @@ import dev.jdtech.jellyfin.film.presentation.search.SearchViewModel
 import dev.jdtech.jellyfin.models.CollectionType
 import dev.jdtech.jellyfin.models.FindroidCollection
 import dev.jdtech.jellyfin.models.FindroidItem
+import dev.jdtech.jellyfin.models.MetadataFacet
 import dev.jdtech.jellyfin.presentation.components.ErrorDialog
 import dev.jdtech.jellyfin.presentation.film.components.BANNER_ASPECT_RATIO
 import dev.jdtech.jellyfin.presentation.film.components.Direction
@@ -44,14 +45,21 @@ import dev.jdtech.jellyfin.presentation.film.components.ErrorCard
 import dev.jdtech.jellyfin.presentation.film.components.FavoritesCard
 import dev.jdtech.jellyfin.presentation.film.components.FilmSearchBar
 import dev.jdtech.jellyfin.presentation.film.components.ItemCard
+import dev.jdtech.jellyfin.presentation.film.components.MediaBrowseSection
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
+
+// 媒体库卡片的列数：手机两列、折叠屏展开四列。
+// 卡片是 16:9 的横图，列数翻倍后宽度减半、高度也减半，一屏能看到更多媒体库。
+private const val PHONE_LIBRARY_COLUMNS = 2
+private const val EXPANDED_LIBRARY_COLUMNS = 4
 
 @Composable
 fun MediaScreen(
     onItemClick: (FindroidItem) -> Unit,
     onFavoritesClick: () -> Unit,
+    onFacetClick: (MetadataFacet) -> Unit,
     searchExpanded: Boolean,
     onSearchExpand: (Boolean) -> Unit,
     viewModel: MediaViewModel = hiltViewModel(),
@@ -67,6 +75,7 @@ fun MediaScreen(
         searchState = searchState,
         searchExpanded = searchExpanded,
         onSearchExpand = onSearchExpand,
+        onFacetClick = onFacetClick,
         onAction = { action ->
             when (action) {
                 is MediaAction.OnItemClick -> onItemClick(action.item)
@@ -91,6 +100,7 @@ private fun MediaScreenLayout(
     searchState: SearchState,
     searchExpanded: Boolean,
     onSearchExpand: (Boolean) -> Unit,
+    onFacetClick: (MetadataFacet) -> Unit,
     onAction: (MediaAction) -> Unit,
     onSearchAction: (SearchAction) -> Unit,
 ) {
@@ -114,14 +124,11 @@ private fun MediaScreenLayout(
     var showErrorDialog by rememberSaveable { mutableStateOf(false) }
 
     val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
-    val minColumnSize =
-        when {
-            windowSizeClass.isWidthAtLeastBreakpoint(
-                WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
-            ) -> 320.dp
-            windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND) ->
-                240.dp
-            else -> 160.dp
+    val libraryColumns =
+        if (windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)) {
+            EXPANDED_LIBRARY_COLUMNS
+        } else {
+            PHONE_LIBRARY_COLUMNS
         }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -135,7 +142,7 @@ private fun MediaScreenLayout(
             paddingEnd = paddingEnd,
         )
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = minColumnSize),
+            columns = GridCells.Fixed(libraryColumns),
             modifier = Modifier.fillMaxSize(),
             contentPadding =
                 PaddingValues(
@@ -147,9 +154,6 @@ private fun MediaScreenLayout(
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.default),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.default),
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                FavoritesCard(onClick = { onAction(MediaAction.OnFavoritesClick) })
-            }
             items(state.libraries, key = { it.id }) { library ->
                 ItemCard(
                     item = library,
@@ -160,6 +164,13 @@ private fun MediaScreenLayout(
                     aspectRatio = BANNER_ASPECT_RATIO,
                     placeholderIconRes = library.placeholderIconRes(),
                 )
+            }
+            // 「我喜欢」与浏览入口都排在媒体库列表之后，各自独占整行（折叠屏展开也不会被分列）
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                FavoritesCard(onClick = { onAction(MediaAction.OnFavoritesClick) })
+            }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                MediaBrowseSection(onFacetClick = onFacetClick)
             }
         }
         if (state.error != null) {
@@ -194,6 +205,7 @@ private fun MediaScreenLayoutPreview() {
             searchState = SearchState(),
             searchExpanded = false,
             onSearchExpand = {},
+            onFacetClick = {},
             onAction = {},
             onSearchAction = {},
         )

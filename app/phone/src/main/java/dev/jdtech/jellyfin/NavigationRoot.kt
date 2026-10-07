@@ -40,14 +40,19 @@ import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.FindroidMovie
 import dev.jdtech.jellyfin.models.FindroidSeason
 import dev.jdtech.jellyfin.models.FindroidShow
+import dev.jdtech.jellyfin.models.MetadataFacet
 import dev.jdtech.jellyfin.presentation.film.CollectionScreen
 import dev.jdtech.jellyfin.presentation.film.DownloadsScreen
 import dev.jdtech.jellyfin.presentation.film.EpisodeScreen
 import dev.jdtech.jellyfin.presentation.film.FavoritesScreen
+import dev.jdtech.jellyfin.presentation.film.FilterValueListScreen
 import dev.jdtech.jellyfin.presentation.film.HomeScreen
+import dev.jdtech.jellyfin.presentation.film.ItemFilterScreen
 import dev.jdtech.jellyfin.presentation.film.LibraryScreen
 import dev.jdtech.jellyfin.presentation.film.MediaScreen
 import dev.jdtech.jellyfin.presentation.film.MovieScreen
+import dev.jdtech.jellyfin.presentation.film.NamedItemListScreen
+import dev.jdtech.jellyfin.presentation.film.PersonListScreen
 import dev.jdtech.jellyfin.presentation.film.PersonScreen
 import dev.jdtech.jellyfin.presentation.film.SeasonScreen
 import dev.jdtech.jellyfin.presentation.film.ShowScreen
@@ -102,6 +107,18 @@ data class LibraryRoute(
 @Serializable data class SeasonRoute(val seasonId: String)
 
 @Serializable data class PersonRoute(val personId: String)
+
+/**
+ * 元数据维度浏览页。
+ *
+ * 各维度对应不同的列表形态（命名实体 / 人物 / 文本值），由同一个路由按维度分发到对应 Screen，
+ * 避免为每个维度各建一套路由。
+ */
+@Serializable data class MetadataBrowseRoute(val facet: MetadataFacet)
+
+/** 按某个元数据值筛选出的条目列表。[key] 为服务端实体 id 或文本值。 */
+@Serializable
+data class ItemFilterRoute(val facet: MetadataFacet, val key: String, val title: String)
 
 @Serializable data class SettingsRoute(val indexes: IntArray)
 
@@ -326,6 +343,9 @@ fun NavigationRoot(
                         navigateToItem(navController = navController, item = item)
                     },
                     onFavoritesClick = { navController.safeNavigate(FavoritesRoute) },
+                    onFacetClick = { facet ->
+                        navController.safeNavigate(MetadataBrowseRoute(facet))
+                    },
                     searchExpanded = searchExpanded,
                     onSearchExpand = { searchExpanded = it },
                 )
@@ -436,6 +456,73 @@ fun NavigationRoot(
                     navigateToItem = { item ->
                         navigateToItem(navController = navController, item = item)
                     },
+                    navigateToAllItems = { personId, personName ->
+                        navController.safeNavigate(
+                            ItemFilterRoute(
+                                facet = MetadataFacet.ACTOR,
+                                key = personId.toString(),
+                                title = personName,
+                            )
+                        )
+                    },
+                )
+            }
+            composable<MetadataBrowseRoute> { backStackEntry ->
+                val route: MetadataBrowseRoute = backStackEntry.toRoute()
+                when (route.facet) {
+                    MetadataFacet.GENRE,
+                    MetadataFacet.STUDIO ->
+                        NamedItemListScreen(
+                            facet = route.facet,
+                            onItemClick = { item ->
+                                navController.safeNavigate(
+                                    ItemFilterRoute(
+                                        facet = route.facet,
+                                        key = item.id.toString(),
+                                        title = item.name,
+                                    )
+                                )
+                            },
+                            navigateBack = { navController.safePopBackStack() },
+                        )
+                    MetadataFacet.ACTOR,
+                    MetadataFacet.DIRECTOR,
+                    MetadataFacet.WRITER ->
+                        PersonListScreen(
+                            facet = route.facet,
+                            onPersonClick = { person ->
+                                navController.safeNavigate(PersonRoute(person.id.toString()))
+                            },
+                            navigateBack = { navController.safePopBackStack() },
+                        )
+                    MetadataFacet.TAG,
+                    MetadataFacet.OFFICIAL_RATING,
+                    MetadataFacet.YEAR ->
+                        FilterValueListScreen(
+                            facet = route.facet,
+                            onValueClick = { value ->
+                                navController.safeNavigate(
+                                    ItemFilterRoute(
+                                        facet = route.facet,
+                                        key = value,
+                                        title = value,
+                                    )
+                                )
+                            },
+                            navigateBack = { navController.safePopBackStack() },
+                        )
+                }
+            }
+            composable<ItemFilterRoute> { backStackEntry ->
+                val route: ItemFilterRoute = backStackEntry.toRoute()
+                ItemFilterScreen(
+                    facet = route.facet,
+                    filterKey = route.key,
+                    title = route.title,
+                    onItemClick = { item ->
+                        navigateToItem(navController = navController, item = item)
+                    },
+                    navigateBack = { navController.safePopBackStack() },
                 )
             }
             composable<SettingsRoute> { backStackEntry ->

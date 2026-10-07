@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -27,7 +28,12 @@ fun FavoritesCard(onClick: () -> Unit, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.small),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(painter = painterResource(CoreR.drawable.ic_star), contentDescription = null)
+            // 与详情页里「已收藏」状态保持同一套视觉：实心红心
+            Icon(
+                painter = painterResource(CoreR.drawable.ic_heart_filled),
+                contentDescription = null,
+                tint = Color.Red,
+            )
             Text(text = stringResource(CoreR.string.title_favorite))
         }
     }

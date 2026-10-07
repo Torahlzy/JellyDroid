@@ -35,8 +35,6 @@ import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.paging.CombinedLoadStates
-import androidx.paging.LoadState
 import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
@@ -48,11 +46,10 @@ import dev.jdtech.jellyfin.film.presentation.library.LibraryViewModel
 import dev.jdtech.jellyfin.models.CollectionType
 import dev.jdtech.jellyfin.models.CoverDisplayMode
 import dev.jdtech.jellyfin.models.FindroidItem
-import dev.jdtech.jellyfin.presentation.components.ErrorDialog
 import dev.jdtech.jellyfin.presentation.film.components.BANNER_ASPECT_RATIO
 import dev.jdtech.jellyfin.presentation.film.components.Direction
-import dev.jdtech.jellyfin.presentation.film.components.ErrorCard
 import dev.jdtech.jellyfin.presentation.film.components.ItemCard
+import dev.jdtech.jellyfin.presentation.film.components.PagingErrorGroup
 import dev.jdtech.jellyfin.presentation.film.components.SortByDialog
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
@@ -152,7 +149,7 @@ private fun LibraryScreenLayout(
         },
     ) { innerPadding ->
         Column {
-            ErrorGroup(
+            PagingErrorGroup(
                 loadStates = items.loadState,
                 onRefresh = { items.refresh() },
                 modifier = Modifier.fillMaxWidth().padding(contentPadding + innerPadding),
@@ -200,40 +197,6 @@ private fun LibraryScreenLayout(
             },
             onDismissRequest = { showSortByDialog = false },
         )
-    }
-}
-
-@Composable
-private fun ErrorGroup(
-    loadStates: CombinedLoadStates,
-    onRefresh: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var showErrorDialog by rememberSaveable { mutableStateOf(false) }
-
-    val loadStateError =
-        when {
-            loadStates.refresh is LoadState.Error -> {
-                loadStates.refresh as LoadState.Error
-            }
-            loadStates.prepend is LoadState.Error -> {
-                loadStates.prepend as LoadState.Error
-            }
-            loadStates.append is LoadState.Error -> {
-                loadStates.append as LoadState.Error
-            }
-            else -> null
-        }
-
-    loadStateError?.let {
-        ErrorCard(
-            onShowStacktrace = { showErrorDialog = true },
-            onRetryClick = onRefresh,
-            modifier = modifier,
-        )
-        if (showErrorDialog) {
-            ErrorDialog(exception = it.error, onDismissRequest = { showErrorDialog = false })
-        }
     }
 }
 

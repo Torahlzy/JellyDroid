@@ -8,6 +8,7 @@ import androidx.paging.PagingData
 import dev.jdtech.jellyfin.api.JellyfinApi
 import dev.jdtech.jellyfin.database.ServerDatabaseDao
 import dev.jdtech.jellyfin.logging.AppLog
+import dev.jdtech.jellyfin.models.FilterValues
 import dev.jdtech.jellyfin.models.FindroidBoxSet
 import dev.jdtech.jellyfin.models.FindroidCollection
 import dev.jdtech.jellyfin.models.FindroidEpisode
@@ -15,6 +16,7 @@ import dev.jdtech.jellyfin.models.FindroidImages
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidMovie
+import dev.jdtech.jellyfin.models.FindroidNamedItem
 import dev.jdtech.jellyfin.models.FindroidPerson
 import dev.jdtech.jellyfin.models.FindroidSeason
 import dev.jdtech.jellyfin.models.FindroidSegment
@@ -29,6 +31,7 @@ import dev.jdtech.jellyfin.models.toFindroidImages
 import dev.jdtech.jellyfin.models.toFindroidItem
 import dev.jdtech.jellyfin.models.toFindroidItemImage
 import dev.jdtech.jellyfin.models.toFindroidMovie
+import dev.jdtech.jellyfin.models.toFindroidNamedItem
 import dev.jdtech.jellyfin.models.toFindroidPerson
 import dev.jdtech.jellyfin.models.toFindroidSeason
 import dev.jdtech.jellyfin.models.toFindroidSegment
@@ -77,6 +80,9 @@ private const val JPEG_MEDIA_TYPE = "image/jpeg"
 
 // 查找合集封面时最多试探的子条目数量：合集内排序最前的条目也可能没有图片
 private const val BOX_SET_COVER_CANDIDATE_LIMIT = 3
+
+// 类别 / 制片公司一次取回的上限：这两类实体数量有限，一次取回后在客户端过滤，不做分页
+private const val NAMED_ITEM_LIMIT = 500
 
 // 同时试探封面的合集数量上限：合集库一页可能有多个缺图合集，避免一次性打出大量并发请求
 private const val BOX_SET_COVER_CONCURRENCY = 4
@@ -224,6 +230,12 @@ class JellyfinRepositoryImpl(
         sortOrder: SortOrder,
         startIndex: Int?,
         limit: Int?,
+        genreIds: List<UUID>?,
+        studioIds: List<UUID>?,
+        tags: List<String>?,
+        officialRatings: List<String>?,
+        years: List<Int>?,
+        personIds: List<UUID>?,
     ): List<FindroidItem> =
         withContext(Dispatchers.IO) {
             jellyfinApi.itemsApi
@@ -236,6 +248,12 @@ class JellyfinRepositoryImpl(
                     sortOrder = listOf(ItemSortOrder.fromName(sortOrder.sortString)),
                     startIndex = startIndex,
                     limit = limit,
+                    genreIds = genreIds,
+                    studioIds = studioIds,
+                    tags = tags,
+                    officialRatings = officialRatings,
+                    years = years,
+                    personIds = personIds,
                 )
                 .content
                 .items
@@ -284,11 +302,30 @@ class JellyfinRepositoryImpl(
         recursive: Boolean,
         sortBy: SortBy,
         sortOrder: SortOrder,
+        genreIds: List<UUID>?,
+        studioIds: List<UUID>?,
+        tags: List<String>?,
+        officialRatings: List<String>?,
+        years: List<Int>?,
+        personIds: List<UUID>?,
     ): Flow<PagingData<FindroidItem>> {
         return Pager(
                 config = PagingConfig(pageSize = 10, enablePlaceholders = false),
                 pagingSourceFactory = {
-                    ItemsPagingSource(this, parentId, includeTypes, recursive, sortBy, sortOrder)
+                    ItemsPagingSource(
+                        jellyfinRepository = this,
+                        parentId = parentId,
+                        includeTypes = includeTypes,
+                        recursive = recursive,
+                        sortBy = sortBy,
+                        sortOrder = sortOrder,
+                        genreIds = genreIds,
+                        studioIds = studioIds,
+                        tags = tags,
+                        officialRatings = officialRatings,
+                        years = years,
+                        personIds = personIds,
+                    )
                 },
             )
             .flow
@@ -318,6 +355,77 @@ class JellyfinRepositoryImpl(
                 .content
                 .items
                 .mapNotNull { it.toFindroidItem(this@JellyfinRepositoryImpl, database) }
+        }
+
+    override suspend fun getGenres(): List<FindroidNamedItem> =
+        withContext(Dispatchers.IO) {
+            jellyfinApi.genresApi
+                .getGenres(
+                    userId = jellyfinApi.userId!!,
+                    limit = NAMED_ITEM_LIMIT,
+                    sortBy = listOf(ItemSortBy.SORT_NAME),
+                    sortOrder = listOf(ItemSortOrder.ASCENDING),
+                )
+                .content
+                .items
+                .map { it.toFindroidNamedItem(this@JellyfinRepositoryImpl) }
+        }
+
+    // /Studios 不接受排序参数，返回顺序由服务端决定
+    override suspend fun getStudios(): List<FindroidNamedItem> =
+        withContext(Dispatchers.IO) {
+            jellyfinApi.studiosApi
+                .getStudios(
+                    userId = jellyfinApi.userId!!,
+                    limit = NAMED_ITEM_LIMIT,
+                )
+                .content
+                .items
+                .map { it.toFindroidNamedItem(this@JellyfinRepositoryImpl) }
+        }
+
+    override suspend fun getPersons(
+        personTypes: List<String>,
+        limit: Int,
+        searchTerm: String?,
+    ): List<FindroidPerson> =
+        withContext(Dispatchers.IO) {
+            // 列表页只用姓名与头像，不额外请求 ItemFields：调用方一次可能取 500 人，带上简介会让响应体大出一截
+            val persons =
+                jellyfinApi.personsApi
+                    .getPersons(
+                        userId = jellyfinApi.userId!!,
+                        limit = limit,
+                        searchTerm = searchTerm,
+                        personTypes = personTypes,
+                    )
+                    .content
+                    .items
+
+            AppLog.d("人物列表：类型 %s，limit %d，返回 %d 人", personTypes, limit, persons.size)
+
+            persons.map { it.toFindroidPerson(this@JellyfinRepositoryImpl) }
+        }
+
+    override suspend fun getFilterValues(): FilterValues =
+        withContext(Dispatchers.IO) {
+            val filters = jellyfinApi.filterApi.getQueryFiltersLegacy(jellyfinApi.userId!!).content
+
+            // 较新的服务端上该接口可能不再返回这些值，此时对应入口会显示空列表；日志用于区分
+            // 「服务端没给值」与「库里确实没有」
+            AppLog.d(
+                "可用筛选值：标签 %d，分级 %d，年份 %d",
+                filters.tags.orEmpty().size,
+                filters.officialRatings.orEmpty().size,
+                filters.years.orEmpty().size,
+            )
+
+            FilterValues(
+                // 标签与年份在界面上直接展示，这里就排好序，避免各页面重复处理
+                tags = filters.tags.orEmpty().sorted(),
+                officialRatings = filters.officialRatings.orEmpty(),
+                years = filters.years.orEmpty().sortedDescending(),
+            )
         }
 
     override suspend fun getFavoriteItems(): List<FindroidItem> =

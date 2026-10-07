@@ -1,11 +1,13 @@
 package dev.jdtech.jellyfin.repository
 
 import androidx.paging.PagingData
+import dev.jdtech.jellyfin.models.FilterValues
 import dev.jdtech.jellyfin.models.FindroidCollection
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidMovie
+import dev.jdtech.jellyfin.models.FindroidNamedItem
 import dev.jdtech.jellyfin.models.FindroidPerson
 import dev.jdtech.jellyfin.models.FindroidSeason
 import dev.jdtech.jellyfin.models.FindroidSegment
@@ -40,6 +42,12 @@ interface JellyfinRepository {
 
     suspend fun getItem(itemId: UUID): FindroidItem?
 
+    /**
+     * 按条件列出条目。
+     *
+     * [genreIds] 之后的一组筛选参数与服务端 `/Items` 的同名过滤条件一一对应，未给出时不参与过滤，
+     * 因此媒体库浏览与按元数据维度筛选共用这一个方法。
+     */
     suspend fun getItems(
         parentId: UUID? = null,
         includeTypes: List<BaseItemKind>? = null,
@@ -48,14 +56,27 @@ interface JellyfinRepository {
         sortOrder: SortOrder = SortOrder.ASCENDING,
         startIndex: Int? = null,
         limit: Int? = null,
+        genreIds: List<UUID>? = null,
+        studioIds: List<UUID>? = null,
+        tags: List<String>? = null,
+        officialRatings: List<String>? = null,
+        years: List<Int>? = null,
+        personIds: List<UUID>? = null,
     ): List<FindroidItem>
 
+    /** [getItems] 的分页版本，筛选参数含义相同。 */
     suspend fun getItemsPaging(
         parentId: UUID? = null,
         includeTypes: List<BaseItemKind>? = null,
         recursive: Boolean = false,
         sortBy: SortBy = SortBy.defaultValue,
         sortOrder: SortOrder = SortOrder.ASCENDING,
+        genreIds: List<UUID>? = null,
+        studioIds: List<UUID>? = null,
+        tags: List<String>? = null,
+        officialRatings: List<String>? = null,
+        years: List<Int>? = null,
+        personIds: List<UUID>? = null,
     ): Flow<PagingData<FindroidItem>>
 
     suspend fun getPerson(personId: UUID): FindroidPerson
@@ -65,6 +86,27 @@ interface JellyfinRepository {
         includeTypes: List<BaseItemKind>? = null,
         recursive: Boolean = true,
     ): List<FindroidItem>
+
+    /** 列出全库所有类别（nfo 的 genre）。 */
+    suspend fun getGenres(): List<FindroidNamedItem>
+
+    /** 列出全库所有制片公司（nfo 的 studio）。 */
+    suspend fun getStudios(): List<FindroidNamedItem>
+
+    /**
+     * 按人物类型列出人物。
+     *
+     * 服务端的 `/Persons` 既不支持偏移分页也不支持排序，只能按 [limit] 截断并用 [searchTerm] 收敛，
+     * 因此「取更多」与搜索由调用方负责。
+     */
+    suspend fun getPersons(
+        personTypes: List<String>,
+        limit: Int,
+        searchTerm: String? = null,
+    ): List<FindroidPerson>
+
+    /** 一次性取回服务端提供的可用筛选值（标签、分级、年份）。 */
+    suspend fun getFilterValues(): FilterValues
 
     suspend fun getFavoriteItems(): List<FindroidItem>
 

@@ -1,6 +1,7 @@
 package dev.jdtech.jellyfin.core.scraper
 
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 
 /**
  * JavBus 抓取器，移植自 JavSP 的 `javsp/web/javbus.py`。
@@ -37,17 +38,19 @@ class JavBusScraper(private val http: ScraperHttp, private val baseUrl: String) 
         val container =
             html.selectFirst("div.container")
                 ?: throw ScraperException.WebsiteError("JavBus: 页面结构变化，找不到详情容器")
-        val title =
+        val rawTitle =
             container.selectFirst("h3")?.text()?.trim().orEmpty().takeIf { it.isNotBlank() }
                 ?: throw ScraperException.WebsiteError("JavBus: 页面没有标题")
         val info =
             container.selectFirst("div.col-md-3.info")
                 ?: throw ScraperException.WebsiteError("JavBus: 页面结构变化，找不到信息面板")
+        // h3 形如「番号 片名 女优名」：番号从「識別碼:」取，片名先剥掉番号再剥掉尾部的女优名
+        val number = info.valueAfterLabel("識別碼:", "识别码:")
 
         return ScrapedMovie(
             site = ScraperSite.JAVBUS,
-            // 站点标题里带着番号，原样保留：番号是识别影片的关键，剥掉后还得从文件名里猜回来
-            title = title,
+            number = number,
+            title = stripTrailingActors(stripNumberPrefix(rawTitle, number), readActresses(html)),
             originalTitle = null,
             plot = null,
             genres = container.select("span.genre label a").texts(),
@@ -63,6 +66,16 @@ class JavBusScraper(private val http: ScraperHttp, private val baseUrl: String) 
             previewUrl = html.selectFirst("div#sample-waterfall > a")?.imageLink(),
         )
     }
+
+    /**
+     * 女优名供清理标题尾部使用。
+     *
+     * 女优头像挂在页面底部的 `a.avatar-box` 下，而那块在 `div.container` 之外，因此按整页查找。
+     */
+    private fun readActresses(html: Document): List<String> =
+        html.select("a.avatar-box img").mapNotNull { element ->
+            element.attr("title").trim().takeIf { it.isNotEmpty() }
+        }
 
     private fun ScraperResponse.toPage(): JavBusPage =
         requireSuccess("JavBus").let { JavBusPage(it.body, it.url) }

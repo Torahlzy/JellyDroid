@@ -14,7 +14,9 @@ import java.time.format.DateTimeParseException
  */
 data class ScrapedMovie(
     val site: ScraperSite,
-    /** 影片标题，与站点页面上展示的一致（含番号）。 */
+    /** 番号（DVD ID），取自站点页面，形如 `SSIS-001`；页面给不出时为 null。 */
+    val number: String?,
+    /** 片名，已去掉番号与站点拼在标题尾部的女优名（见 [stripTrailingActors]）。 */
     val title: String?,
     val originalTitle: String?,
     /** 剧情简介。 */
@@ -46,16 +48,15 @@ data class ScrapedMovie(
 /**
  * 映射成「编辑 nfo」弹窗的表单数据。
  *
+ * 标题按 JavSP 的 `nfo.title_pattern`（`{num} {title}`）拼成「番号 + 片名」，番号排在前面。
  * 抓取结果只用来回填表单，保存仍走用户确认后的既有编辑流程，不会直接写入服务器。
  *
- * @param fallbackTitle 标题兜底值（通常是番号）：少数站点可能整页都没有标题，而表单里标题必填，
- *   为空会卡住确认按钮，因此按「片名 → 原名 → 兜底值」取第一个非空值。
+ * @param fallbackTitle 标题兜底值（通常是抓取关键词）：极少数情况下站点连番号和片名都给不出，
+ *   而表单里标题必填，为空会卡住确认按钮，因此按「番号 + 片名 → 原名 → 兜底值」取第一个非空值。
  */
 fun ScrapedMovie.toItemMetadataEdit(fallbackTitle: String = ""): ItemMetadataEdit {
-    val resolvedName =
-        title?.takeIf { it.isNotBlank() }
-            ?: originalTitle?.takeIf { it.isNotBlank() }
-            ?: fallbackTitle
+    val scrapedName = listOfNotNull(number, title).filter { it.isNotBlank() }.joinToString(" ")
+    val resolvedName = scrapedName.ifBlank { originalTitle.orEmpty() }.ifBlank { fallbackTitle }
     return ItemMetadataEdit(
         name = resolvedName,
         originalTitle = originalTitle.orEmpty(),

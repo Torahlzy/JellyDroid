@@ -9,15 +9,19 @@ import kotlin.time.toDuration
 import org.jellyfin.sdk.api.client.HttpClientOptions
 import org.jellyfin.sdk.api.client.extensions.brandingApi
 import org.jellyfin.sdk.api.client.extensions.devicesApi
+import org.jellyfin.sdk.api.client.extensions.filterApi
+import org.jellyfin.sdk.api.client.extensions.genresApi
 import org.jellyfin.sdk.api.client.extensions.imageApi
 import org.jellyfin.sdk.api.client.extensions.itemsApi
 import org.jellyfin.sdk.api.client.extensions.itemUpdateApi
 import org.jellyfin.sdk.api.client.extensions.libraryApi
 import org.jellyfin.sdk.api.client.extensions.mediaInfoApi
 import org.jellyfin.sdk.api.client.extensions.mediaSegmentsApi
+import org.jellyfin.sdk.api.client.extensions.personsApi
 import org.jellyfin.sdk.api.client.extensions.playStateApi
 import org.jellyfin.sdk.api.client.extensions.quickConnectApi
 import org.jellyfin.sdk.api.client.extensions.sessionApi
+import org.jellyfin.sdk.api.client.extensions.studiosApi
 import org.jellyfin.sdk.api.client.extensions.suggestionsApi
 import org.jellyfin.sdk.api.client.extensions.systemApi
 import org.jellyfin.sdk.api.client.extensions.trickplayApi
@@ -69,16 +73,20 @@ class JellyfinApi(
 
     val brandingApi = api.brandingApi
     val devicesApi = api.devicesApi
+    val filterApi = api.filterApi
+    val genresApi = api.genresApi
     val imageApi = api.imageApi
     val itemsApi = api.itemsApi
     val itemUpdateApi = api.itemUpdateApi
     val libraryApi = api.libraryApi
     val mediaInfoApi = api.mediaInfoApi
     val mediaSegmentsApi = api.mediaSegmentsApi
+    val personsApi = api.personsApi
     val playStateApi = api.playStateApi
     val quickConnectApi = api.quickConnectApi
     val sessionApi = api.sessionApi
     val showsApi = api.tvShowsApi
+    val studiosApi = api.studiosApi
     val suggestionsApi = api.suggestionsApi
     val systemApi = api.systemApi
     val trickplayApi = api.trickplayApi

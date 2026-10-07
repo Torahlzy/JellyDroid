@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,6 +58,7 @@ fun PersonScreen(
     navigateBack: () -> Unit,
     navigateHome: () -> Unit,
     navigateToItem: (item: FindroidItem) -> Unit,
+    navigateToAllItems: (personId: UUID, personName: String) -> Unit,
     viewModel: PersonViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -70,6 +72,8 @@ fun PersonScreen(
                 is PersonAction.NavigateBack -> navigateBack()
                 is PersonAction.NavigateHome -> navigateHome()
                 is PersonAction.NavigateToItem -> navigateToItem(action.item)
+                is PersonAction.NavigateToAllItems ->
+                    state.person?.let { navigateToAllItems(it.id, it.name) }
             }
         },
     )
@@ -135,6 +139,18 @@ private fun PersonScreenLayout(state: PersonState, onAction: (PersonAction) -> U
                 }
 
                 Spacer(Modifier.height(MaterialTheme.spacings.default))
+
+                // 详情页只展示前几部作品，作品多的人物从这里进入完整的筛选结果页；
+                // 没有任何作品（或人物还没加载出来）时不显示，免得点进去是个空列表
+                val hasWorks =
+                    state.starredInMovies.isNotEmpty() || state.starredInShows.isNotEmpty()
+                if (state.person != null && hasWorks) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(itemsPadding)) {
+                        TextButton(onClick = { onAction(PersonAction.NavigateToAllItems) }) {
+                            Text(text = stringResource(CoreR.string.view_all))
+                        }
+                    }
+                }
 
                 Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.default)) {
                     if (state.starredInMovies.isNotEmpty()) {

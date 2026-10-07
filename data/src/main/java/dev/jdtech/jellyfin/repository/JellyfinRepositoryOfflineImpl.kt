@@ -4,11 +4,13 @@ import android.content.Context
 import androidx.paging.PagingData
 import dev.jdtech.jellyfin.api.JellyfinApi
 import dev.jdtech.jellyfin.database.ServerDatabaseDao
+import dev.jdtech.jellyfin.models.FilterValues
 import dev.jdtech.jellyfin.models.FindroidCollection
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidMovie
+import dev.jdtech.jellyfin.models.FindroidNamedItem
 import dev.jdtech.jellyfin.models.FindroidPerson
 import dev.jdtech.jellyfin.models.FindroidSeason
 import dev.jdtech.jellyfin.models.FindroidSegment
@@ -87,7 +89,14 @@ class JellyfinRepositoryOfflineImpl(
         sortOrder: SortOrder,
         startIndex: Int?,
         limit: Int?,
+        genreIds: List<UUID>?,
+        studioIds: List<UUID>?,
+        tags: List<String>?,
+        officialRatings: List<String>?,
+        years: List<Int>?,
+        personIds: List<UUID>?,
     ): List<FindroidItem> {
+        // 离线时的 Room 未存剧本标签、类别等字段，无法在本地做这类浏览，只能返回空
         return emptyList()
     }
 
@@ -97,6 +106,12 @@ class JellyfinRepositoryOfflineImpl(
         recursive: Boolean,
         sortBy: SortBy,
         sortOrder: SortOrder,
+        genreIds: List<UUID>?,
+        studioIds: List<UUID>?,
+        tags: List<String>?,
+        officialRatings: List<String>?,
+        years: List<Int>?,
+        personIds: List<UUID>?,
     ): Flow<PagingData<FindroidItem>> {
         TODO("Not yet implemented")
     }
@@ -112,6 +127,20 @@ class JellyfinRepositoryOfflineImpl(
     ): List<FindroidItem> {
         TODO("Not yet implemented")
     }
+
+    // 离线时的 Room 未存类别、制片公司、人物等维度，无法在本地完成这类浏览；
+    // 这些入口挂在联网才有的搜索页里，离线模式下用户本就走不到
+    override suspend fun getGenres(): List<FindroidNamedItem> = emptyList()
+
+    override suspend fun getStudios(): List<FindroidNamedItem> = emptyList()
+
+    override suspend fun getPersons(
+        personTypes: List<String>,
+        limit: Int,
+        searchTerm: String?,
+    ): List<FindroidPerson> = emptyList()
+
+    override suspend fun getFilterValues(): FilterValues = FilterValues()
 
     override suspend fun getFavoriteItems(): List<FindroidItem> {
         TODO("Not yet implemented")

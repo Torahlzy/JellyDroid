@@ -7,7 +7,7 @@
     <string name="discard">Discard</string>
     <string name="title_home">Home</string>
     <string name="title_media">My media</string>
-    <string name="title_favorite">Favorites</string>
+    <string name="title_favorite">My favorites</string>
     <string name="title_settings">Settings</string>
     <string name="title_download">Downloads</string>
     <string name="view_all">View all</string>
@@ -187,4 +187,17 @@
     <string name="image_type_thumb">Thumbnail</string>
     <string name="image_type_banner">Banner</string>
     <string name="image_type_art">Art</string>
+    <string name="tags">Tags</string>
+    <string name="actors">Actors</string>
+    <string name="studios">Studios</string>
+    <string name="official_ratings">Parental ratings</string>
+    <string name="years">Years</string>
+    <string name="navigate_back">Back</string>
+    <string name="browse_section_title">Browse</string>
+    <string name="no_metadata_values">Nothing to show</string>
+    <string name="no_filtered_items">No items match this filter</string>
+    <string name="no_persons">No people to show</string>
+    <string name="search_values_hint">Search values</string>
+    <string name="search_persons_hint">Search people</string>
+    <string name="load_more">Load more</string>
 </resources>
