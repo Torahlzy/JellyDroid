@@ -64,6 +64,8 @@ import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
 import dev.jdtech.jellyfin.presentation.film.components.MoreMenuDialog
 import dev.jdtech.jellyfin.presentation.film.components.OverviewText
 import dev.jdtech.jellyfin.presentation.film.components.PlaybackSourceDialog
+import dev.jdtech.jellyfin.presentation.film.components.ScrapeKeywordDialog
+import dev.jdtech.jellyfin.presentation.film.components.ScrapeProgressDialog
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
@@ -98,6 +100,10 @@ fun MovieScreen(
     // 记住本次点击是「从头播放」还是「继续播放」，选完版本后照此启动播放器
     var playFromBeginningAfterSelect by rememberSaveable { mutableStateOf(false) }
 
+    // 抓取流程的两个弹窗：先输关键词，再显示进度；进度弹窗叠在编辑弹窗之上
+    var showScrapeKeywordDialog by rememberSaveable { mutableStateOf(false) }
+    var showScrapeProgressDialog by rememberSaveable { mutableStateOf(false) }
+
     // 离线模式连不上服务器，删除服务器信息必然失败，直接不显示「更多」按钮
     val onMoreClick: (() -> Unit)? =
         if (isOfflineMode) {
@@ -113,6 +119,14 @@ fun MovieScreen(
     LaunchedEffect(moreDialog) {
         if (moreDialog == MoreMenuDialogState.EDIT_METADATA) {
             viewModel.loadItemMetadata()
+        }
+    }
+
+    // 抓到内容后表单已被覆盖，进度弹窗自动消失，直接用更新后的表单继续编辑；
+    // 抓取失败时 scrapedMetadata 保持为 null，弹窗留在界面上让用户看清失败原因
+    LaunchedEffect(state.scrapedMetadata) {
+        if (state.scrapedMetadata != null) {
+            showScrapeProgressDialog = false
         }
     }
 
@@ -251,6 +265,8 @@ fun MovieScreen(
         MoreMenuDialogState.EDIT_METADATA ->
             EditItemMetadataDialog(
                 metadata = state.itemMetadata,
+                scrapedMetadata = state.scrapedMetadata,
+                fileName = state.fileName,
                 isLoading = state.isLoadingItemMetadata,
                 errorText =
                     state.itemMetadataError?.let { error ->
@@ -263,6 +279,7 @@ fun MovieScreen(
                     moreDialog = null
                     viewModel.onAction(MovieAction.UpdateItemMetadata(metadata = metadata))
                 },
+                onScrapeClick = { showScrapeKeywordDialog = true },
                 onDismiss = { moreDialog = null },
             )
         MoreMenuDialogState.DELETE_ALL ->
@@ -291,6 +308,37 @@ fun MovieScreen(
                 )
             },
             onDismiss = { showPlaybackSourceDialog = false },
+        )
+    }
+
+    if (showScrapeKeywordDialog) {
+        ScrapeKeywordDialog(
+            defaultKeyword = state.defaultScrapeKeyword,
+            proxy = state.scrapeProxy,
+            onProxyChange = { address ->
+                viewModel.onAction(MovieAction.UpdateScrapeProxy(address = address))
+            },
+            onConfirm = { keyword ->
+                showScrapeKeywordDialog = false
+                showScrapeProgressDialog = true
+                viewModel.onAction(MovieAction.ScrapeMetadata(keyword = keyword))
+            },
+            onDismiss = { showScrapeKeywordDialog = false },
+        )
+    }
+
+    if (showScrapeProgressDialog) {
+        ScrapeProgressDialog(
+            steps = state.scrapeSteps,
+            isRunning = state.isScraping,
+            onCancel = {
+                showScrapeProgressDialog = false
+                viewModel.onAction(MovieAction.CancelScrape)
+            },
+            onDismiss = {
+                showScrapeProgressDialog = false
+                viewModel.onAction(MovieAction.DismissScrapeFailure)
+            },
         )
     }
 }

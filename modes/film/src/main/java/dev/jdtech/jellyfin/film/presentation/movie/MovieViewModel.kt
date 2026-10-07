@@ -3,19 +3,26 @@ package dev.jdtech.jellyfin.film.presentation.movie
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.jdtech.jellyfin.core.scraper.AvidParser
+import dev.jdtech.jellyfin.core.scraper.MetadataScraper
+import dev.jdtech.jellyfin.core.scraper.ScrapeProgress
+import dev.jdtech.jellyfin.core.scraper.toItemMetadataEdit
 import dev.jdtech.jellyfin.film.domain.VideoMetadataParser
 import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.models.FindroidMovie
 import dev.jdtech.jellyfin.models.FindroidSource
+import dev.jdtech.jellyfin.models.FindroidSourceType
 import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.models.pickPlaybackSource
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,6 +38,7 @@ constructor(
     private val repository: JellyfinRepository,
     private val appPreferences: AppPreferences,
     private val videoMetadataParser: VideoMetadataParser,
+    private val metadataScraper: MetadataScraper,
 ) : ViewModel() {
     private val _state = MutableStateFlow(MovieState())
     val state = _state.asStateFlow()
@@ -39,6 +47,9 @@ constructor(
     val events = eventsChannel.receiveAsFlow()
 
     lateinit var movieId: UUID
+
+    /** 正在跑的抓取任务，用户取消时直接 cancel 掉。 */
+    private var scrapeJob: Job? = null
 
     fun loadMovie(movieId: UUID) {
         this.movieId = movieId
@@ -71,6 +82,8 @@ constructor(
                         writers = writers,
                         displayExtraInfo = displayExtraInfo,
                         playbackSources = playbackSources,
+                        defaultScrapeKeyword = recognizeKeyword(movie, playbackSources),
+                        scrapeProxy = appPreferences.getValue(appPreferences.scrapeProxy),
                     )
                 )
             } catch (e: Exception) {
@@ -101,6 +114,20 @@ constructor(
                 source.localFilePath,
             )
         }
+    }
+
+    /**
+     * 猜一个抓取用的番号：优先用已下载的本地文件名，其次用服务器上的路径，最后退回标题。
+     *
+     * 识别不到时返回空串，界面上就是个空的关键词输入框，由用户自己填。
+     */
+    private fun recognizeKeyword(movie: FindroidMovie, sources: List<FindroidSource>): String {
+        val path =
+            sources
+                .firstOrNull { it.type == FindroidSourceType.LOCAL && it.localFilePath.isNotBlank() }
+                ?.localFilePath
+                ?: sources.firstOrNull { it.remoteFilePath.isNotBlank() }?.remoteFilePath
+        return AvidParser.getDvdId(path ?: movie.name)
     }
 
     private suspend fun getActors(item: FindroidMovie): List<FindroidItemPerson> {
@@ -156,6 +183,20 @@ constructor(
             is MovieAction.DeleteItemWithFiles -> {
                 deleteItemWithFiles()
             }
+            is MovieAction.ScrapeMetadata -> {
+                scrapeMetadata(action.keyword)
+            }
+            is MovieAction.DismissScrapeFailure -> {
+                viewModelScope.launch {
+                    _state.emit(_state.value.copy(scrapeFailed = false, scrapeSteps = emptyList()))
+                }
+            }
+            is MovieAction.CancelScrape -> {
+                cancelScrape()
+            }
+            is MovieAction.UpdateScrapeProxy -> {
+                updateScrapeProxy(action.address)
+            }
             else -> Unit
         }
     }
@@ -189,7 +230,16 @@ constructor(
     /** 加载服务器上可编辑的 nfo 元数据，供「编辑 nfo」弹窗回填。 */
     fun loadItemMetadata() {
         viewModelScope.launch {
-            _state.emit(_state.value.copy(isLoadingItemMetadata = true, itemMetadataError = null))
+            _state.emit(
+                _state.value.copy(
+                    isLoadingItemMetadata = true,
+                    itemMetadataError = null,
+                    // 每进一次弹窗都从服务器重新取，上次抓取留下的未保存结果一并清掉
+                    scrapedMetadata = null,
+                    scrapeFailed = false,
+                    scrapeSteps = emptyList(),
+                )
+            )
             try {
                 _state.emit(
                     _state.value.copy(
@@ -241,6 +291,77 @@ constructor(
                 eventsChannel.send(MovieEvent.MetadataUpdateFailed(e))
             }
         }
+    }
+
+    /**
+     * 以 [keyword] 为关键词到各站点抓取 nfo 元数据。
+     *
+     * 抓到的内容只落进 state 供弹窗回填，不写服务器；用户确认后才会走 [updateItemMetadata]。
+     * 所有站点都没抓到时不抛异常，只把 [MovieState.scrapeSteps] 里的失败原因留在 state 里给用户看。
+     */
+    private fun scrapeMetadata(keyword: String) {
+        // 上一次可能还没跑完，先取消，避免两份进度混在同一份 state 里
+        scrapeJob?.cancel()
+        scrapeJob =
+            // 抓取是「发请求 + 解析 HTML」，解析阶段是纯 CPU 活，整段放到 IO 线程，别占着主线程
+            viewModelScope.launch(Dispatchers.IO) {
+                _state.emit(
+                    _state.value.copy(
+                        isScraping = true,
+                        scrapeSteps = emptyList(),
+                        scrapeFailed = false,
+                        scrapedMetadata = null,
+                    )
+                )
+                val steps = mutableListOf<ScrapeProgress>()
+                val scraped =
+                    try {
+                        metadataScraper.scrape(keyword) { progress ->
+                            steps += progress
+                            _state.emit(_state.value.copy(scrapeSteps = steps.toList()))
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // 抓取器内部已把单站失败转成进度，这里兜住兜底异常，不让详情页崩掉
+                        AppLog.e(e, "抓取元数据出错：%s", keyword)
+                        null
+                    }
+                // 标题兜底传番号：站点页面标题只有番号时，剥掉番号会留下空标题，表单会卡在必填校验
+                _state.emit(
+                    _state.value.copy(
+                        isScraping = false,
+                        scrapeFailed = scraped == null,
+                        scrapedMetadata = scraped?.toItemMetadataEdit(keyword.trim()),
+                    )
+                )
+            }
+    }
+
+    /**
+     * 用户中途取消抓取。
+     *
+     * 协程取消是协作式的：正在进行的那次 OkHttp 请求会等它自己超时或返回，但界面立刻收起进度弹窗，
+     * 抓取循环也会在下一个挂起点退出，不会再往 state 里回填进度。
+     */
+    private fun cancelScrape() {
+        scrapeJob?.cancel()
+        scrapeJob = null
+        viewModelScope.launch {
+            _state.emit(
+                _state.value.copy(
+                    isScraping = false,
+                    scrapeSteps = emptyList(),
+                    scrapeFailed = false,
+                )
+            )
+        }
+    }
+
+    /** 保存抓取专用的本地代理，只影响之后的抓取请求。 */
+    private fun updateScrapeProxy(address: String) {
+        appPreferences.setValue(appPreferences.scrapeProxy, address)
+        viewModelScope.launch { _state.emit(_state.value.copy(scrapeProxy = address)) }
     }
 
     /** 删除服务器上的条目本身，界面收到事件后返回上一页。 */

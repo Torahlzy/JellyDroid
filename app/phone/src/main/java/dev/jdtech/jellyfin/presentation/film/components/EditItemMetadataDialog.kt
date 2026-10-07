@@ -1,5 +1,6 @@
 package dev.jdtech.jellyfin.presentation.film.components
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,8 +10,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -21,10 +23,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
@@ -36,74 +41,144 @@ import java.time.format.DateTimeParseException
 // 多值字段在输入框里用逗号分隔，确认时才切成列表
 private const val METADATA_LIST_SEPARATOR = ", "
 
-// 表单最高高度：字段较多，超出时内部滚动，避免弹窗撑满屏幕
-private val METADATA_FORM_MAX_HEIGHT = 420.dp
+// 弹窗最高高度与表单滚动区高度：字段较多，超出时内部滚动，避免弹窗撑满屏幕
+private val METADATA_DIALOG_MAX_HEIGHT = 540.dp
+private val METADATA_FORM_MAX_HEIGHT = 360.dp
 
 /**
  * 「编辑 nfo」弹窗。
  *
- * 打开时用服务器上的元数据回填全部可编辑字段，底部提供「清空」与「确认」。
- * 「标题」是唯一必填项，为空时给出必填提示并禁用确认；演职员、外部刮削 ID 等不在表单里的内容不会被改动。
+ * 打开时用服务器上的元数据回填全部可编辑字段：标题行右侧「清空」，按钮行左下角「抓取」，
+ * 右下角「取消 / 确认」。「标题」是唯一必填项，为空时给出必填提示并禁用确认；
+ * 演职员、外部刮削 ID 等不在表单里的内容不会被改动。
+ *
+ * [scrapedMetadata] 非空表示表单已被抓取结果覆盖、但还没保存，此时标题改为「已更新（未保存）」。
+ * [fileName] 是影片文件的名字，「清空」会把标题填成它：抓不到信息时文件名是唯一还能用的标题。
  */
 @Composable
 fun EditItemMetadataDialog(
     metadata: ItemMetadataEdit?,
+    scrapedMetadata: ItemMetadataEdit?,
+    fileName: String?,
     isLoading: Boolean,
     errorText: String?,
     onConfirm: (ItemMetadataEdit) -> Unit,
+    onScrapeClick: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // 表单整体按文本保存，确认时才解析成 ItemMetadataEdit，避免输入途中的半成品值被丢弃
-    var form by remember(metadata) { mutableStateOf(metadata?.toForm() ?: MetadataForm()) }
+    // 「清空」的结果不是空表单，而是只剩标题（用文件名兜底）——其余字段确实清掉了
+    val clearedForm = MetadataForm(name = fileName.orEmpty())
 
-    val isConfirmEnabled = !isLoading && metadata != null && form.isValid
+    // 表单整体按文本保存，确认时才解析成 ItemMetadataEdit，避免输入途中的半成品值被丢弃；
+    // 抓取结果一到就整份覆盖表单，所以把它也作为重建表单的依据；
+    // 这里刻意不把 fileName 作为重建依据：文件名随后到达（如下载完成）时不该冲掉用户正在编辑的内容
+    var form by remember(metadata, scrapedMetadata) {
+        mutableStateOf((scrapedMetadata ?: metadata)?.toForm() ?: clearedForm)
+    }
 
-    AlertDialog(
-        title = { Text(text = stringResource(CoreR.string.edit_item_metadata)) },
-        text = {
-            when {
-                // 加载失败时优先说明原因，避免让用户误以为服务器上真的没有这些字段
-                errorText != null ->
-                    Text(
-                        text = errorText,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                isLoading || metadata == null ->
-                    CircularProgressIndicator(
-                        modifier =
-                            Modifier.padding(MaterialTheme.spacings.small)
-                                .size(MaterialTheme.spacings.default),
-                        strokeWidth = 2.dp,
-                    )
-                else ->
-                    Column(
-                        modifier =
-                            Modifier.heightIn(max = METADATA_FORM_MAX_HEIGHT)
-                                .verticalScroll(rememberScrollState())
-                    ) {
-                        MetadataFormFields(form = form, onFormChange = { changed -> form = changed })
-                    }
-            }
-        },
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            Row {
-                TextButton(onClick = { form = MetadataForm() }) {
-                    Text(text = stringResource(CoreR.string.clear))
-                }
-                TextButton(
-                    onClick = { onConfirm(form.toMetadataEdit()) },
-                    enabled = isConfirmEnabled,
+    val isConfirmEnabled =
+        !isLoading && (scrapedMetadata != null || metadata != null) && form.isValid
+
+    // 表单里是抓取结果、还没保存时，标题用提醒色，提示用户记得确认
+    val titleColor =
+        if (scrapedMetadata != null) MaterialTheme.colorScheme.tertiary else Color.Unspecified
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth().heightIn(max = METADATA_DIALOG_MAX_HEIGHT),
+            shape = RoundedCornerShape(28.dp),
+        ) {
+            Column(modifier = Modifier.padding(vertical = MaterialTheme.spacings.default)) {
+                // 标题行：标题在左，清空在右上角；左右边距与按钮行一致
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .padding(horizontal = MaterialTheme.spacings.default),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(text = stringResource(CoreR.string.confirm))
+                    Text(
+                        text =
+                            stringResource(
+                                if (scrapedMetadata != null) {
+                                    CoreR.string.edit_metadata_scraped_title
+                                } else {
+                                    CoreR.string.edit_item_metadata
+                                }
+                            ),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = titleColor,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = { form = clearedForm },
+                        // 已经是清空后的样子就没有可清的内容
+                        enabled = form != clearedForm,
+                    ) {
+                        Text(text = stringResource(CoreR.string.clear))
+                    }
+                }
+                Spacer(Modifier.height(MaterialTheme.spacings.small))
+                Column(modifier = Modifier.padding(horizontal = MaterialTheme.spacings.default)) {
+                    // 抓到内容就优先显示表单：服务器元数据加载失败的原因不该挡住刚抓到的信息
+                    val showForm =
+                        scrapedMetadata != null ||
+                            (!isLoading && metadata != null && errorText == null)
+                    when {
+                        showForm ->
+                            Column(
+                                modifier =
+                                    Modifier.heightIn(max = METADATA_FORM_MAX_HEIGHT)
+                                        .verticalScroll(rememberScrollState())
+                            ) {
+                                MetadataFormFields(
+                                    form = form,
+                                    onFormChange = { changed -> form = changed },
+                                )
+                            }
+                        // 加载失败时说明原因，避免让用户误以为服务器上真的没有这些字段
+                        errorText != null ->
+                            Text(
+                                text = errorText,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        else ->
+                            CircularProgressIndicator(
+                                modifier =
+                                    Modifier.padding(MaterialTheme.spacings.small)
+                                        .size(MaterialTheme.spacings.default),
+                                strokeWidth = 2.dp,
+                            )
+                    }
+                }
+                Spacer(Modifier.height(MaterialTheme.spacings.default))
+                // 按钮行：抓取在左下角，取消 / 确认在右下角
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .padding(horizontal = MaterialTheme.spacings.default),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onScrapeClick, enabled = !isLoading) {
+                        Text(text = stringResource(CoreR.string.scrape))
+                    }
+                    Row {
+                        TextButton(onClick = onDismiss) {
+                            Text(text = stringResource(CoreR.string.cancel))
+                        }
+                        TextButton(
+                            onClick = { onConfirm(form.toMetadataEdit()) },
+                            enabled = isConfirmEnabled,
+                        ) {
+                            Text(text = stringResource(CoreR.string.confirm))
+                        }
+                    }
                 }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(text = stringResource(CoreR.string.cancel)) }
-        },
-    )
+        }
+    }
 }
 
 /**
@@ -344,9 +419,12 @@ private fun EditItemMetadataDialogPreview() {
                     premiereDate = LocalDateTime.of(2024, 5, 1, 0, 0),
                     communityRating = 7.5f,
                 ),
+            scrapedMetadata = null,
+            fileName = "ABC-123",
             isLoading = false,
             errorText = null,
             onConfirm = {},
+            onScrapeClick = {},
             onDismiss = {},
         )
     }

@@ -91,6 +91,9 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     val socketTimeout =
         Preference("pref_network_socket_timeout", Constants.NETWORK_DEFAULT_SOCKET_TIMEOUT)
 
+    // Network - nfo 抓取专用代理（只作用于抓取，不影响 Jellyfin 接口与下载），留空表示直连
+    val scrapeProxy = Preference("pref_scrape_proxy", "")
+
     // Cache
     val imageCache = Preference("pref_image_cache", true)
     val imageCacheSize = Preference("pref_image_cache_size", 20)
