@@ -33,6 +33,11 @@ class PersonListViewModel @Inject constructor(private val repository: JellyfinRe
     private var searchJob: Job? = null
 
     fun loadPersons(facet: MetadataFacet) {
+        // 每个 facet 是独立路由、各自持有本 ViewModel，故只初始化一次即可。
+        // 从人物详情页返回时 Screen 的 LaunchedEffect 会重跑，若再次按空搜索词请求，
+        // 会覆盖掉用户当前的搜索结果（输入框还留着关键词，列表却已变回全量）。
+        if (personType != null) return
+
         personType = facet.personType
         requestPersons(limit = PersonListState.PAGE_SIZE, searchTerm = null)
     }
