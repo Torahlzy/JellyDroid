@@ -56,6 +56,7 @@ private val RESULT_THUMBNAIL_WIDTH = 96.dp
  * 上半部分是「当前服务器使用」的图片缩略图（点击可全屏查看），服务器上没有任何图片时该区域留空；
  * 下半部分是抓取结果：按 [scrapeSites] 列出要抓的站点，每个站点抓到什么、失败什么原因都直接显示在对应行上，
  * 成功的行末给一个「上传」按钮（上传走与「清理」同一套服务器写入逻辑：先删同类型旧图，再写入新图）。
+ * 抓到的图片点开全屏后底部还有「上传」，只传当前这一张，不必跟着整站的横图 / 竖图一起传。
  * 右上角「清理」二次确认后删光服务器上的图片，左下角「抓取」重新抓一遍，右下角「关闭」。
  */
 @Composable
@@ -318,6 +319,9 @@ private fun SiteScrapeRow(
                                 model = image.bytes,
                                 label = imageTypeLabel(image.imageType),
                                 modifier = Modifier.width(RESULT_THUMBNAIL_WIDTH),
+                                // 全屏查看时只上传这一张：同一站的横图 / 竖图各自独立，不用绑定整站一起传
+                                onUpload = { onUploadClick(listOf(image)) },
+                                isUploading = isUploading,
                             )
                         }
                     }

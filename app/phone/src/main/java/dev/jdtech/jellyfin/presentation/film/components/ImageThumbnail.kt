@@ -33,9 +33,16 @@ private const val THUMBNAIL_ASPECT_RATIO = 3f / 2f
  *
  * [model] 同时接受服务器图片的地址与本地抓取图片的字节，交给 Coil 自行判断；点击图片打开全屏查看。
  * [label] 非空时在图片下方显示一行说明文字（如「海报」「背景」），宽度不足时省略。
+ * [onUpload] 交给全屏查看界面，用于单独上传当前查看的这一张；服务器上已有的图片留空。
  */
 @Composable
-fun PreviewableImageThumbnail(model: Any, label: String?, modifier: Modifier = Modifier) {
+fun PreviewableImageThumbnail(
+    model: Any,
+    label: String?,
+    modifier: Modifier = Modifier,
+    onUpload: (() -> Unit)? = null,
+    isUploading: Boolean = false,
+) {
     var isViewing by remember { mutableStateOf(false) }
 
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -66,6 +73,8 @@ fun PreviewableImageThumbnail(model: Any, label: String?, modifier: Modifier = M
             model = model,
             contentDescription = label,
             onDismiss = { isViewing = false },
+            onUpload = onUpload,
+            isUploading = isUploading,
         )
     }
 }
