@@ -29,11 +29,13 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
 /**
  * 抓取前确认关键词的弹窗。
  *
- * [defaultKeyword] 是自动识别出的番号，用户可以改成任意关键词（站点支持按标题搜）。
+ * [title] 由调用方给出，用于区分抓的是 nfo 还是封面；[defaultKeyword] 是自动识别出的番号，
+ * 用户可以改成任意关键词（站点支持按标题搜）。
  * 代理设置也放在这里：抓取是唯一需要翻墙的联网操作，没必要让它出现在别处。
  */
 @Composable
 fun ScrapeKeywordDialog(
+    title: String,
     defaultKeyword: String,
     proxy: String,
     onProxyChange: (String) -> Unit,
@@ -44,7 +46,7 @@ fun ScrapeKeywordDialog(
     var showProxyDialog by remember { mutableStateOf(false) }
 
     BaseDialog(
-        title = stringResource(CoreR.string.scrape_keyword_title),
+        title = title,
         onDismiss = onDismiss,
         negativeButton = {
             TextButton(onClick = onDismiss) { Text(text = stringResource(CoreR.string.cancel)) }
@@ -137,6 +139,7 @@ private fun ScrapeProxyDialog(
 private fun ScrapeKeywordDialogPreview() {
     FindroidTheme {
         ScrapeKeywordDialog(
+            title = "Scrape nfo",
             defaultKeyword = "ABC-123",
             proxy = "",
             onProxyChange = {},

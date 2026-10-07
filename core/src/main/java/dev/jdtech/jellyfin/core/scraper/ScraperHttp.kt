@@ -5,6 +5,7 @@ import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import java.io.IOException
 import java.net.Proxy
+import java.net.URI
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,10 +53,39 @@ constructor(
         url: String,
         form: Map<String, String>,
         headers: Map<String, String> = emptyMap(),
+    ): ScraperResponse =
+        execute(Request.Builder().url(url).post(formBody(form)).withHeaders(headers).build())
+
+    /**
+     * POST 并跟随重定向，**只跟同域内的跳转**。
+     *
+     * jav321 命中影片后会 301 跳到本站详情页，而跳转后要改用 GET 取正文（浏览器与 `requests` 都是这么做的）；
+     * 抓取客户端整体关掉了自动重定向，因此这里手动跟。
+     * 跳到别的域名多半不是正常的跳转，而是请求被站点或中间层拦下、丢到一个不明域名：跟过去拿不到内容，
+     * 还要白等一次读超时，所以遇到跨域跳转就停下，把 3xx 原样返回给调用方去判断原因。
+     */
+    suspend fun postFollowingRedirects(
+        url: String,
+        form: Map<String, String>,
+        headers: Map<String, String> = emptyMap(),
     ): ScraperResponse {
-        val body =
-            FormBody.Builder().apply { form.forEach { (name, value) -> add(name, value) } }.build()
-        return execute(Request.Builder().url(url).post(body).withHeaders(headers).build())
+        var response =
+            execute(Request.Builder().url(url).post(formBody(form)).withHeaders(headers).build())
+        var hops = 0
+        while (response.isRedirect && hops < MAX_REDIRECTS) {
+            val nextUrl = resolveUrl(response.url, response.location) ?: break
+            if (!isSameHost(response.url, nextUrl)) break
+            response = get(nextUrl, headers)
+            hops++
+        }
+        return response
+    }
+
+    /** 两个地址是否同域；解析不出主机名时按「不同域」处理。 */
+    private fun isSameHost(first: String, second: String): Boolean {
+        val firstHost = runCatching { URI(first).host }.getOrNull() ?: return false
+        val secondHost = runCatching { URI(second).host }.getOrNull() ?: return false
+        return firstHost.equals(secondHost, ignoreCase = true)
     }
 
     /** 手动跟随重定向，返回最终响应，[ScraperResponse.url] 为最终地址。 */
@@ -73,6 +103,38 @@ constructor(
         }
         return response
     }
+
+    /**
+     * 下载二进制内容（抓取封面用）。
+     *
+     * 与取 HTML 不同，这里必须跟随重定向：图片地址常被站点 302 到 CDN，
+     * 不跟随就会把跳转响应体（空或一段提示 HTML）当成图片返回。
+     */
+    suspend fun getBytes(url: String, headers: Map<String, String> = emptyMap()): ByteArray =
+        withContext(Dispatchers.IO) {
+            try {
+                clientWithProxy()
+                    .newBuilder()
+                    .followRedirects(true)
+                    .followSslRedirects(true)
+                    .build()
+                    .newCall(Request.Builder().url(url).get().withHeaders(headers).build())
+                    .execute()
+                    .use { response ->
+                        if (!response.isSuccessful) {
+                            // 服务端明确回了非 2xx，没有更底层的异常可作 cause
+                            throw ScraperException.NetworkError(
+                                "下载图片失败：$url（${response.code}）",
+                                null,
+                            )
+                        }
+                        response.body?.bytes()?.takeIf { it.isNotEmpty() }
+                            ?: throw ScraperException.NetworkError("下载图片为空：$url", null)
+                    }
+            } catch (e: IOException) {
+                throw ScraperException.NetworkError("下载图片失败：$url", e)
+            }
+        }
 
     /**
      * 带上当前代理设置的客户端。
@@ -120,6 +182,9 @@ constructor(
 
     private fun Request.Builder.withHeaders(headers: Map<String, String>): Request.Builder =
         apply { headers.forEach { (name, value) -> header(name, value) } }
+
+    private fun formBody(form: Map<String, String>): FormBody =
+        FormBody.Builder().apply { form.forEach { (name, value) -> add(name, value) } }.build()
 
     private companion object {
         const val MAX_REDIRECTS = 5

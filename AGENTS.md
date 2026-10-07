@@ -5,6 +5,7 @@
 ## 重要约定
 
 - **改完代码不要默认跑构建。** 除非用户明确要求，否则不执行 `./gradlew assemble*`、`./gradlew build`、`./gradlew check`（编译耗时长；仓库没有测试，`check` 只校验 ktfmt 格式）。需要格式化时用 `./gradlew ktfmtFormat`，同样只在用户要求时运行。
+- **但要查编译错误，且优先用不产生构建开销的方式。** 顺序是：① 先看编辑器 / IDE 诊断（对已分析文件的实时语法、类型、未解析引用报错，零构建开销，改完代码就该看一眼）；② 诊断不足以判断时（涉及 Gradle 配置、资源引用、KSP / Hilt 生成代码），只编译受影响模块的 Kotlin 任务，如 `./gradlew :app:phone:compileLibreDebugKotlin`（任务名以 `./gradlew :app:phone:tasks --all` 为准）；③ 仅在用户明确要求时才 `assemble*` / `bundle*` 打包。**不要为了「看有没有编译错误」去跑 `assemble*`**——它会附带 dex、资源、打包等与「查错」无关的耗时步骤。
 - 保持修改最小化、聚焦，避免不必要的重构或大范围重写。
 - **默认只改手机版（`:app:phone`），不考虑 TV 版（`:app:tv`）。** 只有与界面无关的共享逻辑（`:core`、`:data`、`:player:*`、`:settings`）才可能一并影响 TV 版。
 - **注释一律使用中文**（代码注释、KDoc、TODO 说明）。
@@ -75,6 +76,8 @@
 - 状态收集：`val state by viewModel.state.collectAsStateWithLifecycle()`；加载用 `LaunchedEffect(true) { viewModel.loadXxx(...) }`。
 - 组件签名：可复用 `@Composable` 以 `modifier: Modifier = Modifier` 作为最后一个参数；Screen 级入口函数不接收 modifier，内部自行 `Modifier.fillMaxSize()`。
 - 尺寸与文案：间距一律 `MaterialTheme.spacings.*`，不硬编码 dp；字符串 / 图标一律 `stringResource` / `painterResource`，新字符串加到对应模块的 `res/values/strings.xml`（跨模块共用的放 `:core`）。
+- 弹窗布局：删除、清空这类低频且不可逆的操作，不放进弹窗的常用操作列表，统一放弹窗**右上角**（与标题同一行），并用错误色等醒目样式提示风险；执行前必须再弹一次确认。例：更多操作弹窗的「删除全部」（`MoreMenuDialog.kt`）、编辑封面的「清理」（`EditItemImagesDialog.kt`）、编辑 nfo 的「清空」（`EditItemMetadataDialog.kt`）。
+- 界面设计：遵循 Android Material Design（Material 3），优先使用 Material3 通用控件（`AlertDialog`、`Dialog` + `Card`、`TextButton`、`OutlinedTextField`、`LazyVerticalGrid` 等）承载交互，不要手搓等效的自定义控件。
 - 导航：`NavigationRoot.kt` 中新增 `@Serializable` 路由类并注册 `composable<...>`，跳转走 `safeNavigate`。
 - Gradle 依赖用类型安全访问器：`implementation(projects.modes.film)`。
 - 格式化：ktfmt `kotlinLangStyle()`（缩进 4 空格）。**不要引入 detekt / ktlint / spotless / `.editorconfig`**，本仓库只认 ktfmt。
@@ -149,6 +152,8 @@ Findroid 是 Jellyfin 的第三方 Android 应用——使用原生 Jetpack Comp
 ## 构建命令
 
 ```bash
+./gradlew :app:phone:compileLibreDebugKotlin  # 只编译 Kotlin（查编译错误用，比 assemble 快）
+./gradlew :core:compileDebugKotlin            # 只编译某个库模块（模块无 flavor 时无 Libre 段）
 ./gradlew :app:phone:assembleLibreDebug    # 手机版 debug
 ./gradlew :app:phone:assembleLibreRelease  # 手机版 release
 ./gradlew :app:phone:bundleLibreRelease    # Android App Bundle
@@ -157,6 +162,8 @@ Findroid 是 Jellyfin 的第三方 Android 应用——使用原生 Jetpack Comp
 ```
 
 一种 flavor `libre`，三种 build type（`debug`、`release`、`staging`；staging 继承 release，application ID 后缀为 `.staging`）。项目中**没有单元测试或插桩测试**，`check` 仅验证 ktfmt 格式，因此改完代码无需运行它。
+
+**查编译错误时的任务选择**：只编译 Kotlin 的任务名为 `compile<变体名>Kotlin`（变体名由 flavor + build type 拼成，如 `:app:phone:compileLibreDebugKotlin`；库模块没有 flavor 参数时是 `compileDebugKotlin`）。这类任务不打包 APK / AAB，是「验证代码能编过」的最小代价；具体任务名可用 `./gradlew <模块>:tasks --all` 确认。
 
 ## 架构
 

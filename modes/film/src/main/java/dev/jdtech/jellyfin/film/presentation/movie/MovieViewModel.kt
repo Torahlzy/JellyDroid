@@ -4,8 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.jdtech.jellyfin.core.scraper.AvidParser
+import dev.jdtech.jellyfin.core.scraper.ImageScraper
 import dev.jdtech.jellyfin.core.scraper.MetadataScraper
 import dev.jdtech.jellyfin.core.scraper.ScrapeProgress
+import dev.jdtech.jellyfin.core.scraper.ScrapedImage
+import dev.jdtech.jellyfin.core.scraper.SiteImageScrapeResult
 import dev.jdtech.jellyfin.core.scraper.toItemMetadataEdit
 import dev.jdtech.jellyfin.film.domain.VideoMetadataParser
 import dev.jdtech.jellyfin.logging.AppLog
@@ -39,8 +42,11 @@ constructor(
     private val appPreferences: AppPreferences,
     private val videoMetadataParser: VideoMetadataParser,
     private val metadataScraper: MetadataScraper,
+    private val imageScraper: ImageScraper,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(MovieState())
+    // 抓取站点来自本地配置（BuildConfig），整个会话内不会变，直接放进初始 state，
+    // 免得打开「编辑封面」弹窗时要等一次异步加载、先闪一下「没配站点」的空态
+    private val _state = MutableStateFlow(MovieState(imageScrapeSites = imageScraper.sites))
     val state = _state.asStateFlow()
 
     private val eventsChannel = Channel<MovieEvent>()
@@ -50,6 +56,9 @@ constructor(
 
     /** 正在跑的抓取任务，用户取消时直接 cancel 掉。 */
     private var scrapeJob: Job? = null
+
+    /** 正在跑的图片抓取任务，用户取消时直接 cancel 掉。 */
+    private var imageScrapeJob: Job? = null
 
     fun loadMovie(movieId: UUID) {
         this.movieId = movieId
@@ -197,14 +206,31 @@ constructor(
             is MovieAction.UpdateScrapeProxy -> {
                 updateScrapeProxy(action.address)
             }
+            is MovieAction.ScrapeItemImages -> {
+                scrapeItemImages(action.keyword)
+            }
+            is MovieAction.CloseImageScrape -> {
+                closeImageScrape()
+            }
+            is MovieAction.UploadScrapedImages -> {
+                uploadScrapedImages(action.images)
+            }
             else -> Unit
         }
     }
 
-    /** 加载服务器上的图片列表，供删除前逐张列出确认。 */
+    /** 加载服务器上的图片列表，供「编辑封面」弹窗以「当前服务器使用」列出。 */
     fun loadItemImages() {
         viewModelScope.launch {
-            _state.emit(_state.value.copy(isLoadingItemImages = true, itemImagesError = null))
+            _state.emit(
+                _state.value.copy(
+                    isLoadingItemImages = true,
+                    itemImagesError = null,
+                    // 每进一次弹窗都从服务器重新取，上一轮抓取留下的结果一并清掉（图片都在内存里）
+                    imageScrapeResults = emptyList(),
+                    isScrapingImages = false,
+                )
+            )
             try {
                 _state.emit(
                     _state.value.copy(
@@ -270,6 +296,8 @@ constructor(
                 _state.emit(_state.value.copy(itemImages = emptyList()))
                 eventsChannel.send(MovieEvent.ItemImagesDeleted)
                 loadMovie(movieId)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 AppLog.e(e, "删除服务器封面失败：%s", movieId)
                 eventsChannel.send(MovieEvent.ItemImagesDeleteFailed(e))
@@ -286,6 +314,8 @@ constructor(
                 _state.emit(_state.value.copy(itemMetadata = null))
                 eventsChannel.send(MovieEvent.MetadataUpdated)
                 loadMovie(movieId)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 AppLog.e(e, "更新服务器 nfo 失败：%s", movieId)
                 eventsChannel.send(MovieEvent.MetadataUpdateFailed(e))
@@ -327,7 +357,7 @@ constructor(
                         AppLog.e(e, "抓取元数据出错：%s", keyword)
                         null
                     }
-                // 标题兜底传番号：站点页面标题只有番号时，剥掉番号会留下空标题，表单会卡在必填校验
+                // 标题兜底传番号：极端情况下站点整页给不出标题，用番号占位，别让表单卡在必填校验
                 _state.emit(
                     _state.value.copy(
                         isScraping = false,
@@ -364,12 +394,112 @@ constructor(
         viewModelScope.launch { _state.emit(_state.value.copy(scrapeProxy = address)) }
     }
 
+    /**
+     * 以 [keyword] 为关键词逐个站点抓取封面图片（横图 + 竖图），配了地址的站点都会尝试一遍。
+     *
+     * 抓到的图片只留在内存里供界面展示与逐站上传，不写服务器；用户点某一行的「上传」才走
+     * [uploadScrapedImages]。抓取失败不抛异常，各站点的失败原因随结果一起交给界面展示。
+     */
+    private fun scrapeItemImages(keyword: String) {
+        // 上一次可能还没跑完，先取消，避免两份结果混在同一份 state 里
+        imageScrapeJob?.cancel()
+        imageScrapeJob =
+            viewModelScope.launch {
+                // 先切成「抓取中」再切到 IO：状态不等调度器派发就写下去，界面才不会先闪一下空态
+                _state.emit(
+                    _state.value.copy(isScrapingImages = true, imageScrapeResults = emptyList())
+                )
+                val results = mutableListOf<SiteImageScrapeResult>()
+                // 抓页面 + 下载图片都是纯网络 IO，放到 IO 线程，别占着主线程
+                withContext(Dispatchers.IO) {
+                    try {
+                        imageScraper.scrapeImages(keyword) { result ->
+                            results += result
+                            _state.emit(_state.value.copy(imageScrapeResults = results.toList()))
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // 抓取器内部已把单站失败转成结果，这里兜住兜底异常，不让详情页崩掉
+                        AppLog.e(e, "抓取封面图片出错：%s", keyword)
+                    }
+                }
+                _state.emit(_state.value.copy(isScrapingImages = false))
+            }
+    }
+
+    /** 关闭抓取结果弹窗：中断进行中的抓取，并丢掉已抓到的图片（都只在内存里）。 */
+    private fun closeImageScrape() {
+        imageScrapeJob?.cancel()
+        imageScrapeJob = null
+        viewModelScope.launch {
+            _state.emit(
+                _state.value.copy(isScrapingImages = false, imageScrapeResults = emptyList())
+            )
+        }
+    }
+
+    /**
+     * 把 [images]（用户选中某个站点抓到的横图 / 竖图）上传到服务器，成功后刷新页面让新封面生效。
+     *
+     * 上传前先删掉服务器上同类型的旧图：`setItemImage` 只覆盖同类图片的第 0 张，
+     * 不先删的话原有的多张背景（或同类多张）会和新图并存，看起来就像「老图没被替换」。
+     * 只删与本次上传同类型的图，没抓取的类型（如 Logo）保持不动。
+     */
+    private fun uploadScrapedImages(images: List<ScrapedImage>) {
+        if (images.isEmpty() || _state.value.isUploadingImages) return
+        val scrapedTypes = images.map { it.imageType }.toSet()
+        viewModelScope.launch {
+            _state.emit(_state.value.copy(isUploadingImages = true))
+            try {
+                // 重新取一次服务器列表而不是用 state 里的缓存：用户可能刚点过「清理」
+                val replacedImages =
+                    repository.getItemImages(movieId).filter { it.imageType in scrapedTypes }
+                if (replacedImages.isNotEmpty()) {
+                    repository.deleteItemImages(movieId, replacedImages)
+                }
+                images.forEach { image ->
+                    repository.setItemImage(movieId, image.imageType, image.bytes)
+                }
+                // 刷新「当前服务器使用」，编辑封面弹窗里立刻能看到刚上传的图
+                refreshItemImages()
+                eventsChannel.send(MovieEvent.ItemImagesUploaded)
+                loadMovie(movieId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.e(e, "上传抓取到的封面图片失败：%s", movieId)
+                eventsChannel.send(MovieEvent.ItemImagesUploadFailed(e))
+            } finally {
+                _state.emit(_state.value.copy(isUploadingImages = false))
+            }
+        }
+    }
+
+    /** 只重新拉取服务器图片列表，不动抓取结果（上传后刷新「当前服务器使用」用）。 */
+    private suspend fun refreshItemImages() {
+        try {
+            _state.emit(
+                _state.value.copy(
+                    itemImages = repository.getItemImages(movieId),
+                    itemImagesError = null,
+                )
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.e(e, "刷新服务器图片列表失败：%s", movieId)
+        }
+    }
+
     /** 删除服务器上的条目本身，界面收到事件后返回上一页。 */
     private fun deleteItemWithFiles() {
         viewModelScope.launch {
             try {
                 repository.deleteItem(movieId)
                 eventsChannel.send(MovieEvent.ItemDeleted)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 AppLog.e(e, "删除服务器条目失败：%s", movieId)
                 eventsChannel.send(MovieEvent.ItemDeleteFailed(e))

@@ -31,18 +31,21 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
 /**
  * 抓取过程中的临时弹窗：逐条列出「正在抓哪个站 / 哪个站成功」。
  *
+ * [title] 与 [failureSummary] 由调用方给出，用于区分抓的是 nfo 还是封面。
  * 抓取中只能点「取消」中断；抓取成功由上层直接把弹窗从界面上移除；
  * 全部失败时保留弹窗并给出「关闭」，让用户看清每个站点的失败原因。
  */
 @Composable
 fun ScrapeProgressDialog(
+    title: String,
     steps: List<ScrapeProgress>,
     isRunning: Boolean,
+    failureSummary: String,
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     BaseDialog(
-        title = stringResource(CoreR.string.scrape_progress_title),
+        title = title,
         onDismiss = { if (!isRunning) onDismiss() },
         negativeButton = {},
         positiveButton = {
@@ -89,7 +92,7 @@ fun ScrapeProgressDialog(
             if (!isRunning && steps.any { it is ScrapeProgress.Failed }) {
                 Spacer(Modifier.height(MaterialTheme.spacings.small))
                 Text(
-                    text = stringResource(CoreR.string.scrape_all_failed),
+                    text = failureSummary,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -141,6 +144,7 @@ private fun ScrapeProgress.textColor(emphasizeFailure: Boolean): Color =
 private fun ScrapeProgressDialogPreview() {
     FindroidTheme {
         ScrapeProgressDialog(
+            title = "Scraping",
             steps =
                 listOf(
                     ScrapeProgress.Started(ScraperSite.JAVDB),
@@ -149,6 +153,7 @@ private fun ScrapeProgressDialogPreview() {
                     ScrapeProgress.Succeeded(ScraperSite.JAVBUS),
                 ),
             isRunning = false,
+            failureSummary = "No data was found on any site",
             onCancel = {},
             onDismiss = {},
         )

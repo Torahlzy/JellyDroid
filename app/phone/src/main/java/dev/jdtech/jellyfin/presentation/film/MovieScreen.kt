@@ -52,8 +52,8 @@ import dev.jdtech.jellyfin.film.presentation.movie.MovieState
 import dev.jdtech.jellyfin.film.presentation.movie.MovieViewModel
 import dev.jdtech.jellyfin.presentation.film.components.ActorsRow
 import dev.jdtech.jellyfin.presentation.film.components.CollapsibleText
-import dev.jdtech.jellyfin.presentation.film.components.DeleteItemImagesDialog
 import dev.jdtech.jellyfin.presentation.film.components.DeleteItemWithFilesDialog
+import dev.jdtech.jellyfin.presentation.film.components.EditItemImagesDialog
 import dev.jdtech.jellyfin.presentation.film.components.EditItemMetadataDialog
 import dev.jdtech.jellyfin.presentation.film.components.ExtraInfoText
 import dev.jdtech.jellyfin.presentation.film.components.FilePathText
@@ -100,9 +100,12 @@ fun MovieScreen(
     // 记住本次点击是「从头播放」还是「继续播放」，选完版本后照此启动播放器
     var playFromBeginningAfterSelect by rememberSaveable { mutableStateOf(false) }
 
-    // 抓取流程的两个弹窗：先输关键词，再显示进度；进度弹窗叠在编辑弹窗之上
+    // nfo 抓取流程的两个弹窗：先输关键词，再显示进度；进度弹窗叠在编辑 nfo 弹窗之上
     var showScrapeKeywordDialog by rememberSaveable { mutableStateOf(false) }
     var showScrapeProgressDialog by rememberSaveable { mutableStateOf(false) }
+
+    // 封面抓取的关键词弹窗；抓取结果直接显示在下方的「编辑封面」弹窗里，不再另开一个弹窗
+    var showImageScrapeKeywordDialog by rememberSaveable { mutableStateOf(false) }
 
     // 离线模式连不上服务器，删除服务器信息必然失败，直接不显示「更多」按钮
     val onMoreClick: (() -> Unit)? =
@@ -114,11 +117,13 @@ fun MovieScreen(
 
     LaunchedEffect(true) { viewModel.loadMovie(movieId = movieId) }
 
-    // 元数据用 effect 加载而不是在点击时加载：moreDialog 走的是 rememberSaveable，
-    // 进程重建后弹窗会被恢复成打开状态，靠 effect 重跑才能补上表单数据，不至于一直转圈
+    // 元数据 / 图片列表用 effect 加载而不是在点击时加载：moreDialog 走的是 rememberSaveable，
+    // 进程重建后弹窗会被恢复成打开状态，靠 effect 重跑才能补上数据，不至于一直转圈
     LaunchedEffect(moreDialog) {
-        if (moreDialog == MoreMenuDialogState.EDIT_METADATA) {
-            viewModel.loadItemMetadata()
+        when (moreDialog) {
+            MoreMenuDialogState.EDIT_METADATA -> viewModel.loadItemMetadata()
+            MoreMenuDialogState.EDIT_IMAGES -> viewModel.loadItemImages()
+            else -> Unit
         }
     }
 
@@ -147,7 +152,7 @@ fun MovieScreen(
         }
     }
 
-    // 三个删除操作失败时只需告诉用户「哪一步失败 + 原因」，统一走这里避免重复
+    // 改动服务器内容失败时只需告诉用户「哪一步失败 + 原因」，统一走这里避免重复
     val showFailureToast: (Int, Exception) -> Unit = { messageResId, error ->
         Toast.makeText(
                 context,
@@ -177,6 +182,13 @@ fun MovieScreen(
                         Toast.LENGTH_SHORT,
                     )
                     .show()
+            is MovieEvent.ItemImagesUploaded ->
+                Toast.makeText(
+                        context,
+                        context.getString(CoreR.string.item_images_uploaded),
+                        Toast.LENGTH_SHORT,
+                    )
+                    .show()
             is MovieEvent.ItemDeleted -> {
                 Toast.makeText(
                         context,
@@ -191,6 +203,8 @@ fun MovieScreen(
                 showFailureToast(CoreR.string.delete_item_images_failed, event.error)
             is MovieEvent.MetadataUpdateFailed ->
                 showFailureToast(CoreR.string.update_metadata_failed, event.error)
+            is MovieEvent.ItemImagesUploadFailed ->
+                showFailureToast(CoreR.string.item_images_upload_failed, event.error)
             is MovieEvent.ItemDeleteFailed ->
                 showFailureToast(CoreR.string.delete_item_failed, event.error)
         }
@@ -237,16 +251,13 @@ fun MovieScreen(
     when (moreDialog) {
         MoreMenuDialogState.MENU ->
             MoreMenuDialog(
-                onDeleteImagesClick = {
-                    moreDialog = MoreMenuDialogState.DELETE_IMAGES
-                    viewModel.loadItemImages()
-                },
+                onEditImagesClick = { moreDialog = MoreMenuDialogState.EDIT_IMAGES },
                 onEditMetadataClick = { moreDialog = MoreMenuDialogState.EDIT_METADATA },
                 onDeleteItemClick = { moreDialog = MoreMenuDialogState.DELETE_ALL },
                 onDismiss = { moreDialog = null },
             )
-        MoreMenuDialogState.DELETE_IMAGES ->
-            DeleteItemImagesDialog(
+        MoreMenuDialogState.EDIT_IMAGES ->
+            EditItemImagesDialog(
                 itemImages = state.itemImages,
                 isLoadingImages = state.isLoadingItemImages,
                 errorText =
@@ -256,11 +267,23 @@ fun MovieScreen(
                             error.localizedMessage ?: stringResource(CoreR.string.unknown_error),
                         )
                     },
-                onConfirm = { images ->
-                    moreDialog = null
-                    viewModel.onAction(MovieAction.DeleteItemImages(images = images))
+                scrapeSites = state.imageScrapeSites,
+                scrapeResults = state.imageScrapeResults,
+                isScraping = state.isScrapingImages,
+                isUploading = state.isUploadingImages,
+                onUploadClick = { images ->
+                    viewModel.onAction(MovieAction.UploadScrapedImages(images = images))
                 },
-                onDismiss = { moreDialog = null },
+                onCleanConfirm = {
+                    // 清理后弹窗保持打开，用户能立刻看到服务器上已经没有图片
+                    viewModel.onAction(MovieAction.DeleteItemImages(images = state.itemImages))
+                },
+                onScrapeClick = { showImageScrapeKeywordDialog = true },
+                onDismiss = {
+                    moreDialog = null
+                    // 关掉弹窗就中断抓取并丢掉已抓到的图片（都只在内存里）
+                    viewModel.onAction(MovieAction.CloseImageScrape)
+                },
             )
         MoreMenuDialogState.EDIT_METADATA ->
             EditItemMetadataDialog(
@@ -313,6 +336,7 @@ fun MovieScreen(
 
     if (showScrapeKeywordDialog) {
         ScrapeKeywordDialog(
+            title = stringResource(CoreR.string.scrape_keyword_title),
             defaultKeyword = state.defaultScrapeKeyword,
             proxy = state.scrapeProxy,
             onProxyChange = { address ->
@@ -329,8 +353,10 @@ fun MovieScreen(
 
     if (showScrapeProgressDialog) {
         ScrapeProgressDialog(
+            title = stringResource(CoreR.string.scrape_progress_title),
             steps = state.scrapeSteps,
             isRunning = state.isScraping,
+            failureSummary = stringResource(CoreR.string.scrape_all_failed),
             onCancel = {
                 showScrapeProgressDialog = false
                 viewModel.onAction(MovieAction.CancelScrape)
@@ -341,6 +367,23 @@ fun MovieScreen(
             },
         )
     }
+
+    if (showImageScrapeKeywordDialog) {
+        ScrapeKeywordDialog(
+            title = stringResource(CoreR.string.scrape_images_keyword_title),
+            defaultKeyword = state.defaultScrapeKeyword,
+            proxy = state.scrapeProxy,
+            onProxyChange = { address ->
+                viewModel.onAction(MovieAction.UpdateScrapeProxy(address = address))
+            },
+            onConfirm = { keyword ->
+                showImageScrapeKeywordDialog = false
+                // 结果直接填进下面那个「编辑封面」弹窗，抓完自动显示
+                viewModel.onAction(MovieAction.ScrapeItemImages(keyword = keyword))
+            },
+            onDismiss = { showImageScrapeKeywordDialog = false },
+        )
+    }
 }
 
 /** 「更多」菜单的弹窗状态：同一时刻只会打开其中一个。 */
@@ -348,8 +391,8 @@ private enum class MoreMenuDialogState {
     /** 三个操作入口的菜单。 */
     MENU,
 
-    /** 删除封面的图片确认列表。 */
-    DELETE_IMAGES,
+    /** 编辑封面的图片列表（服务器图片缩略图 + 抓取结果）。 */
+    EDIT_IMAGES,
 
     /** 编辑 nfo 的表单弹窗。 */
     EDIT_METADATA,

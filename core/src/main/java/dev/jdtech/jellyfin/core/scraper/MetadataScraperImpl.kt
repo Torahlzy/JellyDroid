@@ -25,8 +25,7 @@ class MetadataScraperImpl @Inject constructor(private val http: ScraperHttp) : M
 
         // 没填地址的站点直接跳过，不算「抓取失败」——否则用户会把本机没配置误判成站点故障；
         // 一个都没填时单独上报 NotConfigured，让界面给出「没配置」而不是「都失败了」的结论
-        val sites =
-            ScraperSite.entries.mapNotNull { site -> site.baseUrl?.let { url -> site to url } }
+        val sites = configuredScraperSites
         if (sites.isEmpty()) {
             AppLog.w("没有任何站点配置了地址，无法抓取")
             onProgress(ScrapeProgress.NotConfigured)
@@ -36,7 +35,7 @@ class MetadataScraperImpl @Inject constructor(private val http: ScraperHttp) : M
         for ((site, baseUrl) in sites) {
             onProgress(ScrapeProgress.Started(site))
             try {
-                val movie = parse(site, baseUrl, trimmed)
+                val movie = site.parseMovie(trimmed, baseUrl, http)
                 AppLog.i("从 %s 抓取 '%s' 成功", site.displayName, trimmed)
                 onProgress(ScrapeProgress.Succeeded(site))
                 return movie
@@ -49,19 +48,4 @@ class MetadataScraperImpl @Inject constructor(private val http: ScraperHttp) : M
         }
         return null
     }
-
-    /** 失败原因优先用异常自带的说明；没有说明时至少给个能看懂的类型名，而不是光秃秃一个类名。 */
-    private fun Throwable.readableReason(): String =
-        message?.takeIf { it.isNotBlank() } ?: "未知错误（${javaClass.simpleName}）"
-
-    private suspend fun parse(
-        site: ScraperSite,
-        baseUrl: String,
-        keyword: String,
-    ): ScrapedMovie =
-        when (site) {
-            ScraperSite.JAVDB -> JavDbScraper(http, baseUrl).parse(keyword)
-            ScraperSite.JAVBUS -> JavBusScraper(http, baseUrl).parse(keyword)
-            ScraperSite.JAV321 -> Jav321Scraper(http, baseUrl).parse(keyword)
-        }
 }

@@ -44,3 +44,18 @@ internal fun Element.bTagValue(label: String): String? =
 /** 提取一批元素的文本，去掉空项。 */
 internal fun Elements.texts(): List<String> =
     mapNotNull { it.text().trim().takeIf { text -> text.isNotEmpty() } }
+
+/**
+ * 取 `<img>` 的图片地址。
+ *
+ * 顺序与 JavSP 一致（它三个站点都读 `src`，能正常工作），懒加载属性只作兜底；
+ * 同时过滤掉 `data:` 内联图与解析不出绝对地址的情况。
+ */
+internal fun Element.imageUrl(): String? =
+    sequenceOf("src", "data-src", "data-original")
+        .map { key -> absUrl(key).trim() }
+        .firstOrNull { url -> url.startsWith("http") }
+
+/** 取链接的绝对地址：站点的原图常挂在 `a` 的 `href` 上，解析不出 http(s) 时返回 null。 */
+internal fun Element.imageLink(): String? =
+    absUrl("href").trim().takeIf { url -> url.startsWith("http") }

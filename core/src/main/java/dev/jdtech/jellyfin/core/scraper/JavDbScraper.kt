@@ -46,13 +46,11 @@ class JavDbScraper(private val http: ScraperHttp, private val baseUrl: String) {
             container.selectFirst("h2 strong.current-title")?.text()?.trim().orEmpty().takeIf {
                 it.isNotBlank()
             } ?: throw ScraperException.WebsiteError("JavDB: 影片页没有标题")
-        // 信息面板里第一个取值就是番号
-        val dvdIdOnPage = info.selectFirst("div > span")?.text()?.trim().orEmpty()
 
         return ScrapedMovie(
             site = ScraperSite.JAVDB,
-            // 标题里通常带着番号，去掉后才是干净的片名
-            title = title.replace(dvdIdOnPage, "", ignoreCase = true).trim(),
+            // 站点标题里带着番号，原样保留：番号是识别影片的关键，剥掉后还得从文件名里猜回来
+            title = title,
             originalTitle =
                 container.selectFirst("h2 span.origin-title")?.text()?.trim()?.takeIf {
                     it.isNotEmpty()
@@ -63,6 +61,12 @@ class JavDbScraper(private val http: ScraperHttp, private val baseUrl: String) {
             publishDate = info.valueAfterLabel("日期:"),
             score = readScore(html),
             url = movieUrl,
+            // 图片取法与 JavSP 一致（它的 xpath 以 `//` 开头，是在整页里找）：
+            // 封面是详情页的 video-cover，图集第一张的原图地址挂在 a.tile-item 的 href 上。
+            // 注意两者比例和名字是反的：该站点封面实测 800×535（横），图集第一张实测 147×200（竖），
+            // 谁当海报、谁当背景由 ImageScraper 按真实比例决定
+            coverUrl = html.selectFirst("img.video-cover")?.imageUrl(),
+            previewUrl = html.selectFirst("a.tile-item[data-fancybox='gallery']")?.imageLink(),
         )
     }
 

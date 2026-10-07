@@ -1,6 +1,8 @@
 package dev.jdtech.jellyfin.film.presentation.movie
 
 import dev.jdtech.jellyfin.core.scraper.ScrapeProgress
+import dev.jdtech.jellyfin.core.scraper.ScraperSite
+import dev.jdtech.jellyfin.core.scraper.SiteImageScrapeResult
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.models.FindroidMovie
@@ -16,10 +18,10 @@ data class MovieState(
     val director: FindroidItemPerson? = null,
     val writers: List<FindroidItemPerson> = emptyList(),
     val displayExtraInfo: Boolean = false,
-    /** 服务器上该条目的图片，供「删除服务器信息」弹窗列出确认。 */
+    /** 服务器上该条目的图片，在「编辑封面」弹窗里作为「当前服务器使用」列出。 */
     val itemImages: List<FindroidItemImage> = emptyList(),
     val isLoadingItemImages: Boolean = false,
-    /** 图片列表加载失败的原因，非空时弹窗提示失败而不是「服务器上没有图片」。 */
+    /** 图片列表加载失败的原因，非空时弹窗提示失败而不是留空。 */
     val itemImagesError: Exception? = null,
     /** 服务器上该条目的可编辑元数据，为 null 表示还没加载完成，供「编辑 nfo」弹窗回填。 */
     val itemMetadata: ItemMetadataEdit? = null,
@@ -38,6 +40,19 @@ data class MovieState(
     val scrapedMetadata: ItemMetadataEdit? = null,
     /** 抓取使用的本地代理地址，留空表示直连；入口在抓取关键词弹窗里，不影响其它网络请求。 */
     val scrapeProxy: String = "",
+    /** 本地配了地址、抓取时会被尝试的站点，进入「编辑封面」时取一次，供界面先把站点列出来。 */
+    val imageScrapeSites: List<ScraperSite> = emptyList(),
+    /**
+     * 封面抓取的逐站点结果，逐条追加。
+     *
+     * 界面按 [imageScrapeSites] 列出站点、按站点填上结果；为空数组只可能是「没有站点配置地址」，
+     * 因为配过地址的站点即使失败也会留下一条失败结果。抓到的图片只存在内存里，关掉弹窗即丢弃。
+     */
+    val imageScrapeResults: List<SiteImageScrapeResult> = emptyList(),
+    /** 是否正在抓取封面图片。 */
+    val isScrapingImages: Boolean = false,
+    /** 是否正在上传抓取到的封面图片，上传期间禁用各行上传按钮，避免重复点。 */
+    val isUploadingImages: Boolean = false,
     val error: Exception? = null,
     /**
      * 可选播放来源：服务器上的多个版本 + 本地已下载。
