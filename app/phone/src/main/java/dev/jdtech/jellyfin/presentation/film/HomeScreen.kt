@@ -97,7 +97,7 @@ private fun HomeScreenLayout(state: HomeState, onAction: (HomeAction) -> Unit) {
     var showServerSelectionBottomSheet by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize().semantics { isTraversalGroup = true }) {
-        PullToRefreshBox(isRefreshing = false, onRefresh = { onAction(HomeAction.OnRetryClick) }) {
+        PullToRefreshBox(isRefreshing = false, onRefresh = { onAction(HomeAction.OnRefresh) }) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().semantics { traversalIndex = 1f },
                 contentPadding = PaddingValues(top = contentPaddingTop, bottom = paddingBottom),
@@ -166,7 +166,8 @@ private fun HomeScreenLayout(state: HomeState, onAction: (HomeAction) -> Unit) {
         ServerSelectionBottomSheet(
             currentServerId = state.server?.id ?: "",
             onUpdate = {
-                onAction(HomeAction.OnRetryClick)
+                // 换了服务器，banner 也要跟着换
+                onAction(HomeAction.OnRefresh)
                 scope
                     .launch { showServerSelectionSheetState.hide() }
                     .invokeOnCompletion {

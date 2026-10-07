@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.jdtech.jellyfin.database.ServerDatabaseDao
 import dev.jdtech.jellyfin.film.R as FilmR
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.CollectionType
 import dev.jdtech.jellyfin.models.HomeItem
 import dev.jdtech.jellyfin.models.HomeSection
@@ -18,7 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import timber.log.Timber
 
 @HiltViewModel
 class HomeViewModel
@@ -40,8 +40,13 @@ constructor(
     private val uiTextContinueWatching = UiText.StringResource(FilmR.string.continue_watching)
     private val uiTextNextUp = UiText.StringResource(FilmR.string.next_up)
 
-    fun loadData() {
-        Timber.i("Loading data")
+    /**
+     * 加载首页各分区数据。
+     *
+     * @param refreshSuggestions 是否强制重新拉取 banner（推荐轮播）；下拉刷新、切换服务器时传 true
+     */
+    fun loadData(refreshSuggestions: Boolean = false) {
+        AppLog.i("Loading data")
         viewModelScope.launch(Dispatchers.Default) {
             _state.emit(_state.value.copy(isLoading = true, error = null))
             try {
@@ -49,7 +54,7 @@ constructor(
                     loadServerName(serverId)
                 }
 
-                loadSuggestions()
+                loadSuggestions(refreshSuggestions)
                 loadResumeItems()
                 loadNextUpItems()
                 loadViews()
@@ -67,10 +72,16 @@ constructor(
         }
     }
 
-    private suspend fun loadSuggestions() {
-        Timber.i("Loading suggestions")
+    private suspend fun loadSuggestions(refreshSuggestions: Boolean) {
+        AppLog.i("Loading suggestions")
         if (!appPreferences.getValue(appPreferences.homeSuggestions)) {
             _state.emit(_state.value.copy(suggestionsSection = null))
+            return
+        }
+
+        // banner 只在首次进入与下拉刷新时拉取：每次从详情页返回首页都重拉会重建轮播、
+        // 重新加载封面图，观感上像整页被刷新了一遍
+        if (!refreshSuggestions && _state.value.suggestionsSection != null) {
             return
         }
 
@@ -87,7 +98,7 @@ constructor(
     }
 
     private suspend fun loadResumeItems() {
-        Timber.i("Loading resume items")
+        AppLog.i("Loading resume items")
         if (!appPreferences.getValue(appPreferences.homeContinueWatching)) {
             _state.emit(_state.value.copy(resumeSection = null))
             return
@@ -108,7 +119,7 @@ constructor(
     }
 
     private suspend fun loadNextUpItems() {
-        Timber.i("Loading next up items")
+        AppLog.i("Loading next up items")
         if (!appPreferences.getValue(appPreferences.homeNextUp)) {
             _state.emit(_state.value.copy(nextUpSection = null))
             return
@@ -127,7 +138,7 @@ constructor(
     }
 
     private suspend fun loadViews() {
-        Timber.i("Loading views")
+        AppLog.i("Loading views")
         val items =
             if (appPreferences.getValue(appPreferences.homeLatest)) {
                 repository
@@ -151,6 +162,9 @@ constructor(
         when (action) {
             is HomeAction.OnRetryClick -> {
                 loadData()
+            }
+            is HomeAction.OnRefresh -> {
+                loadData(refreshSuggestions = true)
             }
             else -> Unit
         }

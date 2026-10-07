@@ -41,7 +41,6 @@
 - [播放页面（player）](#播放页面player)
 - [搜索组件（非独立页面）](#搜索组件非独立页面)
 - [页面共性约定](#页面共性约定)
-- [变更记录](#变更记录)
 
 ---
 
@@ -60,9 +59,8 @@
 
 1. 先以 `PHONE/NavigationRoot.kt` 的路由类定义与 `NavHost` 注册块为准，核对「页面总览」表。
 2. 定位对应页面条目，更新：职责、路由、Screen / ViewModel / State / Action 路径、State 字段、主要 Action、入口。
-3. 在文末「变更记录」追加一行（日期 + 摘要）。
-4. 更新开头的「最后更新」日期。
-5. 检查全文无行号引用（见下方「校验方法」）。
+3. 更新开头的「最后更新」日期。
+4. 检查全文无行号引用、无失效路径（见下方「校验方法」）。
 
 ### 校验方法
 
@@ -144,8 +142,8 @@ else -> WelcomeRoute
 - **Screen**：`PHONE/presentation/film/HomeScreen.kt`；section 组装在 `HomeScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/home/HomeViewModel.kt`、`FILM/presentation/home/HomeState.kt`、`FILM/presentation/home/HomeAction.kt`。
 - **State 字段**：`server`、`suggestionsSection`、`resumeSection`、`nextUpSection`、`views`、`isLoading`、`error`。
-- **主要方法 / Action**：`loadData()`；`OnItemClick`、`OnLibraryClick`、`OnRetryClick`、`OnSearchClick`、`OnSettingsClick`、`OnManageServers`。
-- **数据来源**：`getSuggestions()`、`getResumeItems()`、`getNextUp()`、`getUserViews()` + `getLatestMedia(view.id)`（`HomeViewModel.kt`）；每个 section 分别受 `AppPreferences` 的 `homeSuggestions` / `homeContinueWatching` / `homeNextUp` / `homeLatest` 开关控制，为空则不渲染。
+- **主要方法 / Action**：`loadData(refreshSuggestions)`；`OnItemClick`、`OnLibraryClick`、`OnRetryClick`、`OnRefresh`、`OnSearchClick`、`OnSettingsClick`、`OnManageServers`。
+- **数据来源**：`getSuggestions()`、`getResumeItems()`、`getNextUp()`、`getUserViews()` + `getLatestMedia(view.id)`（`HomeViewModel.kt`）；每个 section 分别受 `AppPreferences` 的 `homeSuggestions` / `homeContinueWatching` / `homeNextUp` / `homeLatest` 开关控制，为空则不渲染。banner（推荐轮播）只在首次进入与下拉刷新 / 切换服务器（`OnRefresh`）时拉取，从详情页返回首页不重新请求，避免轮播被重建。
 - **入口**：启动路由 / 底部「首页」标签 / 各详情页的 `navigateHome`。
 
 ### MediaScreen — 媒体库总览
@@ -177,9 +175,9 @@ else -> WelcomeRoute
 - **ViewModel / State / Action**：`FILM/presentation/library/LibraryViewModel.kt`、`FILM/presentation/library/LibraryState.kt`、`FILM/presentation/library/LibraryAction.kt`。
 - **State 字段**：`items`（PagingData Flow）、`sortBy`、`sortOrder`、`coverMode`（`CoverDisplayMode`，默认竖图）、`isLoading`、`error`。
 - **主要方法 / Action**：`setup(parentId, libraryType)`、`loadItems()`、`onAction()`；`OnItemClick`、`OnBackClick`、`ChangeSorting`、`ChangeCoverMode`。
-- **封面显示模式**：偏好持久化在 `AppPreferences.libraryCoverMode`（`pref_library_cover_mode`）；横图模式走 `Direction.HORIZONTAL`，电影 / 剧集 / 合集 / 媒体库等优先取自身 `backdrop`（分集优先取 16:9 剧照 `primary`），宽高比沿用首页 `BANNER_ASPECT_RATIO`，列数按可用宽度自适应（窄屏一列、折叠屏展开等宽屏两列）；竖图走 `Direction.VERTICAL` 取 `primary`、多列网格；某一类图片缺失时由 `ItemPoster` 用另一类临时补位。
-- **合集列表封面**：合集（`FindroidBoxSet`）在服务器上没有图片，`JellyfinRepositoryImpl` 内的私有方法 `getBoxSetCoverImages()` 取合集内部条目的图片作为封面（并行补齐并限制并发、按服务器地址 + 合集 id 在进程内缓存），补齐在 `JellyfinRepositoryImpl.getItems()` 内完成，单次试探失败不影响列表加载。该方法不进 `JellyfinRepository` 接口（离线模式没有合集数据，无需为其写空实现）。合集卡片（`ItemCard`，条目为 `FindroidBoxSet`）封面右上角叠加合集角标 `BoxSetBadge`（复用 `ic_collection`），用于和普通影片区分。
-- **随机排序**：排序菜单的「随机」由 `data/src/main/java/dev/jdtech/jellyfin/repository/ItemsPagingSource.kt` 在客户端实现——以服务端随机排序一次取回一批（上限 `RANDOM_SNAPSHOT_SIZE = 500`）并本地打乱，作为本次会话的固定顺序，之后各页只做本地切片；不沿用偏移量分页，避免服务端每次请求重新洗牌造成的重复与遗漏。菜单可选排序项由 `SortBy.selectableValues` 提供（`data/src/main/java/dev/jdtech/jellyfin/models/SortBy.kt`），已排除仅供内部使用的 `SERIES_DATE_PLAYED`；随机排序下 `SortByDialog` 会禁用排序顺序按钮（结果与顺序无关）。
+- **封面显示模式**：偏好存 `AppPreferences.libraryCoverMode`（`pref_library_cover_mode`）。横图走 `Direction.HORIZONTAL`，优先取 `backdrop`（电影 / 剧集 / 合集 / 媒体库；分集取 16:9 剧照 `primary`），宽高比沿用首页 `BANNER_ASPECT_RATIO`，列数按可用宽度自适应（窄屏一列、宽屏两列）；竖图走 `Direction.VERTICAL` 取 `primary`、多列网格；某类图片缺失时由 `ItemPoster` 用另一类临时补位。
+- **合集列表封面**：合集（`FindroidBoxSet`）在服务器上没有图片，由 `JellyfinRepositoryImpl` 的私有方法 `getBoxSetCoverImages()` 取合集内条目的图片兜底（并行但限并发、按服务器地址 + 合集 id 在进程内缓存，`getItems()` 内调用，单次试探失败不影响列表加载）；该方法不进 `JellyfinRepository` 接口（离线模式没有合集数据）。合集卡片（`ItemCard`，条目为 `FindroidBoxSet`）封面右上角叠加 `BoxSetBadge`（复用 `ic_collection`）与普通影片区分。
+- **随机排序**：排序菜单的「随机」由 `data/src/main/java/dev/jdtech/jellyfin/repository/ItemsPagingSource.kt` 在客户端实现——服务端随机排序一次取回一批（上限 `RANDOM_SNAPSHOT_SIZE = 500`）后本地打乱，作为本次会话的固定顺序、之后只做本地切片，避免偏移分页被服务端重新洗牌导致重复与遗漏。可选排序项由 `SortBy.selectableValues` 提供（`data/src/main/java/dev/jdtech/jellyfin/models/SortBy.kt`），排除仅供内部使用的 `SERIES_DATE_PLAYED`；随机排序下 `SortByDialog` 禁用排序顺序按钮。
 - **入口**：首页媒体库卡片；点击 `FindroidCollection` / `FindroidFolder` 条目（`PHONE/NavigationRoot.kt`）。
 
 ### CollectionScreen — 合集详情
@@ -205,11 +203,17 @@ else -> WelcomeRoute
 
 ### MovieScreen — 电影详情
 
-- **职责**：加载影片元数据 / 视频信息 / 演员，提供播放、预告、标记已看、收藏、下载、删除服务器文件（封面 / nfo / 条目本身）、跳转演员，并处理离线模式。
+- **职责**：加载影片元数据 / 视频信息 / 演员，提供播放、预告、标记已看、收藏、下载、跳转演员，以及「更多」菜单（删除封面 / 编辑 nfo / 删除全部），并处理离线模式。
 - **路由**：`MovieRoute(movieId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
-- **Screen**：`PHONE/presentation/film/MovieScreen.kt`；副标题下方的文件存放路径由 `PHONE/presentation/film/components/FilePathText.kt` 渲染（默认 1 行，截断时可点击展开 / 收起），已下载时先显示本地路径、再显示服务器路径（各自按来源去重后拼接，可能多行），并按来源区分前置图标——服务端路径用 `ic_cloud`（云）、本地已下载路径用 `ic_folder`（文件夹）；条目在服务器上有多个来源（同一影片被识别成多个版本）时，点播放先弹「选择播放版本」→ `PHONE/presentation/film/components/PlaybackSourceDialog.kt`（列出每个来源，云 / 文件夹图标区分，选中后按索引启动播放器）；按钮行末尾的「更多」按钮（离线模式不显示）打开 `PHONE/presentation/film/components/MoreMenuDialog.kt`，三个入口各自再弹一次确认：「删除封面」→ `PHONE/presentation/film/components/DeleteItemImagesDialog.kt`（列出服务器图片，缩略图 + 类型名，默认全选、可逐张取消）、「编辑 nfo」→ `PHONE/presentation/film/components/EditItemMetadataDialog.kt`（用服务器元数据回填 12 个可编辑字段：标题、原名、简介、类型、标签、制片公司、制片国家、宣传语、分级、制作年份、首播日期、社区评分；多值字段用逗号分隔，标题是唯一必填项、为空时提示必填并禁用确认，数值 / 日期不合法同样禁用确认，加载失败在弹窗内说明原因；按钮布局为标题行右侧「清空」、按钮行左下角「抓取」、右下角「取消 / 确认」；「清空」不是清成空表单，而是清掉其余字段、把标题填成影片文件名（`MovieState.fileName`，即「清空并使用文件名」））、「删除全部」→ `PHONE/presentation/film/components/DeleteItemWithFilesDialog.kt`（会连服务器上的视频文件一起删，确认按钮为错误色）；弹窗切换由 `MovieScreen.kt` 内的私有枚举 `MoreMenuDialogState` 控制（`rememberSaveable` 保存，旋转屏幕不丢失），表单数据由 `LaunchedEffect(moreDialog)` 在弹窗打开时加载（弹窗状态被恢复时也能补上，不会一直转圈），结果以 Toast 提示，「删除全部」成功后返回上一页。「编辑 nfo」里的「抓取」按钮打开 `PHONE/presentation/film/components/ScrapeKeywordDialog.kt`（预填 `MovieState.defaultScrapeKeyword`，即由文件名 / 标题识别出的番号，可自行修改；弹窗内还有唯一一处代理入口，写入 `MovieState.scrapeProxy`），确认后弹出 `PHONE/presentation/film/components/ScrapeProgressDialog.kt` 展示抓取进度（逐条列出「正在抓哪个站 / 哪个站成功 / 失败原因」，抓取中只能点「取消」中断，全部站点都失败时保留弹窗并给出「关闭」按钮，抓到内容后自动消失并把结果回填到编辑表单、标题改为「已更新（未保存）」并用提醒色（`tertiary`）显示；抓取中单个站点的失败行用中性色，只有全部站点都失败（弹窗留下）才标红，保存仍走用户确认后的既有编辑流程）；抓取只取文字信息、不下载封面图，抓取逻辑在 `CORE/core/scraper/`（`MetadataScraper` 按 `ScraperSite` 顺序依次尝试 JavDB / JavBus / Jav321，单站失败只记一笔继续下一个）；站点地址不写在代码里，由本地配置 `local.properties` 的 `scraper.<站点>.url` 提供（经 `:core` 的 `BuildConfig` 注入，该文件不入库），没配置的站点会在抓取时被跳过。
+- **Screen**：`PHONE/presentation/film/MovieScreen.kt`；弹窗与小组件都在 `PHONE/presentation/film/components/` 下：
+  - `FilePathText.kt`：副标题下方的文件路径，本地优先于服务器、各自去重拼接、可点击展开；服务端路径用 `ic_cloud`、本地已下载用 `ic_folder`。
+  - `PlaybackSourceDialog.kt`：条目有多个来源（被识别成多个版本）时点播放先选版本，选中索引经 Intent extra `mediaSourceIndex` 交给播放器。
+  - `MoreMenuDialog.kt`（离线模式不显示）汇总三个入口，各自二次确认：`DeleteItemImagesDialog.kt`（列出服务器图片，默认全选、可逐张取消）、`EditItemMetadataDialog.kt`、`DeleteItemWithFilesDialog.kt`（连服务器视频文件一起删，确认按钮为错误色）。弹窗切换由 `MovieScreen.kt` 内的私有枚举 `MoreMenuDialogState` 控制（`rememberSaveable` 保存，旋转不丢），表单数据在弹窗打开时加载，结果以 Toast 提示，「删除全部」成功后返回上一页。
+  - `EditItemMetadataDialog.kt`：12 个可编辑字段（标题、原名、简介、类型、标签、制片公司、制片国家、宣传语、分级、制作年份、首播日期、社区评分），多值字段用逗号分隔，标题是唯一必填项（空或数值 / 日期不合法时禁用确认）。按钮布局为标题行右侧「清空」、按钮行左下角「抓取」、右下角「取消 / 确认」；「清空」= 清掉其余字段、把标题填成影片文件名（`MovieState.fileName`）。
+  - `ScrapeKeywordDialog.kt`：抓取入口，预填 `MovieState.defaultScrapeKeyword`（`AvidParser` 从文件名 / 标题识别出的番号），弹窗内还有唯一一处代理入口（写入 `MovieState.scrapeProxy`）→ `ScrapeProgressDialog.kt`：逐条展示抓取进度，进行中可「取消」，全部站点失败时保留并给出「关闭」，成功后自动消失、结果回填表单并把标题改成提醒色的「已更新（未保存）」。
+  - 抓取只取文字信息、不下载封面图，实现在 `CORE/scraper/`（`MetadataScraper` 按 `ScraperSite` 顺序依次尝试 JavDB / JavBus / Jav321，单站失败继续下一个）；站点地址不在代码里，由本地 `local.properties` 的 `scraper.<站点>.url` 经 `:core` 的 `BuildConfig` 注入（该文件不入库），未配置的站点会被跳过。
 - **ViewModel / State / Action / Event**：`FILM/presentation/movie/MovieViewModel.kt`、`FILM/presentation/movie/MovieState.kt`、`FILM/presentation/movie/MovieAction.kt`、`FILM/presentation/movie/MovieEvent.kt`；另使用 `CORE/presentation/downloader/DownloaderViewModel.kt`。
-- **State 字段**：`movie`、`videoMetadata`、`actors`、`director`、`writers`、`displayExtraInfo`、`itemImages`（服务器图片列表，元素为 `FindroidItemImage`）、`isLoadingItemImages`、`itemImagesError`（图片列表加载失败原因，非空时弹窗内提示失败，不再额外弹 Toast）、`itemMetadata`（服务器上可编辑的元数据，元素为 `ItemMetadataEdit`，为 `null` 表示尚未加载）、`isLoadingItemMetadata`、`itemMetadataError`（元数据加载失败原因，同样只在弹窗内提示）、`defaultScrapeKeyword`（抓取弹窗预填的关键词，由 `AvidParser` 从文件名 / 服务器路径 / 标题识别出的番号，识别不到时为空串）、`isScraping`、`scrapeSteps`（抓取执行步骤，元素为 `ScrapeProgress`，逐条追加）、`scrapeFailed`（所有站点都没抓到，为 `true` 时抓取弹窗保留）、`scrapedMetadata`（抓到的元数据，非空表示编辑表单已被覆盖且尚未保存）、`scrapeProxy`（抓取专用代理地址，留空表示直连，入口在抓取关键词弹窗）、`error`、`playbackSources`（可选播放来源，元素为 `FindroidSource`，由 `getMediaSources()` 获取以保证与播放端顺序一致，为空表示尚未加载）；派生属性 `localFilePath`、`remoteFilePath`（分别取 `playbackSources` 中 `LOCAL` / `REMOTE` 来源的路径，各自去重后拼接，无有效路径时为 `null`）、`fileName`（优先取本地路径首段的文件名并去掉扩展名，「编辑 nfo」弹窗的「清空」用它兜底标题，取不到时为 `null`）。
+- **State 字段**：`movie`、`videoMetadata`、`actors`、`director`、`writers`、`displayExtraInfo`、`itemImages`（元素 `FindroidItemImage`）、`isLoadingItemImages`、`itemImagesError`、`itemMetadata`（元素 `ItemMetadataEdit`，`null` 表示尚未加载）、`isLoadingItemMetadata`、`itemMetadataError`、`defaultScrapeKeyword`、`isScraping`、`scrapeSteps`（元素 `ScrapeProgress`，逐条追加）、`scrapeFailed`（为 `true` 时抓取弹窗保留）、`scrapedMetadata`（非空表示表单已被抓取结果覆盖且尚未保存）、`scrapeProxy`（抓取代理，留空表示直连）、`error`、`playbackSources`（元素 `FindroidSource`，由 `getMediaSources()` 获取以保证与播放端顺序一致）；派生属性 `localFilePath` / `remoteFilePath`（取 `playbackSources` 中 `LOCAL` / `REMOTE` 来源的路径，各自去重拼接，无有效路径为 `null`）、`fileName`（本地路径首段文件名去掉扩展名，「清空」的兜底标题，取不到为 `null`）。
 - **主要方法 / Action**：`loadMovie(movieId)`、`loadItemImages()`、`loadItemMetadata()`、`onAction()`；`Play`、`PlayTrailer`、`MarkAsPlayed`、`UnmarkAsPlayed`、`MarkAsFavorite`、`UnmarkAsFavorite`、`OnBackClick`、`OnHomeClick`、`NavigateToPerson`、`DeleteItemImages(images)`、`UpdateItemMetadata(metadata)`、`ScrapeMetadata(keyword)`、`DismissScrapeFailure`、`CancelScrape`、`UpdateScrapeProxy(address)`、`DeleteItemWithFiles`；事件 `ItemImagesDeleted`、`MetadataUpdated`、`ItemDeleted`、`ItemImagesDeleteFailed`、`MetadataUpdateFailed`、`ItemDeleteFailed`。
 - **入口**：任意列表页点击 `FindroidMovie` 条目（`PHONE/NavigationRoot.kt`），如首页、媒体库、下载、收藏、合集、剧集 / 季 / 人物页。
 
@@ -385,40 +389,3 @@ else -> WelcomeRoute
 - **无 `onAction` 的 ViewModel**：`DownloadsViewModel`、`FavoritesViewModel`、`PersonViewModel`。
 - **导航**：统一使用类型安全路由；`navigateToItem(navController, item)`（`PHONE/NavigationRoot.kt`）按 `FindroidItem` 子类型分发到具体详情页；`safeNavigate` / `safePopBackStack` 仅在生命周期为 `RESUMED` 时执行导航（`PHONE/NavigationRoot.kt`）。
 - **离线模式**：由 `LocalOfflineMode` CompositionLocal 控制（`PHONE/presentation/utils/`），离线时隐藏「媒体」标签与仅联网功能。
-
----
-
-## 变更记录
-
-| 日期 | 变更摘要 |
-|---|---|
-| 2026-10-06 | 首次创建。覆盖手机端 21 个页面（film 11、settings 3、setup 6、player 1）与 1 个搜索组件。 |
-| 2026-10-06 | 电影详情页副标题下方新增文件存放路径（`FilePathText`，`MovieState.filePath` 派生属性），同步 MovieScreen 条目。 |
-| 2026-10-06 | 文件路径改为本地 / 远程分离：`FindroidSource.filePath` 拆为 `remoteFilePath`、`localFilePath`，`MovieState` 改为派生 `localFilePath`、`remoteFilePath`，已下载时两行同时展示。 |
-| 2026-10-06 | 媒体库详情页排序弹窗新增封面显示模式（`CoverDisplayMode`，竖图 / 横图），新增偏好 `pref_library_cover_mode`、Action `ChangeCoverMode`，`ItemPoster` 增加横竖图互相补位；同步 LibraryScreen 条目。 |
-| 2026-10-06 | 媒体库横图封面改用首页 `BANNER_ASPECT_RATIO`，列数按可用宽度自适应（宽屏每行两个）。 |
-| 2026-10-06 | 横图封面选取范围扩展：剧集 / 合集 / 媒体库等非电影条目也优先取 `backdrop`（分集仍优先 16:9 剧照）；全文去除行号引用，并新增「不得写行号」的书写与校验要求。 |
-| 2026-10-06 | 合集封面补齐：合集列表（`FindroidBoxSet`）用合集内条目的图片兜底（新增 `JellyfinRepositoryImpl` 内的 `getBoxSetCoverImages()`）；媒体库页的合集库入口新增通用图标 `ic_collection`，`ItemPoster` / `ItemCard` 新增 `placeholderIconRes` 参数。 |
-| 2026-10-06 | 合集封面补齐健壮性：合封面试探加并发限流与会话内缓存（键含服务器地址），优先选带 `backdrop` 的候选条目；单次试探失败仅记录日志并保留原图，不再影响整个列表加载。 |
-| 2026-10-06 | 合集封面补齐收口：`getBoxSetCoverImages()` 从 `JellyfinRepository` 接口移入 `JellyfinRepositoryImpl` 私有方法（离线实现不再需要空实现）；`MediaScreen` 的合集库占位图标策略提取为 `FindroidCollection.placeholderIconRes()`；`ItemPoster` / `ItemCard` 的 `placeholderIconRes` 补 `@DrawableRes`。 |
-| 2026-10-06 | `:data` 新增 `FindroidSource.pickPlaybackSource()` 共享选源规则（本地优先，其次列表首个），`PlaylistManager` 与 `MovieViewModel` 共用，详情页视频元数据不再固定取第一个源。 |
-| 2026-10-06 | 合集卡片加类型角标：`ItemCard` 在条目为 `FindroidBoxSet` 时于封面右上角显示新增的 `BoxSetBadge`（复用 `ic_collection`），实际在 LibraryScreen 合集库列表生效（`CollectionGrid` 的 section 只含电影 / 剧集 / 分集，不出现合集，故不受影响）；新增字符串 `collection`（含 zh-rCN / zh-rTW）。 |
-| 2026-10-06 | 文档与注释校正：修正上条对 `CollectionGrid` 的影响描述；`JellyfinRepositoryImpl.boxSetCoverCache` 注释补充「无上限、不主动清理、仅随进程存活」的缓存策略说明。 |
-| 2026-10-06 | 电影详情页新增「更多」菜单（最终形态）：按钮行末尾的「更多」按钮（离线模式隐藏）打开 `MoreMenuDialog`，三个入口各自二次确认——「删除封面」→ `DeleteItemImagesDialog`（列出服务器图片，缩略图 + 类型名，默认全选、可逐张取消）、「重置 nfo」→ `ResetMetadataDialog`（文件名取不到时提示标题将被清空）、「删除全部」→ `DeleteItemWithFilesDialog`（确认按钮为错误色）；弹窗切换由 `MovieScreen.kt` 内的私有枚举 `MoreMenuDialogState` 控制（`rememberSaveable` 保存，旋转屏幕不丢失）。数据层新增 `JellyfinRepository.getItemImages` / `deleteItemImages` / `clearItemMetadata` / `deleteItem`（离线实现分别返回空列表 / 抛异常；`clearItemMetadata` 为覆盖式更新且保留 `ProviderIds`，读取条目失败即中止；`getItemImages` 校验服务器地址非空），并新增 `FindroidItemImage` 与 `MovieState.serverFileName`（远程路径首行末段）。`MovieAction` 为 `DeleteItemImages(images)` / `ResetItemMetadata` / `DeleteItemWithFiles`，事件为 `ItemImagesDeleted` / `MetadataReset` / `ItemDeleted` / `ItemImagesDeleteFailed` / `MetadataResetFailed` / `ItemDeleteFailed`（按操作分别提示），图片列表加载失败只在弹窗内提示；「删除全部」成功后返回上一页。 |
-| 2026-10-06 | 电影详情页「更多」菜单的「重置 nfo」改为「编辑 nfo」：只读确认弹窗 `ResetMetadataDialog` 替换为可编辑弹窗 `EditItemMetadataDialog`，回填标题、原名、简介、类型、标签、制片公司、制片国家、宣传语、分级、制作年份、首播日期、社区评分共 12 个字段，多值字段用逗号分隔，底部提供「清空」/「确认」，标题为唯一必填项（为空时提示「必填」并禁用确认，数值 / 日期不合法同样禁用）。数据层 `JellyfinRepository.clearItemMetadata` 替换为 `getItemMetadata` / `updateItemMetadata`：写回时先按 `METADATA_EDIT_FIELDS` 整份读回条目再只覆盖表单字段，演职员、外部刮削 ID、锁定状态等原样保留（`ItemFields.SETTINGS` 取回 `LockData` / `ForcedSortName` / `PreferredMetadata*`，避免被置空或解锁），离线实现分别返回空表单 / 抛异常；新增领域模型 `ItemMetadataEdit`。`MovieState` 移除已无用的 `serverFileName`、新增 `itemMetadata` / `isLoadingItemMetadata` / `itemMetadataError`，`MovieViewModel` 新增 `loadItemMetadata()`；`MovieAction.ResetItemMetadata` → `UpdateItemMetadata(metadata)`，事件 `MetadataReset` / `MetadataResetFailed` → `MetadataUpdated` / `MetadataUpdateFailed`；文案 `reset_*` 系列替换为 `edit_metadata_*`（含 zh-rCN / zh-rTW）。 |
-| 2026-10-06 | 编辑 nfo 收尾：`MoreMenuDialog` 标题由「删除服务器信息」（`delete_server_info`）改为中性的「更多操作」（新键 `more_menu_title`，含 zh-rCN / zh-rTW），与菜单内新增的「编辑 nfo」一致；写回元数据时不再回传演职员——服务端对 `People` 是「传了才更新」，`updateItemMetadata` 显式传 `people = null` 保留原值，`ItemFields.PEOPLE` 随之从 `METADATA_EDIT_FIELDS` 移除。 |
-| 2026-10-06 | 下载页去掉卡片封面右下角的详情入口：删除 `InfoBadge`、`DownloadDetailsDialog` 两个组件，`PHONE/presentation/film/components/ItemCard.kt`、`PHONE/presentation/film/components/CollectionGrid.kt`、`PHONE/presentation/film/DownloadsScreen.kt` 移除 `onDetailsClick` / `onItemDetails` 传参链；下载页点击条目仍进入详情页（`DownloadDetailsDialog` 的文件路径信息与电影页 `FilePathText` 重复，已无用）。 |
-| 2026-10-06 | 电影详情页文件路径图标按来源区分：`FilePathText` 新增 `isRemote` 参数，服务端路径改用新增的云图标 `ic_cloud`（`:core` drawable，描边风格对齐 `ic_folder`），本地已下载路径仍用文件夹图标。 |
-| 2026-10-06 | 电影详情页支持「选择播放版本」：`MovieState` 新增 `playbackSources`（由 `getMediaSources()` 获取，保证与播放端顺序一致），`localFilePath` / `remoteFilePath` 改由它派生并恢复列出全部来源；新增 `PHONE/presentation/film/components/PlaybackSourceDialog.kt`，来源多于一个时点播放先弹窗选择，选中索引经 Intent extra `mediaSourceIndex` 传给 `PlayerActivity` → `PlayerViewModel.initializePlayer(..., mediaSourceIndex)` → `PlaylistManager.getInitialItem`；新增字符串 `select_playback_source`（含 zh-rCN）。 |
-| 2026-10-07 | 媒体库详情页排序菜单新增「随机」：`SortBy` 增加 `RANDOM`（服务端 `Random`）与 `isSelectable` 标记，菜单项改由 `SortBy.selectableValues` 提供并排除内部项 `SERIES_DATE_PLAYED`，`sort_by_options` 补齐第 7 项；随机排序由 `ItemsPagingSource` 客户端实现——服务端随机排序一次取回一批（上限 500）后本地打乱并本地分页，避免偏移分页重复。 |
-| 2026-10-07 | 随机排序细节收敛：选中随机时 `PHONE/presentation/film/components/SortByDialog.kt` 禁用排序顺序按钮；`ItemsPagingSource` 随机分支复用 `emittedItemIds` 去重兜底；`SortBy.selectableValues` 改为惰性求值。 |
-| 2026-10-07 | 修复播放器截图设封面返回 500：Jellyfin 服务端的图片上传接口（`ImageController.SetItemImage`）会对请求体做 Base64 解码（`CryptoStream` + `FromBase64Transform`），SDK 自动生成的 `setItemImage` 发的是原始二进制因而解码失败；`JellyfinRepositoryImpl.setItemImage` 改为发送 Base64 文本（`Content-Type` 保持 `image/jpeg`，服务端据此落盘为 `.jpg`）。 |
-| 2026-10-07 | 播放器右上角改为菜单入口：布局 `exo_main_controls.xml` 的字幕 / 倍速 / 音轨三个按钮合并为 `btn_menu`，点击弹出新增的 `PHONE/presentation/player/PlayerMenuDialogFragment.kt`，由它再打开原有的 `TrackSelectionDialogFragment` / `SpeedSelectionDialogFragment`；菜单新增「截取当前画面设为横屏封面」——`PlayerActivity.captureBackdrop()` 先经 `PlayerViewModel.hasBackdrop()` 确认服务器上没有 `BACKDROP`（已有则提示先删除、不上传），再用 `PHONE/utils/VideoFrameCapture.kt` 的 `SurfaceView.captureFrameAsJpeg()`（PixelCopy + 等比缩放为 JPEG）截帧，经 `PlayerViewModel.setBackdrop()` → `JellyfinRepository.setItemImage()` 上传；`:data` 新增 `setItemImage`（离线实现抛异常），新增字符串 `player_controls_menu`、`player_menu_capture_backdrop`、`player_backdrop_already_exists`、`player_backdrop_set_success`、`player_backdrop_set_failed`、`player_backdrop_frame_unavailable`（含 zh-rCN）。 |
-| 2026-10-07 | 截图设封面收尾：离线模式（`appPreferences.offlineMode`）下 `PlayerMenuDialogFragment` 不再展示截图入口；截图改用 `PlayerActivity.displayAspectRatio()`（读 `player.videoSize`，折算 90/270 度旋转）在 `VideoFrameCapture.kt` 内居中裁掉 fit 缩放的黑边后再缩放压缩；`captureBackdrop()` / `uploadBackdrop()` 单独放行 `CancellationException`，避免 Activity 销毁时误报失败。 |
-| 2026-10-07 | 编辑 nfo 弹窗新增「抓取」并调整布局：`EditItemMetadataDialog` 改为自定义 `Dialog` + `Card`，「清空」移到标题行右侧、「抓取」在按钮行左下角、「取消 / 确认」在右下角；抓取结果非空时标题改为「已更新（未保存）」，确认后仍走既有的 `updateItemMetadata` 写回。新增 `PHONE/presentation/film/components/ScrapeKeywordDialog.kt`（预填识别出的番号）与 `ScrapeProgressDialog.kt`（逐条展示「正在抓哪个站 / 成功 / 失败原因」，抓取中不可关闭、全部失败时保留、成功自动消失）。爬虫移植到 `CORE/core/scraper/`：`ScraperSite`（JavDB / JavBus / Jav321）、`MetadataScraper` + `MetadataScraperImpl`（按站点顺序串行尝试，单站失败继续下一个）、`JavDbScraper` / `JavBusScraper` / `Jav321Scraper`、`ScraperHttp`（关闭自动重定向，`Location` 自行解析）、`ScraperHtml`（jsoup 取「标签后取值」）、`ScraperException`、`ScrapedMovie` + `toItemMetadataEdit()`、`AvidParser`（番号识别）；`:core` 新增 jsoup 依赖与 `ScraperModule` / `@ScraperOkHttpClient`。抓取只取文字信息、不下载图片（系列 / 导演 / 演员因编辑表单没有对应字段而未解析）。`MovieState` 新增 `defaultScrapeKeyword` / `isScraping` / `scrapeSteps` / `scrapeFailed` / `scrapedMetadata`，`MovieAction` 新增 `ScrapeMetadata(keyword)` / `DismissScrapeFailure`；新增字符串 `edit_metadata_scraped_title`、`scrape_*`（含 zh-rCN / zh-rTW）。 |
-| 2026-10-07 | 抓取支持本地代理：`AppPreferences` 新增 `scrapeProxy`（键 `pref_scrape_proxy`，默认空串=直连），设置页「网络」分类下新增该项（仅手机端展示）。为此在偏好系统里补齐「文本输入」类型——新增 `SETTINGS/presentation/models/PreferenceStringInput.kt` 与 `PHONE/presentation/settings/components/SettingsStringInputCard.kt`，`SettingsGroupCard` / `SettingsViewModel` 分别增加渲染分支与读写分支；顺手把数值 / 文本输入共用的行布局从 `SettingsNumberInputCard.kt` 抽到新文件 `SettingsValueCard.kt`（`SettingsNumberInputCard` 随之改名为 `SettingsValueCard`）。抓取侧新增 `CORE/core/scraper/ScraperProxy.kt`，`ScraperHttp` 每次请求按当前设置用 `client.newBuilder().proxy(...)` 派生客户端（`Address` 含代理，连接池不会跨代理误用连接）；支持 `http://host:port` 与 `socks5://host:port`，格式不合法只记日志并按直连处理。新增字符串 `settings_scrape_proxy`、`settings_scrape_proxy_summary`、`settings_value_unset`（含 zh-rCN / zh-rTW）。 |
-| 2026-10-07 | 抓取入口与会话细节调整：代理入口从设置页移出，改到抓取关键词弹窗内（`ScrapeKeywordDialog` 新增 `proxy` / `onProxyChange`，确认后写回 `AppPreferences.scrapeProxy`；`MovieState` 新增 `scrapeProxy`、`MovieAction` 新增 `UpdateScrapeProxy`），为此撤回设置页那套改动——删除 `PreferenceStringInput.kt`、`SettingsStringInputCard.kt`、`SettingsGroupCard` / `SettingsViewModel` 的文本输入分支与 `settings_*proxy*` / `settings_value_unset` 字符串（`SettingsValueCard.kt` 保留，数值输入仍用它）。抓取进度弹窗新增「取消」：`MovieViewModel` 用 `scrapeJob` 记录任务，`MovieAction.CancelScrape` 取消协程并复位状态（`ScrapeProgressDialog` 新增 `onCancel`，进行中显示「取消」、失败显示「关闭」）。「编辑 nfo」弹窗：修正「清空」右边距与按钮行一致；新增抓取代理字符串 `scrape_proxy`、`scrape_proxy_summary`、`scrape_proxy_entry`、`scrape_proxy_unset`（均含 zh-rCN / zh-rTW）。 |
-| 2026-10-07 | 「清空」语义调整：不再单独放「使用文件名」小按钮（`MetadataTextField` 的 `trailingIcon` 透传与字符串 `edit_metadata_use_file_name` 一并删除），改为「清空」= 清掉其余字段并把标题填成影片文件名——`EditItemMetadataDialog` 用 `clearedForm = MetadataForm(name = fileName.orEmpty())` 同时作为清空结果与按钮可用性判断，`MovieState.fileName` 保持不变。 |
-| 2026-10-07 | 抓取反馈配色调整：`ScrapeProgressDialog` 在抓取进行中把单站失败行改成中性色（`onSurfaceVariant`），只有全部站点失败、弹窗留下时才标红——避免「中途闪过红字但最终成功」的误导；`EditItemMetadataDialog` 的标题在 `scrapedMetadata` 非空（即「已更新（未保存）」）时改用提醒色 `tertiary`。 |
-| 2026-10-07 | 抓取站点地址移出代码：`ScraperSite` 不再硬编码地址，改为读 `:core` 的 `BuildConfig.SCRAPER_JAVDB_URL` / `SCRAPER_JAVBUS_URL` / `SCRAPER_JAV321_URL`，值由 `core/build.gradle.kts` 从 `local.properties` 的 `scraper.javdb.url` / `scraper.javbus.url` / `scraper.jav321.url` 读取（该文件已被 .gitignore 忽略，不入库；`:core` 相应开启 `buildFeatures.buildConfig`）。`ScraperSite.baseUrl` 变为可空，`MetadataScraperImpl` 跳过未配置的站点并把它记成一条失败原因，地址改为由构造函数传给三个站点抓取器（不再是全局常量）。 |
-| 2026-10-07 | 抓取流程审核修复：`MovieViewModel.scrapeMetadata` 改为 `viewModelScope.launch(Dispatchers.IO)`——此前只有网络请求切到 IO，jsoup 解析仍跑在主线程；`MetadataScraperImpl` 不再把「未配置地址」记成站点失败（未配置的站点静默跳过，一个都没配置时上报新增的 `ScrapeProgress.NotConfigured`），失败原因在异常没有 message 时显示「未知错误（异常类型）」而不是光秃秃的类名；`ScraperHttp` 按地址缓存解析出的代理，避免地址格式错误时每条请求重复打同一条告警；`ScrapedMovie.toItemMetadataEdit` 新增 `fallbackTitle` 参数，标题按「片名 → 原名 → 番号」兜底（JavDB 页面标题常常只有番号，剥掉后为空会卡住表单的必填校验）；`ScrapeProgressDialog` 增加 `NotConfigured` 分支，且只有确实出现过 `Failed` 时才补「所有站点都未抓取到信息」；`JavDbScraper` 改为按 `a.box` 容器整体匹配番号与链接，消除两处 `select` 的下标耦合。新增字符串 `scrape_site_not_configured`（含 zh-rCN / zh-rTW）。 |

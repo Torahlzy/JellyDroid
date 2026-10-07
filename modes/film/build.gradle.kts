@@ -26,7 +26,6 @@ dependencies {
     implementation(projects.data)
     implementation(projects.logging)
     implementation(projects.settings)
-    implementation(libs.timber)
 
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.runtime)
