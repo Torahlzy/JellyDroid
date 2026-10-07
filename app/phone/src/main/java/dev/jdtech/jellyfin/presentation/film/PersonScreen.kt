@@ -24,6 +24,9 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +46,9 @@ import dev.jdtech.jellyfin.film.presentation.person.PersonState
 import dev.jdtech.jellyfin.film.presentation.person.PersonViewModel
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.FindroidPerson
+import dev.jdtech.jellyfin.presentation.components.ErrorDialog
 import dev.jdtech.jellyfin.presentation.film.components.Direction
+import dev.jdtech.jellyfin.presentation.film.components.ErrorCard
 import dev.jdtech.jellyfin.presentation.film.components.ItemCard
 import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
 import dev.jdtech.jellyfin.presentation.film.components.OverviewText
@@ -76,13 +81,20 @@ fun PersonScreen(
                     state.person?.let { navigateToAllItems(it.id, it.name) }
             }
         },
+        onRetry = { viewModel.loadPerson(personId) },
     )
 }
 
 @Composable
-private fun PersonScreenLayout(state: PersonState, onAction: (PersonAction) -> Unit) {
+private fun PersonScreenLayout(
+    state: PersonState,
+    onAction: (PersonAction) -> Unit,
+    onRetry: () -> Unit,
+) {
     val safePadding = rememberSafePadding()
     val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
+
+    var showErrorDialog by rememberSaveable { mutableStateOf(false) }
 
     val paddingStart = safePadding.start + MaterialTheme.spacings.default
     val paddingTop = safePadding.top + MaterialTheme.spacings.default
@@ -204,7 +216,19 @@ private fun PersonScreenLayout(state: PersonState, onAction: (PersonAction) -> U
 
                 Spacer(Modifier.height(paddingBottom))
             }
-        } ?: run { CircularProgressIndicator(modifier = Modifier.align(Alignment.Center)) }
+        } ?: run {
+            // 取不到人物资料时给出可见的错误与重试入口，不要一直停在加载态
+            if (state.error != null) {
+                ErrorCard(
+                    onShowStacktrace = { showErrorDialog = true },
+                    onRetryClick = onRetry,
+                    modifier =
+                        Modifier.align(Alignment.Center).fillMaxWidth().padding(itemsPadding),
+                )
+            } else {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            }
+        }
 
         ItemTopBar(
             hasBackButton = true,
@@ -212,6 +236,12 @@ private fun PersonScreenLayout(state: PersonState, onAction: (PersonAction) -> U
             onBackClick = { onAction(PersonAction.NavigateBack) },
             onHomeClick = { onAction(PersonAction.NavigateHome) },
         )
+    }
+
+    state.error?.let { error ->
+        if (showErrorDialog) {
+            ErrorDialog(exception = error, onDismissRequest = { showErrorDialog = false })
+        }
     }
 }
 
@@ -237,6 +267,7 @@ private fun PersonScreenLayoutPreview() {
         PersonScreenLayout(
             state = PersonState(person = dummyPersonDetail, starredInMovies = dummyMovies),
             onAction = {},
+            onRetry = {},
         )
     }
 }

@@ -331,12 +331,22 @@ class JellyfinRepositoryImpl(
             .flow
     }
 
+    // 服务端「按 id 取单个 Person 条目」不可靠：实测 Jellyfin 10.10.7 上 /Items/{id} 与
+    // /Users/{userId}/Items/{id} 都会长时间无响应或直接 500，而 /Items?ids= 正常返回同一条目，
+    // 字段（Name / ImageTags / Overview）足够构造 FindroidPerson，因此这里走查询式接口
     override suspend fun getPerson(personId: UUID): FindroidPerson =
         withContext(Dispatchers.IO) {
-            jellyfinApi.userLibraryApi
-                .getItem(personId, jellyfinApi.userId!!)
+            jellyfinApi.itemsApi
+                .getItems(
+                    jellyfinApi.userId!!,
+                    ids = listOf(personId),
+                    fields = listOf(ItemFields.OVERVIEW),
+                )
                 .content
-                .toFindroidPerson(this@JellyfinRepositoryImpl)
+                .items
+                .firstOrNull()
+                ?.toFindroidPerson(this@JellyfinRepositoryImpl)
+                ?: throw NoSuchElementException("服务端没有 id 为 $personId 的人物")
         }
 
     override suspend fun getPersonItems(
