@@ -412,7 +412,17 @@ class JellyfinRepositoryImpl(
                     .content
                     .items
 
-            AppLog.d("人物列表：类型 %s，limit %d，返回 %d 人", personTypes, limit, persons.size)
+            // 头像 URL 依赖 DTO 的 ImageTags：该字段缺失时界面只剩底色占位，
+            // 且 Coil 加载失败不打印日志，必须在这里把数据侧的线索打出来
+            val withImageCount = persons.count { ImageType.PRIMARY in it.imageTags.orEmpty() }
+            AppLog.d(
+                "人物列表：类型 %s，limit %d，返回 %d 人，其中 %d 人有主图 tag",
+                personTypes,
+                limit,
+                persons.size,
+                withImageCount,
+            )
+            persons.firstOrNull()?.let { AppLog.d("人物首条 imageTags：%s", it.imageTags) }
 
             persons.map { it.toFindroidPerson(this@JellyfinRepositoryImpl) }
         }

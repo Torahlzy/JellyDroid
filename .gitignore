@@ -12,6 +12,9 @@ local.properties
 # Locally scraped API reference docs
 doc/
 
+# Local test server credentials (intranet-only account, never commit)
+local-test-server.md
+
 # Log/OS Files
 *.log
 
