@@ -69,7 +69,7 @@ fun ShowScreen(
     navigateBack: () -> Unit,
     navigateHome: () -> Unit,
     navigateToItem: (item: FindroidItem) -> Unit,
-    navigateToPerson: (personId: UUID) -> Unit,
+    navigateToPerson: (personId: UUID, personName: String) -> Unit,
     viewModel: ShowViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -99,7 +99,8 @@ fun ShowScreen(
                 is ShowAction.OnBackClick -> navigateBack()
                 is ShowAction.OnHomeClick -> navigateHome()
                 is ShowAction.NavigateToItem -> navigateToItem(action.item)
-                is ShowAction.NavigateToPerson -> navigateToPerson(action.personId)
+                is ShowAction.NavigateToPerson ->
+                    navigateToPerson(action.person.id, action.person.name)
                 else -> Unit
             }
             viewModel.onAction(action)
@@ -279,8 +280,8 @@ private fun ShowScreenLayout(state: ShowState, onAction: (ShowAction) -> Unit) {
                 if (state.actors.isNotEmpty()) {
                     ActorsRow(
                         actors = state.actors,
-                        onActorClick = { personId ->
-                            onAction(ShowAction.NavigateToPerson(personId))
+                        onActorClick = { person ->
+                            onAction(ShowAction.NavigateToPerson(person))
                         },
                         contentPadding = PaddingValues(start = paddingStart, end = paddingEnd),
                     )

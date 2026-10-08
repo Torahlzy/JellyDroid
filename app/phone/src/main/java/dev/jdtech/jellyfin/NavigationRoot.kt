@@ -53,7 +53,6 @@ import dev.jdtech.jellyfin.presentation.film.MediaScreen
 import dev.jdtech.jellyfin.presentation.film.MovieScreen
 import dev.jdtech.jellyfin.presentation.film.NamedItemListScreen
 import dev.jdtech.jellyfin.presentation.film.PersonListScreen
-import dev.jdtech.jellyfin.presentation.film.PersonScreen
 import dev.jdtech.jellyfin.presentation.film.SeasonScreen
 import dev.jdtech.jellyfin.presentation.film.ShowScreen
 import dev.jdtech.jellyfin.presentation.settings.AboutScreen
@@ -105,8 +104,6 @@ data class LibraryRoute(
 @Serializable data class EpisodeRoute(val episodeId: String)
 
 @Serializable data class SeasonRoute(val seasonId: String)
-
-@Serializable data class PersonRoute(val personId: String)
 
 /**
  * 元数据维度浏览页。
@@ -394,8 +391,14 @@ fun NavigationRoot(
                     movieId = UUID.fromString(route.movieId),
                     navigateBack = { navController.safePopBackStack() },
                     navigateHome = { navigateHome(navController) },
-                    navigateToPerson = { personId ->
-                        navController.safeNavigate(PersonRoute(personId.toString()))
+                    navigateToPerson = { personId, personName ->
+                        navController.safeNavigate(
+                            ItemFilterRoute(
+                                facet = MetadataFacet.ACTOR,
+                                key = personId.toString(),
+                                title = personName,
+                            )
+                        )
                     },
                 )
             }
@@ -408,8 +411,14 @@ fun NavigationRoot(
                     navigateToItem = { item ->
                         navigateToItem(navController = navController, item = item)
                     },
-                    navigateToPerson = { personId ->
-                        navController.safeNavigate(PersonRoute(personId.toString()))
+                    navigateToPerson = { personId, personName ->
+                        navController.safeNavigate(
+                            ItemFilterRoute(
+                                facet = MetadataFacet.ACTOR,
+                                key = personId.toString(),
+                                title = personName,
+                            )
+                        )
                     },
                 )
             }
@@ -436,27 +445,7 @@ fun NavigationRoot(
                     episodeId = UUID.fromString(route.episodeId),
                     navigateBack = { navController.safePopBackStack() },
                     navigateHome = { navigateHome(navController) },
-                    navigateToPerson = { personId ->
-                        navController.safeNavigate(PersonRoute(personId.toString()))
-                    },
-                    navigateToSeason = { seasonId ->
-                        navController.safeNavigate(SeasonRoute(seasonId = seasonId.toString())) {
-                            popUpTo(SeasonRoute(seasonId = seasonId.toString()))
-                            launchSingleTop = true
-                        }
-                    },
-                )
-            }
-            composable<PersonRoute> { backStackEntry ->
-                val route: PersonRoute = backStackEntry.toRoute()
-                PersonScreen(
-                    personId = UUID.fromString(route.personId),
-                    navigateBack = { navController.safePopBackStack() },
-                    navigateHome = { navigateHome(navController) },
-                    navigateToItem = { item ->
-                        navigateToItem(navController = navController, item = item)
-                    },
-                    navigateToAllItems = { personId, personName ->
+                    navigateToPerson = { personId, personName ->
                         navController.safeNavigate(
                             ItemFilterRoute(
                                 facet = MetadataFacet.ACTOR,
@@ -464,6 +453,12 @@ fun NavigationRoot(
                                 title = personName,
                             )
                         )
+                    },
+                    navigateToSeason = { seasonId ->
+                        navController.safeNavigate(SeasonRoute(seasonId = seasonId.toString())) {
+                            popUpTo(SeasonRoute(seasonId = seasonId.toString()))
+                            launchSingleTop = true
+                        }
                     },
                 )
             }
@@ -490,8 +485,15 @@ fun NavigationRoot(
                     MetadataFacet.WRITER ->
                         PersonListScreen(
                             facet = route.facet,
+                            // 人物不再有独立详情页，点击直接进入按该人物筛选的作品列表
                             onPersonClick = { person ->
-                                navController.safeNavigate(PersonRoute(person.id.toString()))
+                                navController.safeNavigate(
+                                    ItemFilterRoute(
+                                        facet = route.facet,
+                                        key = person.id.toString(),
+                                        title = person.name,
+                                    )
+                                )
                             },
                             navigateBack = { navController.safePopBackStack() },
                         )

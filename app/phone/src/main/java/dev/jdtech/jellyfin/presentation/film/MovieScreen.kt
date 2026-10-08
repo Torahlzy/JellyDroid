@@ -80,7 +80,7 @@ fun MovieScreen(
     movieId: UUID,
     navigateBack: () -> Unit,
     navigateHome: () -> Unit,
-    navigateToPerson: (personId: UUID) -> Unit,
+    navigateToPerson: (personId: UUID, personName: String) -> Unit,
     viewModel: MovieViewModel = hiltViewModel(),
     downloaderViewModel: DownloaderViewModel = hiltViewModel(),
 ) {
@@ -241,7 +241,8 @@ fun MovieScreen(
                 }
                 is MovieAction.OnBackClick -> navigateBack()
                 is MovieAction.OnHomeClick -> navigateHome()
-                is MovieAction.NavigateToPerson -> navigateToPerson(action.personId)
+                is MovieAction.NavigateToPerson ->
+                    navigateToPerson(action.person.id, action.person.name)
                 else -> Unit
             }
             viewModel.onAction(action)
@@ -564,8 +565,8 @@ private fun MovieScreenLayout(
                 if (state.actors.isNotEmpty()) {
                     ActorsRow(
                         actors = state.actors,
-                        onActorClick = { personId ->
-                            onAction(MovieAction.NavigateToPerson(personId))
+                        onActorClick = { person ->
+                            onAction(MovieAction.NavigateToPerson(person))
                         },
                         contentPadding = PaddingValues(start = paddingStart, end = paddingEnd),
                     )

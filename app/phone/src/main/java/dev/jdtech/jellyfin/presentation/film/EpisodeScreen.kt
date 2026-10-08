@@ -68,7 +68,7 @@ fun EpisodeScreen(
     episodeId: UUID,
     navigateBack: () -> Unit,
     navigateHome: () -> Unit,
-    navigateToPerson: (personId: UUID) -> Unit,
+    navigateToPerson: (personId: UUID, personName: String) -> Unit,
     navigateToSeason: (seasonId: UUID) -> Unit,
     viewModel: EpisodeViewModel = hiltViewModel(),
     downloaderViewModel: DownloaderViewModel = hiltViewModel(),
@@ -114,7 +114,8 @@ fun EpisodeScreen(
                 }
                 is EpisodeAction.OnBackClick -> navigateBack()
                 is EpisodeAction.OnHomeClick -> navigateHome()
-                is EpisodeAction.NavigateToPerson -> navigateToPerson(action.personId)
+                is EpisodeAction.NavigateToPerson ->
+                    navigateToPerson(action.person.id, action.person.name)
                 is EpisodeAction.NavigateToSeason -> navigateToSeason(action.seasonId)
                 else -> Unit
             }
@@ -260,8 +261,8 @@ private fun EpisodeScreenLayout(
                 if (state.actors.isNotEmpty()) {
                     ActorsRow(
                         actors = state.actors,
-                        onActorClick = { personId ->
-                            onAction(EpisodeAction.NavigateToPerson(personId))
+                        onActorClick = { person ->
+                            onAction(EpisodeAction.NavigateToPerson(person))
                         },
                         contentPadding = PaddingValues(start = paddingStart, end = paddingEnd),
                     )

@@ -2,9 +2,9 @@ package dev.jdtech.jellyfin.film.presentation.movie
 
 import dev.jdtech.jellyfin.core.scraper.ScrapedImage
 import dev.jdtech.jellyfin.models.FindroidItemImage
+import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.settings.domain.models.TranslateSettings
-import java.util.UUID
 
 sealed interface MovieAction {
     data class Play(val startFromBeginning: Boolean = false) : MovieAction
@@ -23,7 +23,8 @@ sealed interface MovieAction {
 
     data object OnHomeClick : MovieAction
 
-    data class NavigateToPerson(val personId: UUID) : MovieAction
+    /** 点击演员，由界面直接跳转到按该人物筛选的作品列表（不再经过人物详情页）。 */
+    data class NavigateToPerson(val person: FindroidItemPerson) : MovieAction
 
     /** 删除服务器上该条目的指定封面图片。 */
     data class DeleteItemImages(val images: List<FindroidItemImage>) : MovieAction

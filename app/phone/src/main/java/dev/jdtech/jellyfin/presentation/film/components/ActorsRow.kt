@@ -16,12 +16,11 @@ import androidx.compose.ui.res.stringResource
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.presentation.theme.spacings
-import java.util.UUID
 
 @Composable
 fun ActorsRow(
     actors: List<FindroidItemPerson>,
-    onActorClick: (personId: UUID) -> Unit,
+    onActorClick: (person: FindroidItemPerson) -> Unit,
     contentPadding: PaddingValues,
 ) {
     Column(modifier = Modifier.padding(contentPadding)) {
@@ -36,7 +35,7 @@ fun ActorsRow(
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.medium),
     ) {
         items(items = actors, key = { person -> person.id }) { person ->
-            PersonItem(person = person, onClick = { onActorClick(person.id) })
+            PersonItem(person = person, onClick = { onActorClick(person) })
         }
     }
 }

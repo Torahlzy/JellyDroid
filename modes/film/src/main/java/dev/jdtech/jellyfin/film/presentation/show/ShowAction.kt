@@ -1,7 +1,7 @@
 package dev.jdtech.jellyfin.film.presentation.show
 
 import dev.jdtech.jellyfin.models.FindroidItem
-import java.util.UUID
+import dev.jdtech.jellyfin.models.FindroidItemPerson
 
 sealed interface ShowAction {
     data class Play(val startFromBeginning: Boolean = false) : ShowAction
@@ -22,5 +22,6 @@ sealed interface ShowAction {
 
     data class NavigateToItem(val item: FindroidItem) : ShowAction
 
-    data class NavigateToPerson(val personId: UUID) : ShowAction
+    /** 点击演员，由界面直接跳转到按该人物筛选的作品列表（不再经过人物详情页）。 */
+    data class NavigateToPerson(val person: FindroidItemPerson) : ShowAction
 }

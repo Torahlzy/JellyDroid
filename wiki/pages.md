@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-10-08**
+**最后更新：2026-10-09**
 
 ---
 
@@ -84,7 +84,7 @@ Select-String -Path wiki/pages.md -Pattern '\b(PHONE|CORE|FILM|SETUP|SETTINGS|PL
   }
 ```
 
-无输出即表示文档中的所有路径均有效。此外，`PHONE/NavigationRoot.kt` 中 `composable<...>` 注册块当前为 22 个（另有 1 个播放 Activity）；下表按「页面」列出，同一路由承载多个页面时会有多行（如 `MetadataBrowseRoute` 对应 3 个列表页），因此行数可以多于注册块数。
+无输出即表示文档中的所有路径均有效。此外，`PHONE/NavigationRoot.kt` 中 `composable<...>` 注册块当前为 21 个（另有 1 个播放 Activity）；下表按「页面」列出，同一路由承载多个页面时会有多行（如 `MetadataBrowseRoute` 对应 3 个列表页），因此行数可以多于注册块数。
 
 校验文档中不含行号引用（无输出为通过）：
 
@@ -108,7 +108,6 @@ Select-String -Path wiki/pages.md -Pattern '\.kt:\d+' -AllMatches
 | 内容 | 剧集详情 | `ShowRoute` | `PHONE/presentation/film/ShowScreen.kt` | `FILM/presentation/show/ShowViewModel.kt` |
 | 内容 | 季详情 | `SeasonRoute` | `PHONE/presentation/film/SeasonScreen.kt` | `FILM/presentation/season/SeasonViewModel.kt` |
 | 内容 | 分集详情 | `EpisodeRoute` | `PHONE/presentation/film/EpisodeScreen.kt` | `FILM/presentation/episode/EpisodeViewModel.kt` |
-| 内容 | 人物详情 | `PersonRoute` | `PHONE/presentation/film/PersonScreen.kt` | `FILM/presentation/person/PersonViewModel.kt` |
 | 内容 | 类别 / 制片公司列表 | `MetadataBrowseRoute` | `PHONE/presentation/film/NamedItemListScreen.kt` | `FILM/presentation/nameditem/NamedItemListViewModel.kt` |
 | 内容 | 人物列表（演员 / 导演 / 编剧） | `MetadataBrowseRoute` | `PHONE/presentation/film/PersonListScreen.kt` | `FILM/presentation/personlist/PersonListViewModel.kt` |
 | 内容 | 标签 / 分级 / 年份列表 | `MetadataBrowseRoute` | `PHONE/presentation/film/FilterValueListScreen.kt` | `FILM/presentation/filtervalue/FilterValueListViewModel.kt` |
@@ -224,7 +223,7 @@ else -> WelcomeRoute
 - **ViewModel / State / Action / Event**：`FILM/presentation/movie/MovieViewModel.kt`、`FILM/presentation/movie/MovieState.kt`、`FILM/presentation/movie/MovieAction.kt`、`FILM/presentation/movie/MovieEvent.kt`；另使用 `CORE/presentation/downloader/DownloaderViewModel.kt`。
 - **State 字段**：`movie`、`videoMetadata`、`actors`、`director`、`writers`、`displayExtraInfo`、`itemImages`（元素 `FindroidItemImage`）、`isLoadingItemImages`、`itemImagesError`、`itemMetadata`（元素 `ItemMetadataEdit`，`null` 表示尚未加载）、`isLoadingItemMetadata`、`itemMetadataError`、`defaultScrapeKeyword`、`isScraping`、`scrapeSteps`（元素 `ScrapeProgress`，逐条追加）、`scrapeFailed`（为 `true` 时抓取弹窗保留）、`scrapedMetadata`（非空表示表单已被抓取结果覆盖且尚未保存）、`isTranslating`（抓取已完成、正在翻译抓取结果，进度弹窗据此把提示换成「正在翻译」）、`scrapeProxy`（抓取代理，留空表示直连）、`translateSettings`（元素 `TranslateSettings`，OpenAI 兼容接口的翻译设置：地址 / 密钥 / 模型 / 要翻译的字段 / 是否自动翻译，取自本地偏好，与服务器无关）、`imageScrapeSites`（元素 `ScraperSite`，本地配了地址会被尝试的站点，进弹窗时取一次）、`imageScrapeResults`（元素 `SiteImageScrapeResult`，逐条追加）、`isScrapingImages`、`isUploadingImages`（上传期间禁用各行上传按钮）、`error`、`playbackSources`（元素 `FindroidSource`，由 `getMediaSources()` 获取以保证与播放端顺序一致）；派生属性 `localFilePath` / `remoteFilePath`（取 `playbackSources` 中 `LOCAL` / `REMOTE` 来源的路径，各自去重拼接，无有效路径为 `null`）、`fileName`（本地路径首段文件名去掉扩展名，「清空」的兜底标题，取不到为 `null`）。
 - **主要方法 / Action**：`loadMovie(movieId)`、`loadItemImages()`、`loadItemMetadata()`、`onAction()`；`Play`、`PlayTrailer`、`MarkAsPlayed`、`UnmarkAsPlayed`、`MarkAsFavorite`、`UnmarkAsFavorite`、`OnBackClick`、`OnHomeClick`、`NavigateToPerson`、`DeleteItemImages(images)`、`UpdateItemMetadata(metadata)`、`ScrapeMetadata(keyword)`、`DismissScrapeFailure`、`CancelScrape`、`UpdateScrapeProxy(address)`、`UpdateTranslateSettings(settings)`、`TranslateMetadata(metadata, settings)`、`ScrapeItemImages(keyword)`、`CloseImageScrape`、`UploadScrapedImages(images)`、`DeleteItemWithFiles`；事件 `ItemImagesDeleted`、`MetadataUpdated`、`ItemImagesUploaded`、`ItemDeleted`、`ItemImagesDeleteFailed`、`MetadataUpdateFailed`、`ItemImagesUploadFailed`、`ItemDeleteFailed`、`MetadataTranslateFailed`。
-- **入口**：任意列表页点击 `FindroidMovie` 条目（`PHONE/NavigationRoot.kt`），如首页、媒体库、下载、收藏、合集、剧集 / 季 / 人物页。
+- **入口**：任意列表页点击 `FindroidMovie` 条目（`PHONE/NavigationRoot.kt`），如首页、媒体库、下载、收藏、合集、剧集 / 季 / 人物作品列表页。
 
 ### ShowScreen — 剧集详情
 
@@ -256,17 +255,6 @@ else -> WelcomeRoute
 - **主要方法 / Action**：`loadEpisode(episodeId)`、`onAction()`；`Play`、`MarkAsPlayed`、`UnmarkAsPlayed`、`MarkAsFavorite`、`UnmarkAsFavorite`、`OnBackClick`、`OnHomeClick`、`NavigateToPerson`、`NavigateToSeason`。
 - **入口**：点击 `FindroidEpisode` 条目（`PHONE/NavigationRoot.kt`）。
 
-### PersonScreen — 人物详情
-
-- **职责**：加载人物资料及其参演的电影与剧集。
-- **路由**：`PersonRoute(personId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
-- **Screen**：`PHONE/presentation/film/PersonScreen.kt`。
-- **ViewModel / State / Action**：`FILM/presentation/person/PersonViewModel.kt`、`FILM/presentation/person/PersonState.kt`、`FILM/presentation/person/PersonAction.kt`。注意：VM **无 `onAction`**，`PersonAction` 仅含导航动作，由 Screen 直接处理。
-- **State 字段**：`person`、`starredInMovies`、`starredInShows`、`error`。
-- **主要方法**：`loadPerson(personId)`。
-- **入口**：电影 / 剧集 / 分集详情页点击演员（见 `PHONE/NavigationRoot.kt` 中 `NavigateToPerson` 的处理）。
-- **查看全部作品**：头部下方提供「查看全部」按钮（`PersonAction.NavigateToAllItems`），跳转到 `ItemFilterRoute(facet = ACTOR)`；本页仍只展示前若干部作品，人物没有任何作品时不显示该按钮。
-
 ### NamedItemListScreen — 类别 / 制片公司列表
 
 - **职责**：列出全库的类别或制片公司，顶部提供本地过滤输入，点击某项进入该值下的筛选结果页。
@@ -279,14 +267,14 @@ else -> WelcomeRoute
 
 ### PersonListScreen — 人物列表
 
-- **职责**：按人物类型列出演员 / 导演 / 编剧，顶部搜索走服务端（输入防抖）；点击某人进入人物详情页。
+- **职责**：按人物类型列出演员 / 导演 / 编剧，顶部搜索走服务端（输入防抖）；人物没有独立详情页，点击某人直接进入按该人物筛选的作品列表（`ItemFilterRoute`，facet 随当前列表的维度）。
 - **路由**：`MetadataBrowseRoute`（`facet` 为 `MetadataFacet.ACTOR` / `MetadataFacet.DIRECTOR` / `MetadataFacet.WRITER`），定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/PersonListScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/personlist/PersonListViewModel.kt`、`FILM/presentation/personlist/PersonListState.kt`、`FILM/presentation/personlist/PersonListAction.kt`。
 - **State 字段**：`persons`、`searchQuery`、`isLoading`、`canLoadMore`、`error`；`PersonListState.PAGE_SIZE` 为首屏数量，同时也是「加载更多」的步长。
 - **主要方法 / Action**：`loadPersons(facet)`、`onAction()`；`OnPersonClick`、`Search`、`OnLoadMore`、`Retry`、`OnBackClick`。
 - **伪分页**：服务端人物接口既不支持偏移分页也不支持排序，`OnLoadMore` 只是把 `limit` 加大后整体重取，因此页码越大响应体越大。
-- **入口**：我的媒体页底部的浏览入口区块；点击某人跳到 `PersonRoute`。
+- **入口**：我的媒体页底部的浏览入口区块；点击某人跳到 `ItemFilterRoute`。
 
 ### FilterValueListScreen — 标签 / 分级 / 年份列表
 
@@ -307,7 +295,7 @@ else -> WelcomeRoute
 - **State 字段**：`items`（PagingData Flow）、`facet`、`sortBy`、`sortOrder`、`coverMode`、`error`；列表的加载中 / 出错状态由分页流的 `loadState` 承载（界面渲染同一套）。
 - **主要方法 / Action**：`loadItems(facet, key)`、`onAction()`；`OnItemClick`、`OnBackClick`、`ChangeSorting`、`ChangeCoverMode`。
 - **筛选参数**：类别、制片公司、人物按实体 id 过滤，标签、分级、年份按文本值过滤；范围固定为 `MOVIE` + `SERIES`、递归、全库。
-- **入口**：三个浏览列表页点击具体值；人物详情页的「查看全部」。
+- **入口**：三个浏览列表页与人物列表页点击具体值 / 某人；电影 / 剧集 / 分集详情页点击演员（`PHONE/NavigationRoot.kt` 中 `navigateToPerson` 的处理）。
 
 ---
 
@@ -438,7 +426,7 @@ else -> WelcomeRoute
 - **MVVM + 单向数据流**：`ViewModel` 暴露 `StateFlow<XxxState>`，Screen 通过 `collectAsStateWithLifecycle()` 观察；用户交互分发 `XxxAction` 给 `onAction()`。
 - **State / Action 复用**：`DownloadsViewModel` 与 `FavoritesViewModel` 复用 `FILM/presentation/collection/CollectionState.kt` + `FILM/presentation/collection/CollectionAction.kt`，**没有**独立的 `DownloadsState` / `FavoritesState`。
 - **无 ViewModel 的页面**：`WelcomeScreen`（仅 `WelcomeAction`，Screen 内联处理）、`AboutScreen`（纯静态 UI）。
-- **无 `onAction` 的 ViewModel**：`DownloadsViewModel`、`FavoritesViewModel`、`PersonViewModel`。
+- **无 `onAction` 的 ViewModel**：`DownloadsViewModel`、`FavoritesViewModel`。
 - **导航**：统一使用类型安全路由；`navigateToItem(navController, item)`（`PHONE/NavigationRoot.kt`）按 `FindroidItem` 子类型分发到具体详情页；`safeNavigate` / `safePopBackStack` 仅在生命周期为 `RESUMED` 时执行导航（`PHONE/NavigationRoot.kt`）。
 - **离线模式**：由 `LocalOfflineMode` CompositionLocal 控制（`PHONE/presentation/utils/`），离线时隐藏「媒体」标签与仅联网功能。
 - **UI 规范**：遵循 Android Material Design（Material 3），优先使用 Material3 通用控件（`AlertDialog`、`Dialog` + `Card`、`TextButton`、`OutlinedTextField`、`LazyVerticalGrid` 等），不手搓等效自定义控件；弹窗中的删除、清空这类低频且不可逆的操作统一放弹窗右上角（与标题同行）并用醒目样式提示，执行前二次确认。参考 `MoreMenuDialog.kt`、`EditItemImagesDialog.kt`、`EditItemMetadataDialog.kt`。
