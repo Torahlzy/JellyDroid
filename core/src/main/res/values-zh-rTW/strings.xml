@@ -36,6 +36,7 @@
     <string name="hide">隱藏</string>
     <string name="sort_order">排序</string>
     <string name="cover_mode">封面顯示</string>
+    <string name="discard">放棄</string>
     <string name="close">關閉</string>
     <string name="share">分享</string>
     <string name="image_description_poster">%1$s 海報</string>
@@ -66,6 +67,8 @@
     <string name="episode_name_with_end">%1$d-%2$d. %3$s</string>
     <string name="episode_name_extended_with_end">第%1$d季：第%2$d-%3$d集 - %4$s</string>
     <string name="downloading_error">下載時出錯</string>
+    <string name="download_notification_channel">下載</string>
+    <string name="download_notification_title">正在下載</string>
     <string name="size">大小</string>
     <string name="no_server_connection">未連接到 Jellyfin 服務器，要離線觀看請啟用離線模式</string>
     <string name="not_enough_storage">此項目需要 %1$s 的免費儲存空間，但只有 %2$s 可用</string>
@@ -147,6 +150,8 @@
     <string name="edit_metadata_field_overview">簡介</string>
     <string name="edit_metadata_field_genres">類型</string>
     <string name="edit_metadata_field_tags">標籤</string>
+    <string name="edit_metadata_field_actresses">演員</string>
+    <string name="edit_metadata_field_directors">導演</string>
     <string name="edit_metadata_field_studios">製片公司</string>
     <string name="edit_metadata_field_production_locations">製片國家</string>
     <string name="edit_metadata_field_tagline">宣傳語</string>
@@ -188,6 +193,15 @@
     <string name="translate_existing">翻譯現有內容</string>
     <string name="translate_failed">翻譯失敗，已保留原有內容：%1$s</string>
     <string name="clear">清空</string>
+    <string name="edit_actor_images">編輯演員頭像</string>
+    <string name="actor_images_scrape">抓取頭像</string>
+    <string name="actor_images_upload">上傳</string>
+    <string name="actor_images_upload_all">全部上傳</string>
+    <string name="actor_images_has_avatar">已有頭像</string>
+    <string name="actor_images_not_scraped">未抓取</string>
+    <string name="actor_images_empty">此影片沒有演員</string>
+    <string name="actor_images_uploaded">演員頭像已上傳</string>
+    <string name="actor_images_upload_failed">上傳演員頭像失敗：%1$s</string>
     <string name="confirm">確認</string>
     <string name="image_type_primary">海報</string>
     <string name="image_type_backdrop">背景</string>

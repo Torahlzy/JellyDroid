@@ -75,7 +75,7 @@
 - Screen 结构：`public XxxScreen`（`hiltViewModel()` + 副作用 + 导航回调）+ `private XxxScreenLayout`（纯状态渲染），并提供 `@PreviewScreenSizes` 预览，预览数据取 `:core` 的 `core/presentation/dummy/`。
 - 状态收集：`val state by viewModel.state.collectAsStateWithLifecycle()`；加载用 `LaunchedEffect(true) { viewModel.loadXxx(...) }`。
 - 组件签名：可复用 `@Composable` 以 `modifier: Modifier = Modifier` 作为最后一个参数；Screen 级入口函数不接收 modifier，内部自行 `Modifier.fillMaxSize()`。
-- 尺寸与文案：间距一律 `MaterialTheme.spacings.*`，不硬编码 dp；字符串 / 图标一律 `stringResource` / `painterResource`，新字符串加到对应模块的 `res/values/strings.xml`（跨模块共用的放 `:core`）。
+- 尺寸与文案：间距一律 `MaterialTheme.spacings.*`，不硬编码 dp；字符串 / 图标一律 `stringResource` / `painterResource`，新字符串加到对应模块的 `res/values/strings.xml`（跨模块共用的放 `:core`）。**必须同步翻译**：`:core` 下新增 `<string>` 时，同一次改动里把中文翻译加进 `:core` 的 `res/values-zh-rCN/strings.xml` 和 `res/values-zh-rTW/strings.xml`（其他语言目录不管）。中文目录按 key 排序位置就近插入即可，不必与英文文件逐行对齐；漏加的后果是中文界面显示英文——此问题已犯过两次，完成前用差集脚本核对（见「本地化核对命令」）。
 - 弹窗布局：删除、清空这类低频且不可逆的操作，不放进弹窗的常用操作列表，统一放弹窗**右上角**（与标题同一行），并用错误色等醒目样式提示风险；执行前必须再弹一次确认。例：更多操作弹窗的「删除全部」（`MoreMenuDialog.kt`）、编辑封面的「清理」（`EditItemImagesDialog.kt`）、编辑 nfo 的「清空」（`EditItemMetadataDialog.kt`）。
 - 界面设计：遵循 Android Material Design（Material 3），优先使用 Material3 通用控件（`AlertDialog`、`Dialog` + `Card`、`TextButton`、`OutlinedTextField`、`LazyVerticalGrid` 等）承载交互，不要手搓等效的自定义控件。
 - 导航：`NavigationRoot.kt` 中新增 `@Serializable` 路由类并注册 `composable<...>`，跳转走 `safeNavigate`。
@@ -107,9 +107,21 @@
 - [ ] 涉及 Repository 的新能力，联网与离线两条实现都已覆盖。
 - [ ] 命名、状态更新、事件分发、导航处理沿用同域既有写法。
 - [ ] 文案与尺寸走资源，无硬编码文案与魔法值。
+- [ ] 新增 `<string>` 时已同步 `values-zh-rCN` 与 `values-zh-rTW`（可用「本地化核对命令」验证差集只剩 `translatable="false"` 的 key）。
 - [ ] 关键处有中文注释，且无冗余注释。
 - [ ] 日志统一走 `AppLog`。
 - [ ] 新增 / 删除 / 修改了页面或路由 → 已同步 `wiki/pages.md`（只写路径、不带行号）。
+
+## 本地化核对命令
+
+改完字符串后，核对英文 `values/strings.xml` 与中文目录的 key 差集（应只剩 `translatable="false"` 的 key，如 `app_name`）。把下面命令存成临时 `.ps1` 再执行（PowerShell 内联引号转义容易出错，别直接内联）：
+
+```powershell
+$pattern = 'string name="([^"]+)"'
+$en = Select-String -Path '<模块>/src/main/res/values/strings.xml' -Pattern $pattern | ForEach-Object { $_.Matches[0].Groups[1].Value }
+$zh = Select-String -Path '<模块>/src/main/res/values-zh-rCN/strings.xml' -Pattern $pattern | ForEach-Object { $_.Matches[0].Groups[1].Value }
+Compare-Object $en $zh | Where-Object { $_.SideIndicator -eq '<=' } | ForEach-Object { $_.InputObject }
+```
 
 ## 本地测试服务器
 

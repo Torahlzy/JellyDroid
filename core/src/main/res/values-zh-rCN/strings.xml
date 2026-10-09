@@ -38,6 +38,7 @@
     <string name="sort_by">排序</string>
     <string name="sort_order">排序顺序</string>
     <string name="cover_mode">封面显示</string>
+    <string name="discard">放弃</string>
     <string name="close">关闭</string>
     <string name="share">分享</string>
     <string name="image_description_poster">%1$s 海报</string>
@@ -75,6 +76,8 @@
     <string name="stop_download">停止下载</string>
     <string name="cancel_download_message">您确定要取消下载吗？</string>
     <string name="downloading_error">下载时出错</string>
+    <string name="download_notification_channel">下载</string>
+    <string name="download_notification_title">正在下载</string>
     <string name="preparing_download">准备下载</string>
     <string name="size">大小</string>
     <string name="not_enough_storage">该条目需要 %1$s 的可用存储空间，但只有 %2$s 可用</string>
@@ -148,6 +151,8 @@
     <string name="edit_metadata_field_overview">简介</string>
     <string name="edit_metadata_field_genres">类型</string>
     <string name="edit_metadata_field_tags">标签</string>
+    <string name="edit_metadata_field_actresses">演员</string>
+    <string name="edit_metadata_field_directors">导演</string>
     <string name="edit_metadata_field_studios">制片公司</string>
     <string name="edit_metadata_field_production_locations">制片国家</string>
     <string name="edit_metadata_field_tagline">宣传语</string>
@@ -189,6 +194,15 @@
     <string name="translate_existing">翻译现有内容</string>
     <string name="translate_failed">翻译失败，已保留原有内容：%1$s</string>
     <string name="clear">清空</string>
+    <string name="edit_actor_images">编辑演员头像</string>
+    <string name="actor_images_scrape">抓取头像</string>
+    <string name="actor_images_upload">上传</string>
+    <string name="actor_images_upload_all">全部上传</string>
+    <string name="actor_images_has_avatar">已有头像</string>
+    <string name="actor_images_not_scraped">未抓取</string>
+    <string name="actor_images_empty">该影片没有演员</string>
+    <string name="actor_images_uploaded">演员头像已上传</string>
+    <string name="actor_images_upload_failed">上传演员头像失败：%1$s</string>
     <string name="confirm">确认</string>
     <string name="image_type_primary">海报</string>
     <string name="image_type_backdrop">背景</string>
