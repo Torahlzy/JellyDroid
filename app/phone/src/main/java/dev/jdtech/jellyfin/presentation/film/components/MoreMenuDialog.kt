@@ -21,7 +21,7 @@ import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 
 /**
- * 电影详情页「更多」菜单：编辑封面 / 编辑 nfo。
+ * 电影详情页「更多」菜单：编辑封面 / 编辑 nfo / 编辑演员头像。
  *
  * 「删除全部」会连视频文件一起删且不可撤销，属于低频的破坏性操作，因此不放进菜单列表，
  * 而是用错误色放在标题行右上角，既与列表项区分、也能提醒用户这里有风险操作；
@@ -31,6 +31,7 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
 fun MoreMenuDialog(
     onEditImagesClick: () -> Unit,
     onEditMetadataClick: () -> Unit,
+    onEditActorImagesClick: () -> Unit,
     onDeleteItemClick: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -67,6 +68,10 @@ fun MoreMenuDialog(
                     text = stringResource(CoreR.string.edit_item_metadata),
                     onClick = onEditMetadataClick,
                 )
+                MenuItemOption(
+                    text = stringResource(CoreR.string.edit_actor_images),
+                    onClick = onEditActorImagesClick,
+                )
             }
         },
         onDismissRequest = onDismiss,
@@ -95,6 +100,7 @@ private fun MoreMenuDialogPreview() {
         MoreMenuDialog(
             onEditImagesClick = {},
             onEditMetadataClick = {},
+            onEditActorImagesClick = {},
             onDeleteItemClick = {},
             onDismiss = {},
         )

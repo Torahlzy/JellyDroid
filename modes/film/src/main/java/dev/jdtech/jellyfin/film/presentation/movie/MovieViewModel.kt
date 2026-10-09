@@ -3,6 +3,8 @@ package dev.jdtech.jellyfin.film.presentation.movie
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.jdtech.jellyfin.core.scraper.ActorImageScrapeResult
+import dev.jdtech.jellyfin.core.scraper.ActorImageScraper
 import dev.jdtech.jellyfin.core.scraper.AvidParser
 import dev.jdtech.jellyfin.core.scraper.ImageScraper
 import dev.jdtech.jellyfin.core.scraper.MetadataScraper
@@ -34,6 +36,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jellyfin.sdk.model.api.ImageType
 import org.jellyfin.sdk.model.api.PersonKind
 
 @HiltViewModel
@@ -45,6 +48,7 @@ constructor(
     private val videoMetadataParser: VideoMetadataParser,
     private val metadataScraper: MetadataScraper,
     private val imageScraper: ImageScraper,
+    private val actorImageScraper: ActorImageScraper,
     private val translator: MetadataTranslator,
 ) : ViewModel() {
     // 抓取站点来自本地配置（BuildConfig），整个会话内不会变，直接放进初始 state，
@@ -69,6 +73,9 @@ constructor(
 
     /** 正在跑的图片抓取任务，用户取消时直接 cancel 掉。 */
     private var imageScrapeJob: Job? = null
+
+    /** 正在跑的演员头像抓取任务，用户取消时直接 cancel 掉。 */
+    private var actorImageScrapeJob: Job? = null
 
     fun loadMovie(movieId: UUID) {
         this.movieId = movieId
@@ -231,6 +238,15 @@ constructor(
             is MovieAction.UploadScrapedImages -> {
                 uploadScrapedImages(action.images)
             }
+            is MovieAction.ScrapeActorImages -> {
+                scrapeActorImages()
+            }
+            is MovieAction.UploadActorImages -> {
+                uploadActorImages(action.images)
+            }
+            is MovieAction.CloseActorImageScrape -> {
+                closeActorImageScrape()
+            }
             else -> Unit
         }
     }
@@ -376,7 +392,7 @@ constructor(
                         null
                     }
                 // 标题兜底传番号：极端情况下站点整页给不出标题，用番号占位，别让表单卡在必填校验
-                val metadata = scraped?.toItemMetadataEdit(keyword.trim())
+                val metadata = scraped?.toItemMetadataEdit(keyword.trim())?.mergeWithCurrent()
                 // 翻译期间沿用 isScraping = true：抓取进度弹窗是靠 scrapedMetadata 变成非空才关掉的，
                 // 提前置回 false 会让它短暂显示「没抓到任何信息」的总结，用户也可能在这几秒里白编辑表单
                 val translated = metadata?.let { translateScrapedMetadata(it) }
@@ -541,6 +557,98 @@ constructor(
         viewModelScope.launch {
             _state.emit(
                 _state.value.copy(isScrapingImages = false, imageScrapeResults = emptyList())
+            )
+        }
+    }
+
+    /**
+     * 抓取结果里没给出演员 / 导演时保留服务器上的现值。
+     *
+     * [ItemMetadataEdit] 的演职员是整体替换语义，站点恰好没提供演员列表（如 Jav321）时
+     * 若照单全收，一次保存就会把原有演员清空；空列表兜底回当前影片的演员 / 导演才安全。
+     */
+    private fun ItemMetadataEdit.mergeWithCurrent(): ItemMetadataEdit =
+        copy(
+            actresses = actresses.ifEmpty { _state.value.actors.map { it.name } },
+            directors = directors.ifEmpty { listOfNotNull(_state.value.director?.name) },
+        )
+
+    /** 为当前影片上还没有头像的演员逐人抓取头像，结果逐人追加进 state 供界面展示。 */
+    private fun scrapeActorImages() {
+        actorImageScrapeJob?.cancel()
+        val names =
+            _state.value.actors.filter { it.image.uri == null }.map { it.name }.distinct()
+        if (names.isEmpty()) return
+        actorImageScrapeJob =
+            viewModelScope.launch {
+                _state.emit(
+                    _state.value.copy(isScrapingActorImages = true, actorImageResults = emptyList())
+                )
+                val results = mutableListOf<ActorImageScrapeResult>()
+                // 搜索 + 下载都是网络 IO，放到 IO 线程，别占着主线程
+                withContext(Dispatchers.IO) {
+                    try {
+                        actorImageScraper.scrapeActorImages(names) { result ->
+                            results += result
+                            _state.emit(
+                                _state.value.copy(actorImageResults = results.toList())
+                            )
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // 抓取器内部已把单人失败转成结果，这里兜住兜底异常，不让详情页崩掉
+                        AppLog.e(e, "抓取演员头像出错")
+                    }
+                }
+                _state.emit(_state.value.copy(isScrapingActorImages = false))
+            }
+    }
+
+    /**
+     * 把 [images]（抓到的演员头像）上传为对应人物在服务器上的封面。
+     *
+     * 人物条目与影片解耦：头像挂在 Person 上，该演员的所有影片都会受益，因此这里按名字
+     * 从当前影片的演员列表里找到人物 Id 再上传。只传还没有头像的人物，避免覆盖已有图片。
+     */
+    private fun uploadActorImages(images: List<ActorImageScrapeResult.Success>) {
+        if (images.isEmpty() || _state.value.isUploadingActorImages) return
+        val personIdsByName =
+            _state.value.actors
+                .filter { it.image.uri == null }
+                .associate { it.name to it.id }
+        viewModelScope.launch {
+            _state.emit(_state.value.copy(isUploadingActorImages = true))
+            try {
+                images.forEach { image ->
+                    val personId = personIdsByName[image.name]
+                    if (personId == null) {
+                        AppLog.w("找不到演员「%s」对应的人物条目，跳过上传", image.name)
+                        return@forEach
+                    }
+                    repository.setItemImage(personId, ImageType.PRIMARY, image.bytes)
+                }
+                eventsChannel.send(MovieEvent.ActorImagesUploaded)
+                // 头像挂在人物条目上，重新加载详情页让演员行的头像立即生效
+                loadMovie(movieId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.e(e, "上传演员头像失败")
+                eventsChannel.send(MovieEvent.ActorImagesUploadFailed(e))
+            } finally {
+                _state.emit(_state.value.copy(isUploadingActorImages = false))
+            }
+        }
+    }
+
+    /** 关闭演员头像弹窗：中断进行中的抓取，并丢掉已抓到的头像（都只在内存里）。 */
+    private fun closeActorImageScrape() {
+        actorImageScrapeJob?.cancel()
+        actorImageScrapeJob = null
+        viewModelScope.launch {
+            _state.emit(
+                _state.value.copy(isScrapingActorImages = false, actorImageResults = emptyList())
             )
         }
     }

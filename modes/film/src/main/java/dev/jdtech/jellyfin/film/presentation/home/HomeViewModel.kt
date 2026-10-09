@@ -19,6 +19,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+
+/** 拉取服务器信息校正名称的超时时间，服务器不可达时不至于长期占用协程 */
+private const val SERVER_NAME_SYNC_TIMEOUT_MS = 5_000L
 
 @HiltViewModel
 class HomeViewModel
@@ -40,6 +44,11 @@ constructor(
     private val uiTextContinueWatching = UiText.StringResource(FilmR.string.continue_watching)
     private val uiTextNextUp = UiText.StringResource(FilmR.string.next_up)
 
+    // 本地的服务器名称只在添加服务器时写入一次，服务端改名后不会同步。
+    // 按服务器记录：每台服务器每次进入首页最多校正一次，会话内切换服务器后新服务器也要校正，
+    // 同时避免每次刷新都发一次网络请求。
+    private var syncedServerNameFor: String? = null
+
     /**
      * 加载首页各分区数据。
      *
@@ -52,6 +61,8 @@ constructor(
             try {
                 appPreferences.getValue(appPreferences.currentServer)?.let { serverId ->
                     loadServerName(serverId)
+                    // 校正名称要联网，单独起协程，服务器不可达时不拖住其它分区的加载
+                    launch { syncServerName(serverId) }
                 }
 
                 loadSuggestions(refreshSuggestions)
@@ -69,6 +80,42 @@ constructor(
         val server = database.getServer(serverId)
         if (server != null) {
             _state.emit(_state.value.copy(server = server))
+        }
+    }
+
+    /**
+     * 用服务器返回的系统信息校正本地记录的服务器名称。
+     *
+     * 服务端改名后本地数据库不会更新（名称只在添加服务器时写入一次），这里补上同步。
+     * 任何失败都只保留旧名称，不影响首页其它数据的展示。
+     */
+    private suspend fun syncServerName(serverId: String) {
+        // 离线模式没有网络，只能沿用本地名称
+        if (syncedServerNameFor == serverId || appPreferences.getValue(appPreferences.offlineMode)) return
+        syncedServerNameFor = serverId
+
+        val server = database.getServer(serverId) ?: return
+        val systemInfo =
+            withTimeoutOrNull(SERVER_NAME_SYNC_TIMEOUT_MS) {
+                runCatching { repository.getPublicSystemInfo() }.getOrNull()
+            }
+        if (systemInfo == null) {
+            // 这次没拿到，下次进入首页再试
+            syncedServerNameFor = null
+            return
+        }
+
+        val serverName = systemInfo.serverName?.takeIf { it.isNotBlank() } ?: return
+        if (serverName == server.name) return
+
+        AppLog.i("服务器名称已变更，同步本地记录：%s -> %s", server.name, serverName)
+        val renamedServer = server.copy(name = serverName)
+        runCatching { database.updateServer(renamedServer) }
+            .onFailure { AppLog.w(it, "更新本地服务器名称失败") }
+
+        // 期间可能已切换服务器，只在仍停留在同一台服务器上时刷新界面
+        if (_state.value.server?.id == serverId) {
+            _state.emit(_state.value.copy(server = renamedServer))
         }
     }
 

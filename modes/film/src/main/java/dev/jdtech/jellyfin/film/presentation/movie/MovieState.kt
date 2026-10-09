@@ -1,5 +1,6 @@
 package dev.jdtech.jellyfin.film.presentation.movie
 
+import dev.jdtech.jellyfin.core.scraper.ActorImageScrapeResult
 import dev.jdtech.jellyfin.core.scraper.ScrapeProgress
 import dev.jdtech.jellyfin.core.scraper.ScraperSite
 import dev.jdtech.jellyfin.core.scraper.SiteImageScrapeResult
@@ -58,6 +59,16 @@ data class MovieState(
     val isScrapingImages: Boolean = false,
     /** 是否正在上传抓取到的封面图片，上传期间禁用各行上传按钮，避免重复点。 */
     val isUploadingImages: Boolean = false,
+    /**
+     * 演员头像抓取的逐人结果，顺序与请求时给出的演员名一致，逐人追加。
+     *
+     * 抓到的头像字节只在内存里，关掉弹窗即丢弃。
+     */
+    val actorImageResults: List<ActorImageScrapeResult> = emptyList(),
+    /** 是否正在抓取演员头像。 */
+    val isScrapingActorImages: Boolean = false,
+    /** 是否正在上传演员头像，上传期间禁用各行上传按钮，避免重复点。 */
+    val isUploadingActorImages: Boolean = false,
     val error: Exception? = null,
     /**
      * 可选播放来源：服务器上的多个版本 + 本地已下载。

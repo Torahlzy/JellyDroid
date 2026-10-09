@@ -151,6 +151,8 @@
     <string name="edit_metadata_field_overview">Overview</string>
     <string name="edit_metadata_field_genres">Genres</string>
     <string name="edit_metadata_field_tags">Tags</string>
+    <string name="edit_metadata_field_actresses">Actors</string>
+    <string name="edit_metadata_field_directors">Directors</string>
     <string name="edit_metadata_field_studios">Studios</string>
     <string name="edit_metadata_field_production_locations">Production locations</string>
     <string name="edit_metadata_field_tagline">Tagline</string>
@@ -192,6 +194,15 @@
     <string name="translate_existing">Translate current text</string>
     <string name="translate_failed">Translation failed, kept the existing text: %1$s</string>
     <string name="clear">Clear</string>
+    <string name="edit_actor_images">Edit actor images</string>
+    <string name="actor_images_scrape">Scrape avatars</string>
+    <string name="actor_images_upload">Upload</string>
+    <string name="actor_images_upload_all">Upload all</string>
+    <string name="actor_images_has_avatar">Already has an avatar</string>
+    <string name="actor_images_not_scraped">Not scraped</string>
+    <string name="actor_images_empty">This movie has no actors</string>
+    <string name="actor_images_uploaded">Actor avatars uploaded</string>
+    <string name="actor_images_upload_failed">Failed to upload actor avatars: %1$s</string>
     <string name="confirm">Confirm</string>
     <string name="image_type_primary">Poster</string>
     <string name="image_type_backdrop">Backdrop</string>

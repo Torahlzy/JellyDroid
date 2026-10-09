@@ -55,6 +55,9 @@ class JavBusScraper(private val http: ScraperHttp, private val baseUrl: String) 
             plot = null,
             genres = container.select("span.genre label a").texts(),
             producer = info.valueAfterLabel("製作商:", "制作商:"),
+            publisher = info.valueAfterLabel("發行商:", "发行商:"),
+            actresses = readActresses(html),
+            directors = listOfNotNull(info.valueAfterLabel("導演:", "导演:")),
             // 站点用 0000-00-00 表示未知日期，此时不填
             publishDate =
                 info.valueAfterLabel("發行日期:", "发行日期:")?.takeIf { it != "0000-00-00" },

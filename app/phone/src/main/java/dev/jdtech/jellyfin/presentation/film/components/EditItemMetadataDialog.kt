@@ -255,6 +255,8 @@ private data class MetadataForm(
     val overview: String = "",
     val genres: String = "",
     val tags: String = "",
+    val actresses: String = "",
+    val directors: String = "",
     val studios: String = "",
     val productionLocations: String = "",
     val tagline: String = "",
@@ -298,6 +300,8 @@ private fun ItemMetadataEdit.toForm(): MetadataForm =
         overview = overview,
         genres = genres.joinToString(METADATA_LIST_SEPARATOR),
         tags = tags.joinToString(METADATA_LIST_SEPARATOR),
+        actresses = actresses.joinToString(METADATA_LIST_SEPARATOR),
+        directors = directors.joinToString(METADATA_LIST_SEPARATOR),
         studios = studios.joinToString(METADATA_LIST_SEPARATOR),
         productionLocations = productionLocations.joinToString(METADATA_LIST_SEPARATOR),
         tagline = tagline,
@@ -314,6 +318,8 @@ private fun MetadataForm.toMetadataEdit(): ItemMetadataEdit =
         overview = overview.trim(),
         genres = genres.toMetadataList(),
         tags = tags.toMetadataList(),
+        actresses = actresses.toMetadataList(),
+        directors = directors.toMetadataList(),
         studios = studios.toMetadataList(),
         productionLocations = productionLocations.toMetadataList(),
         tagline = tagline.trim(),
@@ -367,6 +373,18 @@ private fun MetadataFormFields(form: MetadataForm, onFormChange: (MetadataForm) 
             label = stringResource(CoreR.string.edit_metadata_field_tags),
             value = form.tags,
             onValueChange = { onFormChange(form.copy(tags = it)) },
+            supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_list_hint)) },
+        )
+        MetadataTextField(
+            label = stringResource(CoreR.string.edit_metadata_field_actresses),
+            value = form.actresses,
+            onValueChange = { onFormChange(form.copy(actresses = it)) },
+            supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_list_hint)) },
+        )
+        MetadataTextField(
+            label = stringResource(CoreR.string.edit_metadata_field_directors),
+            value = form.directors,
+            onValueChange = { onFormChange(form.copy(directors = it)) },
             supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_list_hint)) },
         )
         MetadataTextField(

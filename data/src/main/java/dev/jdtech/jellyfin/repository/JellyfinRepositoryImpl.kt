@@ -52,6 +52,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
+import org.jellyfin.sdk.model.api.BaseItemPerson
 import org.jellyfin.sdk.model.api.DeviceOptionsDto
 import org.jellyfin.sdk.model.api.DeviceProfile
 import org.jellyfin.sdk.model.api.GeneralCommandType
@@ -61,6 +62,7 @@ import org.jellyfin.sdk.model.api.ItemFilter
 import org.jellyfin.sdk.model.api.ItemSortBy
 import org.jellyfin.sdk.model.api.MediaType
 import org.jellyfin.sdk.model.api.NameGuidPair
+import org.jellyfin.sdk.model.api.PersonKind
 import org.jellyfin.sdk.model.api.PlayMethod
 import org.jellyfin.sdk.model.api.PlaybackInfoDto
 import org.jellyfin.sdk.model.api.PlaybackOrder
@@ -106,12 +108,34 @@ private val METADATA_EDIT_FIELDS =
         ItemFields.PROVIDER_IDS,
         ItemFields.CUSTOM_RATING,
         ItemFields.DATE_CREATED,
+        // 编辑弹窗要显示并整体替换演员 / 导演，读回时必须带上演职员
+        ItemFields.PEOPLE,
     )
 
 // 服务端只读取 Studios 的 Name，Id 仅用于跟已有制片厂对上号，新加的随便生成一个即可
 private fun toStudioNameGuidPair(name: String, existing: List<NameGuidPair>?): NameGuidPair =
     existing?.firstOrNull { it.name.equals(name, ignoreCase = true) }
         ?: NameGuidPair(name = name, id = UUID.randomUUID())
+
+/** 取某类人物的名字列表，去掉空白项。 */
+private fun List<BaseItemPerson>.personNames(kind: PersonKind): List<String> =
+    filter { it.type == kind }.mapNotNull { it.name?.trim()?.takeIf { name -> name.isNotEmpty() } }
+
+/**
+ * 把表单里的演员 / 导演合并进服务器原有的演职员列表。
+ *
+ * 服务端按「名字 + 类型」匹配已有人物，匹配上的会复用原 Person 实体（Id、头像都不丢），
+ * 因此新加的人物给一个占位 Id 即可；原有但不在表单里的编剧等其它类型原样保留。
+ */
+private fun mergePeople(existing: List<BaseItemPerson>?, metadata: ItemMetadataEdit): List<BaseItemPerson> {
+    val kept =
+        existing.orEmpty().filter { it.type != PersonKind.ACTOR && it.type != PersonKind.DIRECTOR }
+    // 占位 Id：服务端不靠它识别人物，全零的 UUID 足够
+    val placeholderId = UUID(0, 0)
+    val actors = metadata.actresses.map { BaseItemPerson(name = it, id = placeholderId, type = PersonKind.ACTOR) }
+    val directors = metadata.directors.map { BaseItemPerson(name = it, id = placeholderId, type = PersonKind.DIRECTOR) }
+    return kept + actors + directors
+}
 
 class JellyfinRepositoryImpl(
     private val context: Context,
@@ -862,6 +886,8 @@ class JellyfinRepositoryImpl(
                 overview = item.overview.orEmpty(),
                 genres = item.genres.orEmpty(),
                 tags = item.tags.orEmpty(),
+                actresses = item.people.orEmpty().personNames(PersonKind.ACTOR),
+                directors = item.people.orEmpty().personNames(PersonKind.DIRECTOR),
                 studios = item.studios.orEmpty().mapNotNull { it.name },
                 productionLocations = item.productionLocations.orEmpty(),
                 // 服务端单条目只保存一条标语，读回来自然也最多一条
@@ -885,8 +911,9 @@ class JellyfinRepositoryImpl(
                 itemId,
                 item.copy(
                     name = metadata.name,
-                    // 本表单不编辑演职员，传 null 让服务端保持原有演职员，避免整体重写一遍
-                    people = null,
+                    // people 是整体替换语义：表单里只编辑演员 / 导演，其余演职员（编剧等）必须
+                    // 从服务器读回的列表里保留，否则一次保存就会把它们清掉
+                    people = mergePeople(item.people, metadata),
                     originalTitle = metadata.originalTitle.ifBlank { null },
                     overview = metadata.overview.ifBlank { null },
                     genres = metadata.genres,

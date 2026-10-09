@@ -53,6 +53,7 @@ import dev.jdtech.jellyfin.film.presentation.movie.MovieViewModel
 import dev.jdtech.jellyfin.presentation.film.components.ActorsRow
 import dev.jdtech.jellyfin.presentation.film.components.CollapsibleText
 import dev.jdtech.jellyfin.presentation.film.components.DeleteItemWithFilesDialog
+import dev.jdtech.jellyfin.presentation.film.components.EditActorImagesDialog
 import dev.jdtech.jellyfin.presentation.film.components.EditItemImagesDialog
 import dev.jdtech.jellyfin.presentation.film.components.EditItemMetadataDialog
 import dev.jdtech.jellyfin.presentation.film.components.ExtraInfoText
@@ -207,6 +208,15 @@ fun MovieScreen(
                 showFailureToast(CoreR.string.translate_failed, event.error)
             is MovieEvent.ItemImagesUploadFailed ->
                 showFailureToast(CoreR.string.item_images_upload_failed, event.error)
+            is MovieEvent.ActorImagesUploaded ->
+                Toast.makeText(
+                        context,
+                        context.getString(CoreR.string.actor_images_uploaded),
+                        Toast.LENGTH_SHORT,
+                    )
+                    .show()
+            is MovieEvent.ActorImagesUploadFailed ->
+                showFailureToast(CoreR.string.actor_images_upload_failed, event.error)
             is MovieEvent.ItemDeleteFailed ->
                 showFailureToast(CoreR.string.delete_item_failed, event.error)
         }
@@ -256,6 +266,9 @@ fun MovieScreen(
             MoreMenuDialog(
                 onEditImagesClick = { moreDialog = MoreMenuDialogState.EDIT_IMAGES },
                 onEditMetadataClick = { moreDialog = MoreMenuDialogState.EDIT_METADATA },
+                onEditActorImagesClick = {
+                    moreDialog = MoreMenuDialogState.EDIT_ACTOR_IMAGES
+                },
                 onDeleteItemClick = { moreDialog = MoreMenuDialogState.DELETE_ALL },
                 onDismiss = { moreDialog = null },
             )
@@ -317,6 +330,24 @@ fun MovieScreen(
                     )
                 },
                 onDismiss = { moreDialog = null },
+            )
+        MoreMenuDialogState.EDIT_ACTOR_IMAGES ->
+            EditActorImagesDialog(
+                actors = state.actors,
+                results = state.actorImageResults,
+                isScraping = state.isScrapingActorImages,
+                isUploading = state.isUploadingActorImages,
+                onScrapeClick = {
+                    viewModel.onAction(MovieAction.ScrapeActorImages)
+                },
+                onUploadClick = { images ->
+                    viewModel.onAction(MovieAction.UploadActorImages(images = images))
+                },
+                onDismiss = {
+                    moreDialog = null
+                    // 关掉弹窗就中断抓取并丢掉已抓到的头像（都只在内存里）
+                    viewModel.onAction(MovieAction.CloseActorImageScrape)
+                },
             )
         MoreMenuDialogState.DELETE_ALL ->
             DeleteItemWithFilesDialog(
@@ -410,6 +441,9 @@ private enum class MoreMenuDialogState {
 
     /** 编辑 nfo 的表单弹窗。 */
     EDIT_METADATA,
+
+    /** 编辑演员头像（抓取 + 上传）的弹窗。 */
+    EDIT_ACTOR_IMAGES,
 
     /** 删除全部（含视频文件）的确认弹窗。 */
     DELETE_ALL,

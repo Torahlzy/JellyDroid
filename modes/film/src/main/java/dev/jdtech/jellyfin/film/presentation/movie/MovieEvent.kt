@@ -23,6 +23,12 @@ sealed interface MovieEvent {
     /** 上传抓取到的封面图片失败，[error] 用于向用户展示失败原因。 */
     data class ItemImagesUploadFailed(val error: Exception) : MovieEvent
 
+    /** 演员头像已上传到服务器，界面可刷新演员列表。 */
+    data object ActorImagesUploaded : MovieEvent
+
+    /** 上传演员头像失败，[error] 用于向用户展示失败原因。 */
+    data class ActorImagesUploadFailed(val error: Exception) : MovieEvent
+
     /** 删除服务器条目失败，[error] 用于向用户展示失败原因。 */
     data class ItemDeleteFailed(val error: Exception) : MovieEvent
 

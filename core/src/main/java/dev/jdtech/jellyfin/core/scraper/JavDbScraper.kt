@@ -57,7 +57,7 @@ class JavDbScraper(private val http: ScraperHttp, private val baseUrl: String) {
             site = ScraperSite.JAVDB,
             number = number,
             // 片名里不含番号，剥掉尾部的女优名即可，番号由上层拼在片名前
-            title = stripTrailingActors(stripNumberPrefix(title, number), readActresses(info)),
+            title = stripTrailingActors(stripNumberPrefix(title, number), readActressNames(info)),
             originalTitle =
                 container.selectFirst("h2 span.origin-title")?.text()?.trim()?.takeIf {
                     it.isNotEmpty()
@@ -65,6 +65,9 @@ class JavDbScraper(private val http: ScraperHttp, private val baseUrl: String) {
             plot = null,
             genres = readGenres(info),
             producer = info.valueAfterLabel("片商:", "賣家:"),
+            publisher = info.valueAfterLabel("發行:", "发行:"),
+            actresses = readActressNames(info),
+            directors = listOfNotNull(info.valueAfterLabel("導演:", "导演:")),
             publishDate = info.valueAfterLabel("日期:"),
             score = readScore(html),
             url = movieUrl,
@@ -85,7 +88,7 @@ class JavDbScraper(private val http: ScraperHttp, private val baseUrl: String) {
     }
 
     /** 女优名供清理标题尾部使用；站点用 `actor-female` 标女优，男优不带这个 class。 */
-    private fun readActresses(info: Element): List<String> = info.select("a.actor-female").texts()
+    private fun readActressNames(info: Element): List<String> = info.select("a.actor-female").texts()
 
     /** 评分形如 `4.5分, 由 123 人評價`，站点给的是 5 分制，乘 2 统一到 10 分制。 */
     private fun readScore(html: Document): Float? {

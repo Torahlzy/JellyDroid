@@ -58,17 +58,22 @@ class Jav321Scraper(private val http: ScraperHttp, private val baseUrl: String) 
             html.select("div.col-xs-12.col-md-12 p a img.img-responsive").mapNotNull {
                 it.imageUrl()
             }
+        // 站点已基本不提供女优信息，取不到就是空列表；有值时同样用于剥标题尾部
+        val actresses = info.select("a[href*='/star/']").texts()
 
         return ScrapedMovie(
             site = ScraperSite.JAV321,
             number = number,
-            title = stripTrailingActors(rawTitle, info.select("a[href*='/star/']").texts()),
+            title = stripTrailingActors(rawTitle, actresses),
             originalTitle = null,
             plot = readPlot(info),
             genres = info.select("a[href*='/genre/']").texts(),
             producer = info.selectFirst("a[href*='/company/']")?.text()?.trim()?.takeIf {
                 it.isNotEmpty()
             },
+            publisher = null,
+            actresses = actresses,
+            directors = emptyList(),
             publishDate = info.bTagValue("配信開始日"),
             score = readScore(info),
             url = pageUrl,

@@ -8,7 +8,7 @@ import java.time.format.DateTimeParseException
 /**
  * 从站点抓到的影片信息，字段取自 JavSP 的 `MovieInfo`。
  *
- * 文字字段只保留「编辑 nfo」表单能承载的那些（系列 / 导演 / 演员暂不解析，表单里没有对应输入项）；
+ * 文字字段只保留「编辑 nfo」表单能承载的那些（系列 / 时长等 Jellyfin 上没有对应编辑项，暂不解析）；
  * 图片只解析封面（竖图）与首张剧照（横图）两个地址，供「编辑封面」抓取使用——这里只给地址，
  * 下载与否由 [ImageScraper] 决定。
  */
@@ -24,6 +24,12 @@ data class ScrapedMovie(
     val genres: List<String>,
     /** 制作商，写入 nfo 的 studio。 */
     val producer: String?,
+    /** 发行商，与制作商一起进 nfo 的 studio（Jellyfin 上没有独立的发行商字段）。 */
+    val publisher: String?,
+    /** 演员（女优）名，写入 nfo 的 actor。 */
+    val actresses: List<String>,
+    /** 导演，写入 nfo 的 director。 */
+    val directors: List<String>,
     /** 发布日期，形如 `2024-05-01`。 */
     val publishDate: String?,
     /** 评分，10 分制。 */
@@ -62,7 +68,9 @@ fun ScrapedMovie.toItemMetadataEdit(fallbackTitle: String = ""): ItemMetadataEdi
         originalTitle = originalTitle.orEmpty(),
         overview = plot.orEmpty(),
         genres = genres,
-        studios = listOfNotNull(producer?.takeIf { it.isNotBlank() }),
+        studios = listOfNotNull(producer, publisher).map { it.trim() }.filter { it.isNotEmpty() },
+        actresses = actresses,
+        directors = directors,
         productionYear = publishDate?.take(4)?.toIntOrNull(),
         premiereDate = publishDate.toPremiereDate(),
         communityRating = score,

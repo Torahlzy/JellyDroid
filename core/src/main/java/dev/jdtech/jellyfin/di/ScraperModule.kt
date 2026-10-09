@@ -5,6 +5,8 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import dev.jdtech.jellyfin.core.scraper.ActorImageScraper
+import dev.jdtech.jellyfin.core.scraper.ActorImageScraperImpl
 import dev.jdtech.jellyfin.core.scraper.ImageScraper
 import dev.jdtech.jellyfin.core.scraper.ImageScraperImpl
 import dev.jdtech.jellyfin.core.scraper.MetadataScraper
@@ -31,6 +33,10 @@ abstract class ScraperModule {
     @Binds
     @Singleton
     abstract fun bindImageScraper(impl: ImageScraperImpl): ImageScraper
+
+    @Binds
+    @Singleton
+    abstract fun bindActorImageScraper(impl: ActorImageScraperImpl): ActorImageScraper
 
     companion object {
         /** 抓取是前台交互，超时给短一些，站点无响应时尽快切到下一个。 */

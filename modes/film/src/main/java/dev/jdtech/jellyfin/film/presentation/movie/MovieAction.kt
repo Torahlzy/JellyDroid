@@ -1,5 +1,6 @@
 package dev.jdtech.jellyfin.film.presentation.movie
 
+import dev.jdtech.jellyfin.core.scraper.ActorImageScrapeResult
 import dev.jdtech.jellyfin.core.scraper.ScrapedImage
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidItemPerson
@@ -49,6 +50,21 @@ sealed interface MovieAction {
 
     /** 把 [images]（某个站点抓到的横图 / 竖图）上传到服务器。 */
     data class UploadScrapedImages(val images: List<ScrapedImage>) : MovieAction
+
+    /** 按当前影片的演员名逐人抓取头像，结果留在内存里等用户逐人上传。 */
+    data object ScrapeActorImages : MovieAction
+
+    /**
+     * 把 [images]（抓到的演员头像）上传为对应人物在服务器上的封面。
+     *
+     * 传整个列表即「全部上传」，传单个即逐行上传；调用方负责过滤掉已有头像的人物。
+     */
+    data class UploadActorImages(
+        val images: List<ActorImageScrapeResult.Success>,
+    ) : MovieAction
+
+    /** 关闭演员头像弹窗：中断进行中的抓取并丢掉已抓到的头像（都只在内存里）。 */
+    data object CloseActorImageScrape : MovieAction
 
     /** 保存抓取使用的本地代理地址，[address] 为空表示直连。 */
     data class UpdateScrapeProxy(val address: String) : MovieAction
