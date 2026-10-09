@@ -22,6 +22,8 @@ fun ActorsRow(
     actors: List<FindroidItemPerson>,
     onActorClick: (person: FindroidItemPerson) -> Unit,
     contentPadding: PaddingValues,
+    // 长按演员条目弹出「获取头像」菜单；null 表示不启用（如离线模式或剧集页）
+    onScrapeImageClick: ((person: FindroidItemPerson) -> Unit)? = null,
 ) {
     Column(modifier = Modifier.padding(contentPadding)) {
         Text(
@@ -35,7 +37,11 @@ fun ActorsRow(
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.medium),
     ) {
         items(items = actors, key = { person -> person.id }) { person ->
-            PersonItem(person = person, onClick = { onActorClick(person) })
+            PersonItem(
+                person = person,
+                onClick = { onActorClick(person) },
+                onScrapeImageClick = onScrapeImageClick?.let { handler -> { handler(person) } },
+            )
         }
     }
 }

@@ -46,14 +46,17 @@ import dev.jdtech.jellyfin.core.presentation.downloader.DownloaderState
 import dev.jdtech.jellyfin.core.presentation.downloader.DownloaderViewModel
 import dev.jdtech.jellyfin.core.presentation.dummy.dummyMovie
 import dev.jdtech.jellyfin.core.presentation.dummy.dummyVideoMetadata
+import dev.jdtech.jellyfin.film.presentation.actorimage.ActorImageScrapeAction
+import dev.jdtech.jellyfin.film.presentation.actorimage.ActorImageScrapeEvent
+import dev.jdtech.jellyfin.film.presentation.actorimage.ActorImageScrapeViewModel
 import dev.jdtech.jellyfin.film.presentation.movie.MovieAction
 import dev.jdtech.jellyfin.film.presentation.movie.MovieEvent
 import dev.jdtech.jellyfin.film.presentation.movie.MovieState
 import dev.jdtech.jellyfin.film.presentation.movie.MovieViewModel
+import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.presentation.film.components.ActorsRow
 import dev.jdtech.jellyfin.presentation.film.components.CollapsibleText
 import dev.jdtech.jellyfin.presentation.film.components.DeleteItemWithFilesDialog
-import dev.jdtech.jellyfin.presentation.film.components.EditActorImagesDialog
 import dev.jdtech.jellyfin.presentation.film.components.EditItemImagesDialog
 import dev.jdtech.jellyfin.presentation.film.components.EditItemMetadataDialog
 import dev.jdtech.jellyfin.presentation.film.components.ExtraInfoText
@@ -65,6 +68,7 @@ import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
 import dev.jdtech.jellyfin.presentation.film.components.MoreMenuDialog
 import dev.jdtech.jellyfin.presentation.film.components.OverviewText
 import dev.jdtech.jellyfin.presentation.film.components.PlaybackSourceDialog
+import dev.jdtech.jellyfin.presentation.film.components.ScrapeActorImageDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScrapeKeywordDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScrapeProgressDialog
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
@@ -84,6 +88,7 @@ fun MovieScreen(
     navigateToPerson: (personId: UUID, personName: String) -> Unit,
     viewModel: MovieViewModel = hiltViewModel(),
     downloaderViewModel: DownloaderViewModel = hiltViewModel(),
+    actorImageScrapeViewModel: ActorImageScrapeViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -91,6 +96,9 @@ fun MovieScreen(
 
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloaderState by downloaderViewModel.state.collectAsStateWithLifecycle()
+    // 演员头像抓取与人物列表页共用同一个 ViewModel
+    val actorImageScrapeState by
+        actorImageScrapeViewModel.state.collectAsStateWithLifecycle()
 
     // 「更多」菜单与它下面的确认弹窗共用同一个状态，保证同一时刻只开一个；
     // 用 rememberSaveable 让弹窗在旋转屏幕后仍保持打开（枚举可直接存入 Bundle）
@@ -208,23 +216,40 @@ fun MovieScreen(
                 showFailureToast(CoreR.string.translate_failed, event.error)
             is MovieEvent.ItemImagesUploadFailed ->
                 showFailureToast(CoreR.string.item_images_upload_failed, event.error)
-            is MovieEvent.ActorImagesUploaded ->
+            is MovieEvent.ItemDeleteFailed ->
+                showFailureToast(CoreR.string.delete_item_failed, event.error)
+        }
+    }
+
+    // 演员头像上传完成 / 失败的提示由共享 ViewModel 发出；成功后重载详情页让演员行的头像立即生效
+    ObserveAsEvents(actorImageScrapeViewModel.events) { event ->
+        when (event) {
+            is ActorImageScrapeEvent.Uploaded -> {
                 Toast.makeText(
                         context,
                         context.getString(CoreR.string.actor_images_uploaded),
                         Toast.LENGTH_SHORT,
                     )
                     .show()
-            is MovieEvent.ActorImagesUploadFailed ->
+                viewModel.loadMovie(movieId = movieId)
+            }
+            is ActorImageScrapeEvent.UploadFailed ->
                 showFailureToast(CoreR.string.actor_images_upload_failed, event.error)
-            is MovieEvent.ItemDeleteFailed ->
-                showFailureToast(CoreR.string.delete_item_failed, event.error)
         }
     }
 
     MovieScreenLayout(
         state = state,
         downloaderState = downloaderState,
+        onScrapeImageClick = { person ->
+            actorImageScrapeViewModel.onAction(
+                ActorImageScrapeAction.Scrape(
+                    personId = person.id,
+                    name = person.name,
+                    hasAvatar = person.image.uri != null,
+                )
+            )
+        },
         onAction = { action ->
             when (action) {
                 is MovieAction.Play -> {
@@ -266,9 +291,6 @@ fun MovieScreen(
             MoreMenuDialog(
                 onEditImagesClick = { moreDialog = MoreMenuDialogState.EDIT_IMAGES },
                 onEditMetadataClick = { moreDialog = MoreMenuDialogState.EDIT_METADATA },
-                onEditActorImagesClick = {
-                    moreDialog = MoreMenuDialogState.EDIT_ACTOR_IMAGES
-                },
                 onDeleteItemClick = { moreDialog = MoreMenuDialogState.DELETE_ALL },
                 onDismiss = { moreDialog = null },
             )
@@ -331,24 +353,6 @@ fun MovieScreen(
                 },
                 onDismiss = { moreDialog = null },
             )
-        MoreMenuDialogState.EDIT_ACTOR_IMAGES ->
-            EditActorImagesDialog(
-                actors = state.actors,
-                results = state.actorImageResults,
-                isScraping = state.isScrapingActorImages,
-                isUploading = state.isUploadingActorImages,
-                onScrapeClick = {
-                    viewModel.onAction(MovieAction.ScrapeActorImages)
-                },
-                onUploadClick = { images ->
-                    viewModel.onAction(MovieAction.UploadActorImages(images = images))
-                },
-                onDismiss = {
-                    moreDialog = null
-                    // 关掉弹窗就中断抓取并丢掉已抓到的头像（都只在内存里）
-                    viewModel.onAction(MovieAction.CloseActorImageScrape)
-                },
-            )
         MoreMenuDialogState.DELETE_ALL ->
             DeleteItemWithFilesDialog(
                 itemName = state.movie?.name,
@@ -359,6 +363,27 @@ fun MovieScreen(
                 onDismiss = { moreDialog = null },
             )
         null -> Unit
+    }
+
+    // 「获取头像」弹窗由共享 ViewModel 的 state 驱动（长按演员条目打开），关掉即中断抓取并丢掉内存里的头像
+    if (actorImageScrapeState.personId != null) {
+        ScrapeActorImageDialog(
+            actorName = actorImageScrapeState.personName,
+            sites = actorImageScrapeState.sites,
+            results = actorImageScrapeState.results,
+            isUploading = actorImageScrapeState.isUploading,
+            hasAvatar = actorImageScrapeState.hasAvatar,
+            proxy = actorImageScrapeState.proxy,
+            onProxyChange = { address ->
+                actorImageScrapeViewModel.onAction(
+                    ActorImageScrapeAction.UpdateProxy(address = address)
+                )
+            },
+            onUploadClick = { image ->
+                actorImageScrapeViewModel.onAction(ActorImageScrapeAction.Upload(image = image))
+            },
+            onDismiss = { actorImageScrapeViewModel.onAction(ActorImageScrapeAction.Close) },
+        )
     }
 
     if (showPlaybackSourceDialog) {
@@ -433,7 +458,7 @@ fun MovieScreen(
 
 /** 「更多」菜单的弹窗状态：同一时刻只会打开其中一个。 */
 private enum class MoreMenuDialogState {
-    /** 三个操作入口的菜单。 */
+    /** 操作入口的菜单。 */
     MENU,
 
     /** 编辑封面的图片列表（服务器图片缩略图 + 抓取结果）。 */
@@ -441,9 +466,6 @@ private enum class MoreMenuDialogState {
 
     /** 编辑 nfo 的表单弹窗。 */
     EDIT_METADATA,
-
-    /** 编辑演员头像（抓取 + 上传）的弹窗。 */
-    EDIT_ACTOR_IMAGES,
 
     /** 删除全部（含视频文件）的确认弹窗。 */
     DELETE_ALL,
@@ -453,10 +475,12 @@ private enum class MoreMenuDialogState {
 private fun MovieScreenLayout(
     state: MovieState,
     downloaderState: DownloaderState,
+    onScrapeImageClick: (person: FindroidItemPerson) -> Unit,
     onAction: (MovieAction) -> Unit,
     onMoreClick: (() -> Unit)?,
     onDownloaderAction: (DownloaderAction) -> Unit,
 ) {
+    val isOfflineMode = LocalOfflineMode.current
     val safePadding = rememberSafePadding()
 
     val paddingStart = safePadding.start + MaterialTheme.spacings.default
@@ -603,6 +627,9 @@ private fun MovieScreenLayout(
                             onAction(MovieAction.NavigateToPerson(person))
                         },
                         contentPadding = PaddingValues(start = paddingStart, end = paddingEnd),
+                        // 抓取头像要联网也要写服务器，离线模式不提供长按菜单
+                        onScrapeImageClick =
+                            if (isOfflineMode) null else { person -> onScrapeImageClick(person) },
                     )
                 }
                 Spacer(Modifier.height(paddingBottom))
@@ -631,6 +658,7 @@ private fun EpisodeScreenLayoutPreview() {
                     playbackSources = dummyMovie.sources,
                 ),
             downloaderState = DownloaderState(),
+            onScrapeImageClick = {},
             onAction = {},
             onMoreClick = {},
             onDownloaderAction = {},

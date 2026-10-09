@@ -177,7 +177,7 @@
     <string name="scrape_all_failed">所有站點都未抓取到資訊</string>
     <string name="scrape_site_not_configured">未設定抓取站點位址（請在 local.properties 中填寫 scraper.*.url）</string>
     <string name="scrape_proxy">抓取代理</string>
-    <string name="scrape_proxy_summary">只用於抓取 nfo / 封面時，形如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080，留空表示直連。</string>
+    <string name="scrape_proxy_summary">只用於抓取 nfo / 封面 / 演員頭像時，形如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080，留空表示直連。</string>
     <string name="scrape_proxy_entry">代理：%1$s</string>
     <string name="scrape_proxy_unset">未設定</string>
     <string name="translate">翻譯</string>
@@ -193,13 +193,8 @@
     <string name="translate_existing">翻譯現有內容</string>
     <string name="translate_failed">翻譯失敗，已保留原有內容：%1$s</string>
     <string name="clear">清空</string>
-    <string name="edit_actor_images">編輯演員頭像</string>
-    <string name="actor_images_scrape">抓取頭像</string>
-    <string name="actor_images_upload">上傳</string>
-    <string name="actor_images_upload_all">全部上傳</string>
-    <string name="actor_images_has_avatar">已有頭像</string>
-    <string name="actor_images_not_scraped">未抓取</string>
-    <string name="actor_images_empty">此影片沒有演員</string>
+    <string name="scrape_actor_image">取得頭像</string>
+    <string name="actor_has_avatar_warning">此人物已有頭像，上傳將覆蓋現有頭像</string>
     <string name="actor_images_uploaded">演員頭像已上傳</string>
     <string name="actor_images_upload_failed">上傳演員頭像失敗：%1$s</string>
     <string name="confirm">確認</string>

@@ -127,6 +127,18 @@ Compare-Object $en $zh | Where-Object { $_.SideIndicator -eq '<=' } | ForEach-Ob
 
 需要连真实服务端验证数据（如接口返回字段、头像 URL 是否可用）时，可使用仓库根目录 `local-test-server.md` 中记录的内网测试服务器地址与账号（纯本地账号，风险可控）。该文件已被 `.gitignore` 排除，**其中的信息与该文件本身都不要提交到远程**。
 
+## 访问抓取站点的代理
+
+`:core` 的 `scraper` 包针对的站点（JavDB / JavBus / Jav321）直连常被墙或 DNS 污染（实测 `javdb.com` 会被解析到一个无关 IP，连接 15 秒后超时）。**需要访问这些站点确认信息时**——核对页面结构、验证图片是否需要 Referer、确认某个演员名或番号在站点上是否存在等——一律用 `local.properties` 里 `scraper.proxy` 配置的本地代理，不要直连。
+
+- 该值只写在本地 `local.properties`（已被 `.gitignore` 排除）；`AGENTS.md` 与仓库代码只说明用法，**不记录地址、也不要提交**。注意它与 App 内设置里的抓取代理 `scrapeProxy` 是两回事，后者是给 App 运行时抓取用的。
+- 浏览器请求还须带 `Accept-Language`，否则 JavBus 会被跳到年龄验证页。取值并请求（中文 URL 的 `%` 在 cmd 下会被破坏，复杂命令先存成临时 `.ps1` 再执行）：
+
+  ```powershell
+  $proxy = (Select-String -Path local.properties -Pattern '^scraper\.proxy=(.+)$').Matches[0].Groups[1].Value
+  Invoke-WebRequest -Uri '<站点地址>' -Headers @{'Accept-Language' = 'zh-CN,zh;q=0.9'} -Proxy $proxy -TimeoutSec 30 -UseBasicParsing
+  ```
+
 ## 日志规范
 
 所有日志走统一包装类，tag 自动带 `torah` 前缀，logcat 中搜索 `torah` 即可过滤出本应用全部日志。
