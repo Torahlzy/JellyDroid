@@ -52,13 +52,23 @@ constructor(
             if (requested.isEmpty()) return@withContext emptyMap()
 
             val request = buildRequest(url, requested, settings.apiKey.trim(), settings.model.trim())
+            AppLog.i("翻译请求：url=%s，model=%s，%d 段文本", url, settings.model.trim(), requested.size)
+            AppLog.d("翻译输入：%s", JSONObject(requested))
             try {
                 translateClient().newCall(request).execute().use { response ->
                     val body = response.body.string()
+                    AppLog.d("翻译接口返回 %d：%s", response.code, logSnippet(body))
                     if (!response.isSuccessful) {
                         throw TranslateException("翻译接口返回 ${response.code}${describeError(body)}")
                     }
-                    parseTranslations(responseContent(body), requested)
+                    val translations = parseTranslations(responseContent(body), requested)
+                    AppLog.i("翻译输出：%s", JSONObject(translations))
+                    // 模型有时不翻译而是把原文抄回来（接口层面算成功），逐字段比对原样返回的情况
+                    val echoed = translations.filter { (key, value) -> requested[key] == value }
+                    if (echoed.isNotEmpty()) {
+                        AppLog.w("模型疑似未翻译、原样返回了字段：%s", echoed.keys.joinToString())
+                    }
+                    translations
                 }
             } catch (e: IOException) {
                 throw TranslateException("连接翻译接口失败（$url）", e)
@@ -171,6 +181,14 @@ constructor(
         return null
     }
 
+    /** 响应体可能很长（choices 之外还带 token 统计等字段），日志里截断，避免刷爆 logcat。 */
+    private fun logSnippet(body: String): String =
+        if (body.length <= LOG_SNIPPET_LENGTH) {
+            body
+        } else {
+            "${body.take(LOG_SNIPPET_LENGTH)}…（截断，共 ${body.length} 字符）"
+        }
+
     /**
      * 从响应体里挖出 `error.message`；挖不到就截一段原文。
      *
@@ -207,22 +225,36 @@ constructor(
         private const val READ_TIMEOUT_SECONDS = 60L
         private const val ERROR_SNIPPET_LENGTH = 200
 
+        /** 接口响应打进日志时的最大长度。 */
+        private const val LOG_SNIPPET_LENGTH = 2000
+
         /** JSON 输出被截断就等于这次翻译失败，给足余量；正常一段简介的译文只有几百 token。 */
         private const val MAX_TOKENS = 2048
 
         private const val DEEPSEEK_HOST = "deepseek.com"
 
         private const val PLAIN_SYSTEM_PROMPT =
-            "Translate the following Japanese text into Simplified Chinese. " +
-                "Leave non-Japanese text, names and numbers unchanged. " +
+            "You are a Japanese-to-Chinese translator. Translate the following Japanese text into " +
+                "Simplified Chinese. Translate ALL Japanese words and sentences — the reply must NOT " +
+                "be identical to the input. Keep product codes (e.g. MRSS-139), latin letters, numbers " +
+                "and punctuation unchanged. " +
                 "Reply with the translated text only, without any extra explanation."
 
-        /** JSON 模式要求 prompt 里出现 "json" 字样并给出输出样例。 */
+        /**
+         * JSON 模式要求 prompt 里出现 "json" 字样并给出输出样例。
+         *
+         * 「leaving non-Japanese text unchanged」这类宽松措辞曾被模型理解成「整个不用翻」，
+         * 直接把原文抄回来；这里明确要求逐词翻译、禁止与输入相同，并用样例钉死输出形态。
+         */
         private const val JSON_SYSTEM_PROMPT =
-            "Translate each value of the given json object into Simplified Chinese, while leaving " +
-                "non-Japanese text, names and numbers unchanged. Keep the keys unchanged. " +
-                "Reply with a json object only, in the same shape, " +
-                "e.g. {\"<key>\": \"<translation>\"}."
+            "You are a Japanese-to-Chinese translator. Translate EVERY value in the given json object " +
+                "from Japanese into Simplified Chinese. Translate ALL Japanese words and sentences — " +
+                "the output must NOT be identical to the input; copying the original text back is a wrong answer. " +
+                "Keep the json keys unchanged. Keep product codes (e.g. MRSS-139), latin letters, numbers " +
+                "and punctuation unchanged. " +
+                "Example — input: {\"title\": \"人妻が隣人に寝取られる\"}, " +
+                "output: {\"title\": \"人妻被邻居寝取\"}. " +
+                "Reply with a json object only, in the same shape as the input."
 
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
