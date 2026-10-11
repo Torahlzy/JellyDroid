@@ -209,10 +209,11 @@ fun NavigationRoot(
         }
 
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
-    // 宽屏（折叠屏展开 / 平板）下底栏收成底部居中的悬浮胶囊，不再变成左侧的导航栏
+    // 中宽屏（折叠屏展开）及以上底栏收成底部居中的悬浮胶囊；断点用 medium 而非 expanded，
+    // 因为折叠屏展开后的宽度多在 600–840dp 之间，用 840dp 断点会漏掉大部分折叠屏
     val isFloatingNavigationBar =
         windowAdaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
-            WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
+            WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND
         )
 
     Box(modifier = Modifier.fillMaxSize().nestedScroll(hideOnScrollConnection)) {
