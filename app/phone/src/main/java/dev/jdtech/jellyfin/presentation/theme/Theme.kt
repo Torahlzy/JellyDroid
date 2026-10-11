@@ -10,6 +10,8 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import dev.jdtech.jellyfin.core.presentation.theme.ColorDark
+import dev.jdtech.jellyfin.core.presentation.theme.ColorLight
 import dev.jdtech.jellyfin.core.presentation.theme.Spacings
 
 @Composable
@@ -33,6 +35,8 @@ fun FindroidTheme(
         CompositionLocalProvider(
             LocalContentColor provides contentColorFor(MaterialTheme.colorScheme.background),
             LocalSpacings provides Spacings,
+            LocalWarningColor provides
+                if (darkTheme) ColorDark.warningDark else ColorLight.warningLight,
         ) {
             content()
         }

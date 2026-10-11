@@ -1,8 +1,8 @@
 package dev.jdtech.jellyfin.film.presentation.movie
 
-import dev.jdtech.jellyfin.core.scraper.ScrapeProgress
 import dev.jdtech.jellyfin.core.scraper.ScraperSite
 import dev.jdtech.jellyfin.core.scraper.SiteImageScrapeResult
+import dev.jdtech.jellyfin.core.scraper.SiteMetadataScrapeResult
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.models.FindroidMovie
@@ -33,12 +33,23 @@ data class MovieState(
     val defaultScrapeKeyword: String = "",
     /** 是否正在抓取。 */
     val isScraping: Boolean = false,
-    /** 抓取的执行步骤，逐条追加，供抓取弹窗展示进度。 */
-    val scrapeSteps: List<ScrapeProgress> = emptyList(),
+    /** 本地配了地址、抓取时会被尝试的站点，进页面时取一次，供抓取弹窗先把站点列出来。 */
+    val metadataScrapeSites: List<ScraperSite> = emptyList(),
+    /**
+     * 文字抓取的逐站点结果，逐条追加。
+     *
+     * 各站点并发抓取，界面按 [metadataScrapeSites] 列出站点、按站点填上结果；为空数组只可能是
+     * 「没有站点配置地址」或「还没开始抓」，因为抓过的站点无论成败都会留下一条结果。
+     */
+    val metadataScrapeResults: List<SiteMetadataScrapeResult> = emptyList(),
     /** 所有站点都没抓到，为 true 时抓取弹窗保留在界面上等用户确认。 */
     val scrapeFailed: Boolean = false,
-    /** 抓到的元数据，非空表示表单已被抓取结果覆盖且尚未保存。 */
+    /** 当前应用到表单上的那份抓取内容，非空表示表单已被抓取结果覆盖且尚未保存。 */
     val scrapedMetadata: ItemMetadataEdit? = null,
+    /** 每个成功站点各一份已备好的表单内容（已翻译），弹窗里按站点切换时从这里取。 */
+    val scrapedSiteMetadata: List<ScrapedSiteMetadata> = emptyList(),
+    /** [scrapedMetadata] 来自哪个站点；null 表示表单里是服务器上的原内容（即选项行里的「原来」）。 */
+    val selectedScrapeSite: ScraperSite? = null,
     /** 抓取已完成、正在翻译抓取结果；抓取进度弹窗据此把提示从「处理中」换成「正在翻译」。 */
     val isTranslating: Boolean = false,
     /** 抓取使用的本地代理地址，留空表示直连；入口在抓取关键词弹窗里，不影响其它网络请求。 */
