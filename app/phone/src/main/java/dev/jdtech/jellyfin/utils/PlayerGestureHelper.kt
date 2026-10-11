@@ -28,13 +28,13 @@ import coil3.transform.RoundedCornersTransformation
 import dev.jdtech.jellyfin.PlayerActivity
 import dev.jdtech.jellyfin.core.Constants
 import dev.jdtech.jellyfin.isControlsLocked
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.player.core.domain.models.PlayerChapter
 import dev.jdtech.jellyfin.player.core.domain.models.Trickplay
 import dev.jdtech.jellyfin.player.local.mpv.MPVPlayer
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
-import timber.log.Timber
 
 class PlayerGestureHelper(
     private val appPreferences: AppPreferences,
@@ -370,7 +370,7 @@ class PlayerGestureHelper(
                         // Initialize on first swipe
                         if (swipeGestureValueTrackerBrightness == -1f) {
                             val brightness = window.attributes.screenBrightness
-                            Timber.d(
+                            AppLog.d(
                                 "Brightness ${Settings.System.getFloat(activity.contentResolver, Settings.System.SCREEN_BRIGHTNESS)}"
                             )
                             swipeGestureValueTrackerBrightness =
@@ -414,10 +414,7 @@ class PlayerGestureHelper(
 
     private val hideGestureBrightnessIndicatorOverlayAction = Runnable {
         activity.binding.gestureBrightnessLayout.visibility = View.GONE
-        appPreferences.setValue(
-            appPreferences.playerBrightness,
-            activity.window.attributes.screenBrightness,
-        )
+        saveBrightness()
     }
 
     private val hideGestureProgressOverlayAction = Runnable {
@@ -462,6 +459,34 @@ class PlayerGestureHelper(
         isZoomEnabled = enabled
     }
 
+    /**
+     * 亮度手势与「记住亮度」两项都开启时才跨会话保存 / 恢复亮度。
+     * 关闭任一开关后亮度跟随系统，不再写入已记录的亮度值。
+     */
+    private fun shouldRememberBrightness(): Boolean =
+        appPreferences.getValue(appPreferences.playerGesturesVB) &&
+            appPreferences.getValue(appPreferences.playerGesturesBrightnessRemember)
+
+    private fun saveBrightness() {
+        if (!shouldRememberBrightness()) return
+        appPreferences.setValue(
+            appPreferences.playerBrightness,
+            activity.window.attributes.screenBrightness,
+        )
+    }
+
+    /**
+     * 应用上次记住的亮度。值为 [AppPreferences.playerBrightness] 的初始值时表示从未记录过，
+     * 此时保持系统亮度不变。
+     */
+    fun restoreSavedBrightness() {
+        if (!shouldRememberBrightness()) return
+        val savedBrightness = appPreferences.getValue(appPreferences.playerBrightness)
+        if (savedBrightness == -1.0f) return
+        activity.window.attributes =
+            activity.window.attributes.apply { screenBrightness = savedBrightness }
+    }
+
     private fun releaseAction(event: MotionEvent) {
         if (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL) {
             activity.binding.gestureVolumeLayout.apply {
@@ -477,11 +502,8 @@ class PlayerGestureHelper(
                     postDelayed(hideGestureBrightnessIndicatorOverlayAction, 1000)
                     swipeGestureBrightnessOpen = false
 
-                    // Save brightness immediately when the gesture ends
-                    appPreferences.setValue(
-                        appPreferences.playerBrightness,
-                        activity.window.attributes.screenBrightness,
-                    )
+                    // 手势抬起后立刻保存，避免这 1 秒的隐藏延迟内退出播放导致亮度丢失
+                    saveBrightness()
                 }
             }
             activity.binding.progressScrubberLayout.apply {
@@ -568,21 +590,12 @@ class PlayerGestureHelper(
             }
         } catch (e: Exception) {
             activity.binding.progressScrubberTrickplay.visibility = View.GONE
-            Timber.d(e)
+            AppLog.e(e)
         }
     }
 
     init {
-        if (appPreferences.getValue(appPreferences.playerGesturesVB)) {
-            appPreferences.getValue(appPreferences.playerBrightness).let { savedBrightness ->
-                if (savedBrightness != -1.0f) {
-                    activity.window.attributes =
-                        activity.window.attributes.apply {
-                            screenBrightness = savedBrightness
-                        }
-                }
-            }
-        }
+        restoreSavedBrightness()
 
         updateZoomMode(appPreferences.getValue(appPreferences.playerGesturesStartMaximized))
 

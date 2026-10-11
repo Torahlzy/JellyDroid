@@ -2,24 +2,29 @@ package dev.jdtech.jellyfin
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
-import androidx.compose.material3.adaptive.navigationsuite.rememberNavigationSuiteScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavOptions
@@ -41,6 +46,7 @@ import dev.jdtech.jellyfin.models.FindroidMovie
 import dev.jdtech.jellyfin.models.FindroidSeason
 import dev.jdtech.jellyfin.models.FindroidShow
 import dev.jdtech.jellyfin.models.MetadataFacet
+import dev.jdtech.jellyfin.presentation.components.AppNavigationBar
 import dev.jdtech.jellyfin.presentation.film.CollectionScreen
 import dev.jdtech.jellyfin.presentation.film.DownloadsScreen
 import dev.jdtech.jellyfin.presentation.film.EpisodeScreen
@@ -145,6 +151,9 @@ val downloadsTab =
         route = DownloadsRoute,
     )
 
+/** 判定滚动方向的最小位移，低于它的抖动不触发底栏显隐，避免动画闪烁。 */
+private val SCROLL_DIRECTION_THRESHOLD = 8.dp
+
 @Composable
 fun NavigationRoot(
     navController: NavHostController,
@@ -174,65 +183,39 @@ fun NavigationRoot(
     var searchExpanded by remember { mutableStateOf(false) }
 
     val currentRoute = navBackStackEntry?.destination?.route
-    val showBottomBar = currentRoute in navigationItemClassNames && !searchExpanded
+    val showNavigationBar = currentRoute in navigationItemClassNames && !searchExpanded
 
-    val navigationSuiteScaffoldState = rememberNavigationSuiteScaffoldState()
+    // 列表向上滑时隐藏底栏，反向下滑恢复；切到别的 tab 后重新显示
+    var hiddenByScroll by remember { mutableStateOf(false) }
+    LaunchedEffect(currentRoute) { hiddenByScroll = false }
 
-    LaunchedEffect(showBottomBar) {
-        if (showBottomBar) {
-            navigationSuiteScaffoldState.show()
-        } else {
-            navigationSuiteScaffoldState.hide()
+    val hideThresholdPx = with(LocalDensity.current) { SCROLL_DIRECTION_THRESHOLD.toPx() }
+    val hideOnScrollConnection =
+        remember(hideThresholdPx) {
+            object : NestedScrollConnection {
+                override fun onPreScroll(
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset {
+                    // 只看纵向位移，横向切页（pager）的 y 为 0，不会误触发
+                    when {
+                        available.y < -hideThresholdPx -> hiddenByScroll = true
+                        available.y > hideThresholdPx -> hiddenByScroll = false
+                    }
+                    // 不消费位移，列表照常滚动
+                    return Offset.Zero
+                }
+            }
         }
-    }
 
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
-    val customNavSuiteType =
-        with(windowAdaptiveInfo) {
-            if (
-                windowSizeClass.isWidthAtLeastBreakpoint(
-                    WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
-                )
-            ) {
-                NavigationSuiteType.NavigationRail
-            } else {
-                NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(this)
-            }
-        }
+    // 宽屏（折叠屏展开 / 平板）下底栏收成底部居中的悬浮胶囊，不再变成左侧的导航栏
+    val isFloatingNavigationBar =
+        windowAdaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
+            WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
+        )
 
-    NavigationSuiteScaffold(
-        navigationSuiteItems = {
-            navigationItems.forEach { item ->
-                item(
-                    selected = currentRoute == item.route::class.qualifiedName,
-                    onClick = {
-                        if (
-                            item.route is MediaRoute &&
-                                currentRoute == MediaRoute::class.qualifiedName
-                        ) {
-                            searchExpanded = true
-                        }
-
-                        navController.navigate(item.route) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    icon = {
-                        Icon(
-                            painter = painterResource(item.icon),
-                            contentDescription = stringResource(item.title),
-                        )
-                    },
-                    enabled = item.enabled,
-                    label = { Text(text = stringResource(item.title)) },
-                )
-            }
-        },
-        layoutType = customNavSuiteType,
-        state = navigationSuiteScaffoldState,
-    ) {
+    Box(modifier = Modifier.fillMaxSize().nestedScroll(hideOnScrollConnection)) {
         NavHost(
             navController = navController,
             startDestination = startDestination,
@@ -553,6 +536,33 @@ fun NavigationRoot(
             composable<AboutRoute> {
                 AboutScreen(navigateBack = { navController.safePopBackStack() })
             }
+        }
+
+        AnimatedVisibility(
+            visible = showNavigationBar && !hiddenByScroll,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+        ) {
+            AppNavigationBar(
+                items = navigationItems,
+                selectedRoute = currentRoute,
+                floating = isFloatingNavigationBar,
+                onItemClick = { item ->
+                    if (
+                        item.route is MediaRoute &&
+                            currentRoute == MediaRoute::class.qualifiedName
+                    ) {
+                        searchExpanded = true
+                    }
+
+                    navController.navigate(item.route) {
+                        popUpTo(navController.graph.startDestinationId) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+            )
         }
     }
 }

@@ -1,6 +1,7 @@
 package dev.jdtech.jellyfin.core.translator
 
 import dev.jdtech.jellyfin.di.ScraperOkHttpClient
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import java.io.IOException
 import java.net.URI

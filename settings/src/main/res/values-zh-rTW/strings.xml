@@ -58,7 +58,7 @@
     <string name="picture_in_picture_gesture">畫中畫首頁手勢</string>
     <string name="picture_in_picture_gesture_summary">影片播放時使用主頁按鈕或手勢進入畫中畫</string>
     <string name="player_start_maximized">開始最大化</string>
-    <string name="player_start_maximized_summary">預設以最大化模式開啟影片</string>
+    <string name="player_start_maximized_summary">放大裁切以填滿螢幕</string>
     <string name="player_gestures_chapter_skip">章節手勢</string>
     <string name="player_gestures_chapter_skip_summary">長按左/右側可跳過章節（覆蓋 2 倍速度手勢）</string>
     <string name="pref_player_chapter_markers">章節標記</string>
