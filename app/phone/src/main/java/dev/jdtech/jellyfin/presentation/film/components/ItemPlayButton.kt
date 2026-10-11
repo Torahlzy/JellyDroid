@@ -43,10 +43,12 @@ import kotlin.math.roundToInt
 
 // 收起态与 ItemTopBar 的 IconButton 视觉圆片尺寸一致（40dp），飞过去后能接在顶栏按钮后面
 private val COLLAPSED_BUTTON_SIZE = 40.dp
-// 展开态盖在封面中央的半透明圆片：收起态的约一倍大，居中更醒目
-private val EXPANDED_BUTTON_SIZE = 144.dp
-// 图标尺寸指画布尺寸：三角只占画布高度的 14/24，所以画布给到 124dp，三角才约 72dp
-private val EXPANDED_ICON_SIZE = 124.dp
+// 展开态圆片直径跟随封面（屏幕）宽度自适应：占宽度的 1/6，窄屏不显得过大、宽屏不显得过小
+private const val EXPANDED_BUTTON_WIDTH_FRACTION = 1f / 6f
+// 封面宽度尚未测量到（overlayWidthPx 为 0）时的兜底直径
+private val EXPANDED_BUTTON_SIZE_FALLBACK = 144.dp
+// 图标画布与圆片的比例：三角只占画布高度的 14/24，画布取圆片的 124/144 时三角才约占圆片一半
+private const val EXPANDED_ICON_SIZE_RATIO = 124f / 144f
 private val COLLAPSED_ICON_SIZE = 24.dp
 // 展开态半透明以少遮挡封面；收起态与顶栏按钮的透明度保持一致
 private const val EXPANDED_CONTAINER_ALPHA = 0.55f
@@ -86,8 +88,16 @@ fun ItemPlayButton(
             label = "playButtonCollapse",
         )
 
-    val buttonSize = dpLerp(EXPANDED_BUTTON_SIZE, COLLAPSED_BUTTON_SIZE, progress)
-    val iconSize = dpLerp(EXPANDED_ICON_SIZE, COLLAPSED_ICON_SIZE, progress)
+    // 展开态尺寸由悬浮层（即封面）宽度算出，随屏幕宽度自适应；图标画布按同比例缩放
+    val expandedButtonSize =
+        if (overlayWidthPx > 0) {
+            with(density) { (overlayWidthPx * EXPANDED_BUTTON_WIDTH_FRACTION).toDp() }
+        } else {
+            EXPANDED_BUTTON_SIZE_FALLBACK
+        }
+    val buttonSize = dpLerp(expandedButtonSize, COLLAPSED_BUTTON_SIZE, progress)
+    val iconSize =
+        dpLerp(expandedButtonSize * EXPANDED_ICON_SIZE_RATIO, COLLAPSED_ICON_SIZE, progress)
     val containerAlpha = lerp(EXPANDED_CONTAINER_ALPHA, COLLAPSED_CONTAINER_ALPHA, progress)
     val iconAlpha = lerp(EXPANDED_ICON_ALPHA, COLLAPSED_ICON_ALPHA, progress)
     // 圆片尺寸即布局尺寸（下方已关掉最小触摸目标撑大），取一半作为圆心到左上角的偏移量
