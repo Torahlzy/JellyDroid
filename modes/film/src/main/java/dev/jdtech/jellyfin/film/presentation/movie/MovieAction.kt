@@ -1,6 +1,7 @@
 package dev.jdtech.jellyfin.film.presentation.movie
 
 import dev.jdtech.jellyfin.core.scraper.ScrapedImage
+import dev.jdtech.jellyfin.core.scraper.ScraperSite
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.models.ItemMetadataEdit
@@ -34,6 +35,12 @@ sealed interface MovieAction {
 
     /** 以 [keyword]（通常是番号）为关键词到各站点抓取 nfo 元数据。 */
     data class ScrapeMetadata(val keyword: String) : MovieAction
+
+    /**
+     * 切换「编辑 nfo」弹窗里的内容来源：抓取时各站点同时抓了一遍，这里换成某个站点的结果；
+     * [site] 为 null 表示回到抓取前服务器上的原内容（选项行里的「原来」）。
+     */
+    data class SelectScrapeSource(val site: ScraperSite?) : MovieAction
 
     /** 用户确认了抓取失败提示，清掉本次抓取的进度记录。 */
     data object DismissScrapeFailure : MovieAction

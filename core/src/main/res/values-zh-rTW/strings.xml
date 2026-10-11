@@ -166,6 +166,7 @@
     <string name="edit_metadata_invalid_date">請使用 yyyy-MM-dd 格式</string>
     <string name="edit_metadata_load_failed">載入中繼資料失敗：%1$s</string>
     <string name="edit_metadata_scraped_title">已更新（未儲存）</string>
+    <string name="edit_metadata_source_original">原來</string>
     <string name="scrape">抓取</string>
     <string name="scrape_keyword_title">抓取 nfo</string>
     <string name="scrape_keyword_label">關鍵詞</string>

@@ -22,16 +22,17 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.jdtech.jellyfin.core.R as CoreR
-import dev.jdtech.jellyfin.core.scraper.ScrapeProgress
 import dev.jdtech.jellyfin.core.scraper.ScraperSite
+import dev.jdtech.jellyfin.core.scraper.SiteMetadataScrapeResult
 import dev.jdtech.jellyfin.presentation.components.BaseDialog
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 
 /**
- * 抓取过程中的临时弹窗：逐条列出「正在抓哪个站 / 哪个站成功」。
+ * 抓取过程中的临时弹窗：逐条列出各站点这次抓到了什么、哪个站失败。
  *
- * [title] 与 [failureSummary] 由调用方给出，用于区分抓的是 nfo 还是封面。
+ * 各站点是同时抓的，因此 [sites] 里的站点按 [ScraperSite] 的声明顺序列出，[results] 里还没有的
+ * 就是「还在抓」。[title] 与 [failureSummary] 由调用方给出，用于区分抓的是 nfo 还是封面。
  * 抓取中只能点「取消」中断；抓取成功由上层直接把弹窗从界面上移除；
  * 全部失败时保留弹窗并给出「关闭」，让用户看清每个站点的失败原因。
  *
@@ -41,7 +42,8 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
 @Composable
 fun ScrapeProgressDialog(
     title: String,
-    steps: List<ScrapeProgress>,
+    sites: List<ScraperSite>,
+    results: List<SiteMetadataScrapeResult>,
     isRunning: Boolean,
     isTranslating: Boolean,
     failureSummary: String,
@@ -91,16 +93,26 @@ fun ScrapeProgressDialog(
                 }
                 Spacer(Modifier.height(MaterialTheme.spacings.small))
             }
-            steps.forEach { step ->
+            // 一个站点都没配地址时说明去哪儿填，比列一堆「正在抓取」有用
+            if (sites.isEmpty()) {
                 Text(
-                    text = step.toText(),
+                    text = stringResource(CoreR.string.scrape_site_not_configured),
+                    color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = step.textColor(emphasizeFailure = !isRunning),
                     modifier = Modifier.padding(vertical = MaterialTheme.spacings.extraSmall),
                 )
+            } else {
+                sites.forEach { site ->
+                    SiteProgressRow(
+                        site = site,
+                        result = results.firstOrNull { it.site == site },
+                        // 抓取还在进行时单个站点失败只意味着「别的站点也许有」，用中性色即可
+                        emphasizeFailure = !isRunning,
+                    )
+                }
             }
             // 只有真的尝试过站点并失败时才补一句总结；「没配置」已由上面的行说清楚，不再重复
-            if (!isRunning && steps.any { it is ScrapeProgress.Failed }) {
+            if (!isRunning && results.any { it is SiteMetadataScrapeResult.Failure }) {
                 Spacer(Modifier.height(MaterialTheme.spacings.small))
                 Text(
                     text = failureSummary,
@@ -112,43 +124,44 @@ fun ScrapeProgressDialog(
     }
 }
 
-@Composable
-private fun ScrapeProgress.toText(): String =
-    when (this) {
-        is ScrapeProgress.Started ->
-            stringResource(CoreR.string.scrape_site_started, site.displayName)
-        is ScrapeProgress.Succeeded ->
-            stringResource(CoreR.string.scrape_site_succeeded, site.displayName)
-        is ScrapeProgress.Failed ->
-            stringResource(CoreR.string.scrape_site_failed, site.displayName, reason)
-        ScrapeProgress.NotConfigured -> stringResource(CoreR.string.scrape_site_not_configured)
-    }
-
 /**
- * 步骤行的颜色。
+ * 一个站点的进度行；[result] 为 null 表示这个站点还在抓。
  *
- * 抓取还在进行时，单个站点失败只意味着「换下一个」，用中性色即可——否则最后抓取成功了，
- * 过程中闪过的红字会让人以为整件事失败了；只有全部站点都失败（弹窗留下不走）才标红。
- * 「没配置」同样是失败态，一并标红。
+ * 抓取进行中单个站点失败用中性色，避免最后抓取成功了、过程中闪过的红字却让人以为整件事失败；
+ * 全部站点都失败（弹窗留下不走）时才标红。
  */
 @Composable
-private fun ScrapeProgress.textColor(emphasizeFailure: Boolean): Color =
-    when (this) {
-        is ScrapeProgress.Succeeded -> MaterialTheme.colorScheme.primary
-        is ScrapeProgress.Failed ->
-            if (emphasizeFailure) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
-        is ScrapeProgress.Started -> Color.Unspecified
-        ScrapeProgress.NotConfigured ->
-            if (emphasizeFailure) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
-    }
+private fun SiteProgressRow(
+    site: ScraperSite,
+    result: SiteMetadataScrapeResult?,
+    emphasizeFailure: Boolean,
+) {
+    val text =
+        when (result) {
+            null -> stringResource(CoreR.string.scrape_site_started, site.displayName)
+            is SiteMetadataScrapeResult.Success ->
+                stringResource(CoreR.string.scrape_site_succeeded, site.displayName)
+            is SiteMetadataScrapeResult.Failure ->
+                stringResource(CoreR.string.scrape_site_failed, site.displayName, result.reason)
+        }
+    val color =
+        when (result) {
+            is SiteMetadataScrapeResult.Success -> MaterialTheme.colorScheme.primary
+            is SiteMetadataScrapeResult.Failure ->
+                if (emphasizeFailure) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            null -> Color.Unspecified
+        }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = color,
+        modifier = Modifier.padding(vertical = MaterialTheme.spacings.extraSmall),
+    )
+}
 
 @Preview
 @Composable
@@ -156,14 +169,13 @@ private fun ScrapeProgressDialogPreview() {
     FindroidTheme {
         ScrapeProgressDialog(
             title = "Scraping",
-            steps =
+            sites = listOf(ScraperSite.JAV321, ScraperSite.JAVBUS, ScraperSite.JAVDB),
+            results =
                 listOf(
-                    ScrapeProgress.Started(ScraperSite.JAVDB),
-                    ScrapeProgress.Failed(ScraperSite.JAVDB, "403 禁止访问"),
-                    ScrapeProgress.Started(ScraperSite.JAVBUS),
-                    ScrapeProgress.Succeeded(ScraperSite.JAVBUS),
+                    SiteMetadataScrapeResult.Failure(ScraperSite.JAV321, "403 禁止访问"),
+                    SiteMetadataScrapeResult.Failure(ScraperSite.JAVDB, "页面结构变化"),
                 ),
-            isRunning = false,
+            isRunning = true,
             isTranslating = false,
             failureSummary = "No data was found on any site",
             onCancel = {},

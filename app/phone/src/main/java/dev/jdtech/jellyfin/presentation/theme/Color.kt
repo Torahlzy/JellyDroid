@@ -1,7 +1,11 @@
 package dev.jdtech.jellyfin.presentation.theme
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.graphics.Color
 import dev.jdtech.jellyfin.core.presentation.theme.ColorDark
 import dev.jdtech.jellyfin.core.presentation.theme.ColorLight
 
@@ -82,3 +86,11 @@ val darkScheme =
         surfaceContainerHigh = ColorDark.surfaceContainerHighDark,
         surfaceContainerHighest = ColorDark.surfaceContainerHighestDark,
     )
+
+// Material3 的 ColorScheme 没有警告色槽位，这里补一个语义色（取值随深浅色切换）；
+// dynamicColor 开着时（Android 12+）scheme 取自系统壁纸，warning 仍用固定值——
+// 它表达「要提醒但不是错误」，与主题主色无关，固定不变反而更稳定
+val LocalWarningColor = compositionLocalOf { ColorLight.warningLight }
+
+val MaterialTheme.warningColor: Color
+    @Composable get() = LocalWarningColor.current

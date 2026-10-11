@@ -19,6 +19,8 @@ data object ColorLight {
     val onErrorLight = Color(0xFFFFFFFF)
     val errorContainerLight = Color(0xFFFFDAD6)
     val onErrorContainerLight = Color(0xFF410002)
+    // 警告色：偏红的橙红，介于 tertiary（粉紫）与 error（正红）之间，用于「要提醒但不是错误」的场景
+    val warningLight = Color(0xFFB02E00)
     val backgroundLight = Color(0xFFF8F9FF)
     val onBackgroundLight = Color(0xFF191C20)
     val surfaceLight = Color(0xFFF8F9FF)
@@ -57,6 +59,7 @@ data object ColorDark {
     val onErrorDark = Color(0xFF690005)
     val errorContainerDark = Color(0xFF93000A)
     val onErrorContainerDark = Color(0xFFFFDAD6)
+    val warningDark = Color(0xFFFFB68F)
     val backgroundDark = Color(0xFF111318)
     val onBackgroundDark = Color(0xFFE1E2E8)
     val surfaceDark = Color(0xFF111318)

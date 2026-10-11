@@ -3,11 +3,12 @@ package dev.jdtech.jellyfin.core.scraper
 import dev.jdtech.jellyfin.core.BuildConfig
 
 /**
- * 支持抓取元数据的站点。
+ * 支持抓取的站点（文字、封面、头像抓取共用）。
  *
- * 枚举顺序即抓取顺序：从前到后依次尝试，任一站点成功即停止。
- * 站点地址不在代码里写死，而由本地配置提供（`local.properties` 的 `scraper.<站点>.url`，
- * 见 `:core` 的 `build.gradle.kts`）；没配置的站点 [baseUrl] 为 null，抓取时直接跳过。
+ * 枚举顺序只是展示与默认选择的顺序：各站点会**同时**抓取、全部尝试，不会在某个站点成功后停下，
+ * 有内容时默认选中声明在最前面的那个。站点地址不在代码里写死，而由本地配置提供
+ * （`local.properties` 的 `scraper.<站点>.url`，见 `:core` 的 `build.gradle.kts`）；
+ * 没配置的站点 [baseUrl] 为 null，抓取时直接跳过。
  */
 enum class ScraperSite(val displayName: String) {
     JAV321("Jav321"),

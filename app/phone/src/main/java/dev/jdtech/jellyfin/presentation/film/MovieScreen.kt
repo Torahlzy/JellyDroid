@@ -331,6 +331,9 @@ fun MovieScreen(
             EditItemMetadataDialog(
                 metadata = state.itemMetadata,
                 scrapedMetadata = state.scrapedMetadata,
+                // 抓到内容的站点：弹窗把它们列在标题下方，供用户在站点之间切换内容
+                scrapedSites = state.scrapedSiteMetadata.map { it.site },
+                selectedScrapeSite = state.selectedScrapeSite,
                 fileName = state.fileName,
                 isLoading = state.isLoadingItemMetadata,
                 isTranslating = state.isTranslating,
@@ -345,6 +348,9 @@ fun MovieScreen(
                 onConfirm = { metadata ->
                     moreDialog = null
                     viewModel.onAction(MovieAction.UpdateItemMetadata(metadata = metadata))
+                },
+                onSelectScrapeSource = { site ->
+                    viewModel.onAction(MovieAction.SelectScrapeSource(site = site))
                 },
                 onScrapeClick = { showScrapeKeywordDialog = true },
                 onTranslateSettingsChange = { settings ->
@@ -427,12 +433,14 @@ fun MovieScreen(
     if (showScrapeProgressDialog) {
         ScrapeProgressDialog(
             title = stringResource(CoreR.string.scrape_progress_title),
-            steps = state.scrapeSteps,
+            sites = state.metadataScrapeSites,
+            results = state.metadataScrapeResults,
             isRunning = state.isScraping,
             isTranslating = state.isTranslating,
             failureSummary = stringResource(CoreR.string.scrape_all_failed),
             onCancel = {
-                showScrapeProgressDialog = false
+                // 取消也按「部分成功」处理：有站点抓到内容时表单回填、弹窗随之自动关闭；
+                // 一个都没抓到时弹窗留在界面上给出失败原因，由用户点「关闭」收尾
                 viewModel.onAction(MovieAction.CancelScrape)
             },
             onDismiss = {

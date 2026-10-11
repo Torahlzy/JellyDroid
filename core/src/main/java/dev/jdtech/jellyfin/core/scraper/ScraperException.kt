@@ -3,7 +3,7 @@ package dev.jdtech.jellyfin.core.scraper
 /**
  * 抓取相关的异常，对应 JavSP 的 `CrawlerError` 体系。
  *
- * 每个站点抓取失败都会抛出其中之一，由 [MetadataScraper] 收集后继续尝试下一个站点。
+ * 每个站点抓取失败都会抛出其中之一，由 [MetadataScraper] 这类抓取器捕获、转成该站点的失败原因，不影响其它站点。
  */
 sealed class ScraperException(message: String, cause: Throwable? = null) :
     Exception(message, cause) {
