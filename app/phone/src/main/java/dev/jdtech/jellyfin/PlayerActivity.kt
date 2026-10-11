@@ -553,17 +553,8 @@ class PlayerActivity : BasePlayerActivity() {
                 binding.playerView.useController = true
                 playerGestureHelper?.updateZoomMode(wasZoom)
 
-                // Override auto brightness
-                if (appPreferences.getValue(appPreferences.playerGesturesVB)) {
-                    appPreferences.getValue(appPreferences.playerBrightness).let { saved ->
-                        if (saved != -1.0f) {
-                            window.attributes =
-                                window.attributes.apply {
-                                    screenBrightness = saved
-                                }
-                        }
-                    }
-                }
+                // 画中画期间交给系统自动亮度，退出后重新应用记住的亮度
+                playerGestureHelper?.restoreSavedBrightness()
             }
         }
     }
