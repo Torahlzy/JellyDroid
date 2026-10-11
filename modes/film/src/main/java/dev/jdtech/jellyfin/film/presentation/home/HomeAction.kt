@@ -15,7 +15,7 @@ sealed interface HomeAction {
 
     data object OnSearchClick : HomeAction
 
-    data object OnSettingsClick : HomeAction
+    data object OnDownloadsClick : HomeAction
 
     data object OnManageServers : HomeAction
 }

@@ -23,12 +23,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -64,6 +67,7 @@ import dev.jdtech.jellyfin.presentation.film.components.FilePathText
 import dev.jdtech.jellyfin.presentation.film.components.InfoText
 import dev.jdtech.jellyfin.presentation.film.components.ItemButtonsBar
 import dev.jdtech.jellyfin.presentation.film.components.ItemHeader
+import dev.jdtech.jellyfin.presentation.film.components.ItemPlayButton
 import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
 import dev.jdtech.jellyfin.presentation.film.components.MoreMenuDialog
 import dev.jdtech.jellyfin.presentation.film.components.OverviewText
@@ -489,6 +493,9 @@ private fun MovieScreenLayout(
 
     val scrollState = rememberScrollState()
 
+    // 封面高度（不含状态栏 padding），驱动悬浮播放按钮的展开 / 收起与飞行位置
+    var headerHeightPx by remember { mutableIntStateOf(0) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         state.movie?.let { movie ->
             Column(modifier = Modifier.fillMaxWidth().verticalScroll(scrollState)) {
@@ -496,7 +503,10 @@ private fun MovieScreenLayout(
                     item = movie,
                     scrollState = scrollState,
                     // 头部图片上方留出状态栏高度
-                    modifier = Modifier.padding(top = safePadding.top),
+                    modifier =
+                        Modifier.padding(top = safePadding.top).onSizeChanged {
+                            headerHeightPx = it.height
+                        },
                     // 标题已移到图片下方，不再需要底部渐隐，避免图片下方出现空白
                     fadeToBackground = false,
                     // 按图片实际宽高比自适应高度，完整显示背景图、不裁切左右
@@ -642,6 +652,17 @@ private fun MovieScreenLayout(
             onBackClick = { onAction(MovieAction.OnBackClick) },
             onHomeClick = { onAction(MovieAction.OnHomeClick) },
         )
+
+        // 封面上的悬浮播放按钮：跟随封面滚动，封面滑出超过一半后收起并飞到顶栏「回到首页」按钮后方
+        state.movie?.let {
+            ItemPlayButton(
+                scrollState = scrollState,
+                headerHeightPx = headerHeightPx,
+                safePadding = safePadding,
+                onClick = { onAction(MovieAction.Play(startFromBeginning = false)) },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 

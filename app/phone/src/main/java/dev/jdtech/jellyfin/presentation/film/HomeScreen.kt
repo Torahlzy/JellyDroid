@@ -52,7 +52,7 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     onLibraryClick: (library: FindroidCollection) -> Unit,
     onSearchClick: () -> Unit,
-    onSettingsClick: () -> Unit,
+    onDownloadsClick: () -> Unit,
     onManageServers: () -> Unit,
     onItemClick: (item: FindroidItem) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
@@ -68,7 +68,7 @@ fun HomeScreen(
                 is HomeAction.OnItemClick -> onItemClick(action.item)
                 is HomeAction.OnLibraryClick -> onLibraryClick(action.library)
                 is HomeAction.OnSearchClick -> onSearchClick()
-                is HomeAction.OnSettingsClick -> onSettingsClick()
+                is HomeAction.OnDownloadsClick -> onDownloadsClick()
                 is HomeAction.OnManageServers -> onManageServers()
                 else -> Unit
             }
@@ -158,7 +158,7 @@ private fun HomeScreenLayout(state: HomeState, onAction: (HomeAction) -> Unit) {
         onErrorClick = { showErrorDialog = true },
         onRetryClick = { onAction(HomeAction.OnRetryClick) },
         onSearchClick = { onAction(HomeAction.OnSearchClick) },
-        onUserClick = { onAction(HomeAction.OnSettingsClick) },
+        onDownloadClick = { onAction(HomeAction.OnDownloadsClick) },
         modifier = Modifier.padding(start = paddingStart, top = paddingTop, end = paddingEnd),
     )
 

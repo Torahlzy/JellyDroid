@@ -144,11 +144,11 @@ val mediaTab =
         icon = CoreR.drawable.ic_library,
         route = MediaRoute,
     )
-val downloadsTab =
+val settingsTab =
     TabBarItem(
-        title = CoreR.string.title_download,
-        icon = CoreR.drawable.ic_download,
-        route = DownloadsRoute,
+        title = CoreR.string.title_settings,
+        icon = CoreR.drawable.ic_settings,
+        route = SettingsRoute(indexes = intArrayOf(CoreR.string.title_settings)),
     )
 
 /** 判定滚动方向的最小位移，低于它的抖动不触发底栏显隐，避免动画闪烁。 */
@@ -173,17 +173,21 @@ fun NavigationRoot(
 
     val navigationItems =
         when (isOfflineMode) {
-            false -> listOf(homeTab, mediaTab, downloadsTab)
-            true -> listOf(homeTab, downloadsTab)
+            false -> listOf(homeTab, mediaTab, settingsTab)
+            true -> listOf(homeTab, settingsTab)
         }
-    val navigationItemClassNames = navigationItems.map { it.route::class.qualifiedName }
-
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
     var searchExpanded by remember { mutableStateOf(false) }
 
     val currentRoute = navBackStackEntry?.destination?.route
-    val showNavigationBar = currentRoute in navigationItemClassNames && !searchExpanded
+    // 目的地上的 route 是「模式串」：无参路由就是类名，带参路由会追加 ?indexes={indexes}
+    // 这类占位符（设置标签属于后者），所以先还原成类名，再与各 tab 比对
+    val currentTab =
+        navigationItems.firstOrNull {
+            it.route::class.qualifiedName == currentRoute?.substringBefore('?')
+        }
+    val showNavigationBar = currentTab != null && !searchExpanded
 
     // 列表向上滑时隐藏底栏，反向下滑恢复；切到别的 tab 后重新显示
     var hiddenByScroll by remember { mutableStateOf(false) }
@@ -307,11 +311,7 @@ fun NavigationRoot(
                             restoreState = true
                         }
                     },
-                    onSettingsClick = {
-                        navController.safeNavigate(
-                            SettingsRoute(indexes = intArrayOf(CoreR.string.title_settings))
-                        )
-                    },
+                    onDownloadsClick = { navController.safeNavigate(DownloadsRoute) },
                     onManageServers = { navController.safeNavigate(ServersRoute) },
                     onItemClick = { item ->
                         navigateToItem(navController = navController, item = item)
@@ -547,13 +547,11 @@ fun NavigationRoot(
         ) {
             AppNavigationBar(
                 items = navigationItems,
-                selectedRoute = currentRoute,
+                selectedRoute = currentTab?.route?.let { it::class.qualifiedName },
                 floating = isFloatingNavigationBar,
                 onItemClick = { item ->
-                    if (
-                        item.route is MediaRoute &&
-                            currentRoute == MediaRoute::class.qualifiedName
-                    ) {
+                    // 再次点击已选中的「媒体库」标签，直接展开搜索
+                    if (item.route is MediaRoute && currentTab?.route is MediaRoute) {
                         searchExpanded = true
                     }
 
