@@ -43,7 +43,7 @@ fun HomeHeader(
     onErrorClick: () -> Unit,
     onRetryClick: () -> Unit,
     onSearchClick: () -> Unit,
-    onUserClick: () -> Unit,
+    onDownloadClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isOfflineMode = LocalOfflineMode.current
@@ -148,7 +148,7 @@ fun HomeHeader(
             }
 
             Surface(
-                onClick = onUserClick,
+                onClick = onDownloadClick,
                 modifier = Modifier.fillMaxHeight().aspectRatio(1f),
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -159,7 +159,7 @@ fun HomeHeader(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        painter = painterResource(CoreR.drawable.ic_user),
+                        painter = painterResource(CoreR.drawable.ic_download),
                         contentDescription = null,
                     )
                 }
@@ -180,7 +180,7 @@ private fun HomeHeaderLoadingPreview() {
             onErrorClick = {},
             onRetryClick = {},
             onSearchClick = {},
-            onUserClick = {},
+            onDownloadClick = {},
         )
     }
 }
@@ -197,7 +197,7 @@ private fun HomeHeaderErrorPreview() {
             onErrorClick = {},
             onRetryClick = {},
             onSearchClick = {},
-            onUserClick = {},
+            onDownloadClick = {},
         )
     }
 }

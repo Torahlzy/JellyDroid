@@ -25,9 +25,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.jdtech.jellyfin.HomeRoute
 import dev.jdtech.jellyfin.TabBarItem
-import dev.jdtech.jellyfin.downloadsTab
 import dev.jdtech.jellyfin.homeTab
 import dev.jdtech.jellyfin.mediaTab
+import dev.jdtech.jellyfin.settingsTab
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
@@ -143,7 +143,7 @@ private fun RowScope.NavigationTab(
 private fun AppNavigationBarPreview() {
     FindroidTheme {
         AppNavigationBar(
-            items = listOf(homeTab, mediaTab, downloadsTab),
+            items = listOf(homeTab, mediaTab, settingsTab),
             selectedRoute = HomeRoute::class.qualifiedName,
             onItemClick = {},
         )
@@ -156,7 +156,7 @@ private fun AppNavigationBarFloatingPreview() {
     FindroidTheme {
         Box(modifier = Modifier.fillMaxSize()) {
             AppNavigationBar(
-                items = listOf(homeTab, mediaTab, downloadsTab),
+                items = listOf(homeTab, mediaTab, settingsTab),
                 selectedRoute = HomeRoute::class.qualifiedName,
                 onItemClick = {},
                 floating = true,

@@ -1,0 +1,15 @@
+<!-- 封面悬浮播放按钮专用：实心的圆角播放三角。
+     用白色 round 描边叠加填充把直角三角的三个拐角磨圆，避免再手算圆角路径 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:pathData="M8.5,6.5 L18,12 L8.5,17.5 Z"
+      android:fillColor="#FFFFFFFF"
+      android:strokeColor="#FFFFFFFF"
+      android:strokeWidth="3"
+      android:strokeLineJoin="round"
+      android:strokeLineCap="round"/>
+</vector>
