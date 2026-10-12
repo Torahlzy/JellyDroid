@@ -119,9 +119,8 @@ fun EditItemMetadataDialog(
             (scrapedMetadata != null || metadata != null) &&
             form.isValid
 
-    // 表单里是抓取结果、还没保存时，标题用提醒色，提示用户记得确认
-    val titleColor =
-        if (scrapedMetadata != null) MaterialTheme.colorScheme.tertiary else Color.Unspecified
+    // 表单里是抓取结果、还没保存时，标题用与被抓取字段标签一致的警告色，提示用户记得确认
+    val titleColor = if (scrapedMetadata != null) MaterialTheme.warningColor else Color.Unspecified
 
     var showTranslateSettings by rememberSaveable { mutableStateOf(false) }
 

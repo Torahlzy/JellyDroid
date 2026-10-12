@@ -9,10 +9,9 @@
 - 官方仓库：<https://github.com/jarnedemeulemeester/findroid>
 - 官方文档：<https://github.com/jarnedemeulemeester/findroid/blob/main/README.md>
 
-本文件不再重复官方说明，仅介绍本分支在原版基础上新增与优化的体验。
 
 ## 本分支特色功能
-
+针对手机，平板，折叠屏做了大量易用性功能和适配。
 ### 首页与浏览
 
 - **轮播自适应屏幕**：首页顶部轮播会随屏幕宽度自动调整单屏显示数量与宽高比，手机、平板、大屏上都排得刚刚好。

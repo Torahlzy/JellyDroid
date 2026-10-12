@@ -4,10 +4,14 @@ import android.graphics.BitmapFactory
 import dev.jdtech.jellyfin.logging.AppLog
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import org.jellyfin.sdk.model.api.ImageType
 
 /**
- * [ImageScraper] 的默认实现：按 [ScraperSite] 的顺序把配了地址的站点全部尝试一遍。
+ * [ImageScraper] 的默认实现：把配了地址的站点全部尝试一遍，各站点并发抓取、互不等待。
  *
  * 每个站点无论成败都会产出一条结果，界面据此逐行展示「失败原因」或「抓到的图片 + 上传按钮」；
  * 没有任何站点配置地址时返回空数组（界面提示去 local.properties 里填地址）。
@@ -33,30 +37,50 @@ class ImageScraperImpl @Inject constructor(private val http: ScraperHttp) : Imag
             return emptyList()
         }
 
-        val results = mutableListOf<SiteImageScrapeResult>()
-        for ((site, baseUrl) in sites) {
-            val result =
-                try {
-                    val movie = site.parseMovie(trimmed, baseUrl, http)
-                    val images = downloadImages(movie)
-                    if (images.isEmpty()) {
-                        AppLog.w("%s 抓到了影片，但页面没有可用的封面图", site.displayName)
-                        SiteImageScrapeResult.Failure(site, "页面没有可用的封面图")
-                    } else {
-                        AppLog.i("从 %s 抓取到 %d 张封面图", site.displayName, images.size)
-                        SiteImageScrapeResult.Success(site, images)
+        // 各站点并发抓取；结果经 Channel 汇聚到单个消费者，保证 onResult 仍是串行回调，
+        // 调用方在回调里追加集合时无需考虑并发安全
+        val results =
+            coroutineScope {
+                val channel = Channel<SiteImageScrapeResult>(sites.size)
+                val jobs =
+                    sites.map { (site, baseUrl) ->
+                        launch { channel.send(scrapeSite(site, baseUrl, trimmed)) }
                     }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    AppLog.w(e, "%s 抓取封面图失败", site.displayName)
-                    SiteImageScrapeResult.Failure(site, e.readableReason())
+                val collected = mutableListOf<SiteImageScrapeResult>()
+                repeat(jobs.size) {
+                    val result = channel.receive()
+                    collected += result
+                    onResult(result)
                 }
-            results += result
-            onResult(result)
-        }
+                // 站点协程被取消时异常从这里向上传播，保证取消语义正常
+                jobs.joinAll()
+                collected
+            }
         return results
     }
+
+    /** 抓取单个站点的封面图；无论成败都产出一条结果，单站失败不影响其他站点。 */
+    private suspend fun scrapeSite(
+        site: ScraperSite,
+        baseUrl: String,
+        keyword: String,
+    ): SiteImageScrapeResult =
+        try {
+            val movie = site.parseMovie(keyword, baseUrl, http)
+            val images = downloadImages(movie)
+            if (images.isEmpty()) {
+                AppLog.w("%s 抓到了影片，但页面没有可用的封面图", site.displayName)
+                SiteImageScrapeResult.Failure(site, "页面没有可用的封面图")
+            } else {
+                AppLog.i("从 %s 抓取到 %d 张封面图", site.displayName, images.size)
+                SiteImageScrapeResult.Success(site, images)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.w(e, "%s 抓取封面图失败", site.displayName)
+            SiteImageScrapeResult.Failure(site, e.readableReason())
+        }
 
     /**
      * 下载站点上的「封面」与「图集第一张」，再按图片真实比例归成竖图 / 横图。
