@@ -65,6 +65,7 @@ constructor(
                             sortBy = _state.value.sortBy,
                             sortOrder = _state.value.sortOrder,
                             genreIds = args.genreIds,
+                            genres = args.genres,
                             studioIds = args.studioIds,
                             tags = args.tags,
                             officialRatings = args.officialRatings,
@@ -132,10 +133,14 @@ constructor(
      *
      * 类别、制片公司、人物用实体 id 过滤（名称可能重复或变更）；标签、分级、年份服务端只有名称 / 数值，
      * 只能按值过滤。
+     *
+     * 类别例外：从详情页等只有名字的入口跳过来时没有实体 id，key 不是合法 UUID 时退回按名称过滤。
      */
     private fun MetadataFacet.toFilterArgs(key: String): FilterArgs =
         when (this) {
-            MetadataFacet.GENRE -> FilterArgs(genreIds = listOf(UUID.fromString(key)))
+            MetadataFacet.GENRE ->
+                key.toUUIDOrNull()?.let { FilterArgs(genreIds = listOf(it)) }
+                    ?: FilterArgs(genres = listOf(key))
             MetadataFacet.STUDIO -> FilterArgs(studioIds = listOf(UUID.fromString(key)))
             MetadataFacet.ACTOR,
             MetadataFacet.DIRECTOR,
@@ -146,9 +151,18 @@ constructor(
                 key.toIntOrNull()?.let { FilterArgs(years = listOf(it)) } ?: FilterArgs()
         }
 
+    /** 解析失败返回 null，而不是像 [UUID.fromString] 一样抛异常。 */
+    private fun String.toUUIDOrNull(): UUID? =
+        try {
+            UUID.fromString(this)
+        } catch (e: IllegalArgumentException) {
+            null
+        }
+
     /** 一次筛选请求承载的过滤条件，未使用的字段为 null。 */
     private data class FilterArgs(
         val genreIds: List<UUID>? = null,
+        val genres: List<String>? = null,
         val studioIds: List<UUID>? = null,
         val tags: List<String>? = null,
         val officialRatings: List<String>? = null,

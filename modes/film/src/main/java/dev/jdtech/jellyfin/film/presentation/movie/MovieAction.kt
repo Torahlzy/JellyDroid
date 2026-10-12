@@ -27,6 +27,12 @@ sealed interface MovieAction {
     /** 点击演员，由界面直接跳转到按该人物筛选的作品列表（不再经过人物详情页）。 */
     data class NavigateToPerson(val person: FindroidItemPerson) : MovieAction
 
+    /** 点击类型，跳转到按该类别筛选的作品列表。 */
+    data class NavigateToGenre(val genre: String) : MovieAction
+
+    /** 点击标签，跳转到按该标签筛选的作品列表。 */
+    data class NavigateToTag(val tag: String) : MovieAction
+
     /** 删除服务器上该条目的指定封面图片。 */
     data class DeleteItemImages(val images: List<FindroidItemImage>) : MovieAction
 

@@ -384,6 +384,12 @@ fun NavigationRoot(
                             )
                         )
                     },
+                    navigateToMetadataFacet = { facet, key ->
+                        // 类型 / 标签没有独立实体 id，直接按值筛选
+                        navController.safeNavigate(
+                            ItemFilterRoute(facet = facet, key = key, title = key)
+                        )
+                    },
                 )
             }
             composable<ShowRoute> { backStackEntry ->
