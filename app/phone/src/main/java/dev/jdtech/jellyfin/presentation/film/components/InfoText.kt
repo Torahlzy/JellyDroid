@@ -13,6 +13,7 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
 @Composable
 fun InfoText(
     genres: List<String>,
+    tags: List<String> = emptyList(),
     director: FindroidItemPerson?,
     writers: List<FindroidItemPerson>,
 ) {
@@ -20,6 +21,12 @@ fun InfoText(
         if (genres.isNotEmpty()) {
             Text(
                 text = "${stringResource(CoreR.string.genres)}: ${genres.joinToString()}",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        if (tags.isNotEmpty()) {
+            Text(
+                text = "${stringResource(CoreR.string.tags)}: ${tags.joinToString()}",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }

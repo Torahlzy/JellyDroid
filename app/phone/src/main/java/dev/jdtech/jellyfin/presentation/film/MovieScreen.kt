@@ -633,6 +633,7 @@ private fun MovieScreenLayout(
                     Spacer(Modifier.height(MaterialTheme.spacings.medium))
                     InfoText(
                         genres = movie.genres,
+                        tags = movie.tags,
                         director = state.director,
                         writers = state.writers,
                     )

@@ -22,6 +22,8 @@ data class FindroidMovie(
     val premiereDate: LocalDateTime?,
     val people: List<FindroidItemPerson>,
     val genres: List<String>,
+    // 离线库的 FindroidMovieDto 没有存 tags，离线构造时用默认空列表兜底
+    val tags: List<String> = emptyList(),
     val communityRating: Float?,
     val officialRating: String?,
     val status: String,
@@ -58,6 +60,7 @@ suspend fun BaseItemDto.toFindroidMovie(
         premiereDate = premiereDate,
         communityRating = communityRating,
         genres = genres ?: emptyList(),
+        tags = tags.orEmpty(),
         people = people?.map { it.toFindroidPerson(jellyfinRepository) } ?: emptyList(),
         officialRating = officialRating,
         status = status ?: "Ended",
