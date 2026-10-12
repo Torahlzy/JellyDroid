@@ -57,6 +57,7 @@ import dev.jdtech.jellyfin.film.presentation.movie.MovieEvent
 import dev.jdtech.jellyfin.film.presentation.movie.MovieState
 import dev.jdtech.jellyfin.film.presentation.movie.MovieViewModel
 import dev.jdtech.jellyfin.models.FindroidItemPerson
+import dev.jdtech.jellyfin.models.MetadataFacet
 import dev.jdtech.jellyfin.presentation.film.components.ActorsRow
 import dev.jdtech.jellyfin.presentation.film.components.CollapsibleText
 import dev.jdtech.jellyfin.presentation.film.components.DeleteItemWithFilesDialog
@@ -90,6 +91,7 @@ fun MovieScreen(
     navigateBack: () -> Unit,
     navigateHome: () -> Unit,
     navigateToPerson: (personId: UUID, personName: String) -> Unit,
+    navigateToMetadataFacet: (facet: MetadataFacet, key: String) -> Unit,
     viewModel: MovieViewModel = hiltViewModel(),
     downloaderViewModel: DownloaderViewModel = hiltViewModel(),
     actorImageScrapeViewModel: ActorImageScrapeViewModel = hiltViewModel(),
@@ -282,6 +284,8 @@ fun MovieScreen(
                 is MovieAction.OnHomeClick -> navigateHome()
                 is MovieAction.NavigateToPerson ->
                     navigateToPerson(action.person.id, action.person.name)
+                is MovieAction.NavigateToGenre -> navigateToMetadataFacet(MetadataFacet.GENRE, action.genre)
+                is MovieAction.NavigateToTag -> navigateToMetadataFacet(MetadataFacet.TAG, action.tag)
                 else -> Unit
             }
             viewModel.onAction(action)
@@ -636,6 +640,13 @@ private fun MovieScreenLayout(
                         tags = movie.tags,
                         director = state.director,
                         writers = state.writers,
+                        // 离线模式下筛选结果页不可用，类型 / 标签保持纯文本
+                        onGenreClick =
+                            if (isOfflineMode) null
+                            else { genre -> onAction(MovieAction.NavigateToGenre(genre)) },
+                        onTagClick =
+                            if (isOfflineMode) null
+                            else { tag -> onAction(MovieAction.NavigateToTag(tag)) },
                     )
                     Spacer(Modifier.height(MaterialTheme.spacings.medium))
                 }

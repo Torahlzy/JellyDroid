@@ -57,6 +57,8 @@ interface JellyfinRepository {
         startIndex: Int? = null,
         limit: Int? = null,
         genreIds: List<UUID>? = null,
+        // 类别按名称过滤：从详情页等只有名字的入口直接跳筛选结果时没有类别实体 id
+        genres: List<String>? = null,
         studioIds: List<UUID>? = null,
         tags: List<String>? = null,
         officialRatings: List<String>? = null,
@@ -72,6 +74,7 @@ interface JellyfinRepository {
         sortBy: SortBy = SortBy.defaultValue,
         sortOrder: SortOrder = SortOrder.ASCENDING,
         genreIds: List<UUID>? = null,
+        genres: List<String>? = null,
         studioIds: List<UUID>? = null,
         tags: List<String>? = null,
         officialRatings: List<String>? = null,
