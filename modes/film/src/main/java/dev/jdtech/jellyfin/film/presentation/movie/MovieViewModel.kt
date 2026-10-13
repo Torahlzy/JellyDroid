@@ -53,7 +53,7 @@ constructor(
     private val imageScraper: ImageScraper,
     private val translator: MetadataTranslator,
 ) : ViewModel() {
-    // 抓取站点来自本地配置（BuildConfig），整个会话内不会变，直接放进初始 state，
+    // 抓取站点进页面时取一次（运行时配置优先于打包配置），直接放进初始 state，
     // 免得打开「编辑封面」/「编辑 nfo」弹窗时要等一次异步加载、先闪一下「没配站点」的空态；
     // 翻译设置同理，只取决于本地偏好，与具体影片无关
     private val _state =
@@ -61,6 +61,7 @@ constructor(
             MovieState(
                 imageScrapeSites = imageScraper.sites,
                 metadataScrapeSites = metadataScraper.sites,
+                scrapeSiteUrls = loadScrapeSiteUrls(),
                 translateSettings = appPreferences.getTranslateSettings(),
             )
         )
@@ -113,6 +114,7 @@ constructor(
                         playbackSources = playbackSources,
                         defaultScrapeKeyword = recognizeKeyword(movie, playbackSources),
                         scrapeProxy = appPreferences.getValue(appPreferences.scrapeProxy),
+                        scrapeSiteUrls = loadScrapeSiteUrls(),
                     )
                 )
             } catch (e: Exception) {
@@ -230,6 +232,9 @@ constructor(
             }
             is MovieAction.UpdateScrapeProxy -> {
                 updateScrapeProxy(action.address)
+            }
+            is MovieAction.SaveScrapeUrls -> {
+                updateScrapeSiteUrls(action.urls)
             }
             is MovieAction.UpdateTranslateSettings -> {
                 updateTranslateSettings(action.settings)
@@ -484,6 +489,32 @@ constructor(
     private fun updateScrapeProxy(address: String) {
         appPreferences.setValue(appPreferences.scrapeProxy, address)
         viewModelScope.launch { _state.emit(_state.value.copy(scrapeProxy = address)) }
+    }
+
+    /** 从本地偏好读各站点的自定义网址，供「抓取网址」弹窗回填。 */
+    private fun loadScrapeSiteUrls(): Map<String, String> =
+        ScraperSite.entries.associate { site ->
+            site.key to appPreferences.getValue(appPreferences.scrapeSiteUrl(site.key))
+        }
+
+    /**
+     * 保存各站点在「抓取网址」弹窗里填写的自定义网址（scheme 补全与去空白已在弹窗里做过）。
+     * 同时刷新站点列表：抓取弹窗按它决定「抓取」按钮是否可用、列出哪些站点行，
+     * 不刷新的话本页内刚配置的网址要退出详情页重进才会体现。
+     */
+    private fun updateScrapeSiteUrls(urls: Map<String, String>) {
+        urls.forEach { (key, url) ->
+            appPreferences.setValue(appPreferences.scrapeSiteUrl(key), url.trim())
+        }
+        viewModelScope.launch {
+            _state.emit(
+                _state.value.copy(
+                    scrapeSiteUrls = urls.mapValues { (_, url) -> url.trim() },
+                    imageScrapeSites = imageScraper.sites,
+                    metadataScrapeSites = metadataScraper.sites,
+                )
+            )
+        }
     }
 
     /** 保存翻译设置；只落本地偏好，不动已经抓到的内容。 */

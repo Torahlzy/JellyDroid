@@ -76,6 +76,7 @@ import dev.jdtech.jellyfin.presentation.film.components.PlaybackSourceDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScrapeActorImageDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScrapeKeywordDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScrapeProgressDialog
+import dev.jdtech.jellyfin.presentation.film.components.ScraperUrlsDialog
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
@@ -300,6 +301,7 @@ fun MovieScreen(
                 onEditImagesClick = { moreDialog = MoreMenuDialogState.EDIT_IMAGES },
                 onEditMetadataClick = { moreDialog = MoreMenuDialogState.EDIT_METADATA },
                 onDeleteItemClick = { moreDialog = MoreMenuDialogState.DELETE_ALL },
+                onScrapeUrlsClick = { moreDialog = MoreMenuDialogState.SCRAPER_URLS },
                 onDismiss = { moreDialog = null },
             )
         MoreMenuDialogState.EDIT_IMAGES ->
@@ -373,6 +375,15 @@ fun MovieScreen(
                 onConfirm = {
                     moreDialog = null
                     viewModel.onAction(MovieAction.DeleteItemWithFiles)
+                },
+                onDismiss = { moreDialog = null },
+            )
+        MoreMenuDialogState.SCRAPER_URLS ->
+            ScraperUrlsDialog(
+                urls = state.scrapeSiteUrls,
+                onConfirm = { urls ->
+                    moreDialog = null
+                    viewModel.onAction(MovieAction.SaveScrapeUrls(urls = urls))
                 },
                 onDismiss = { moreDialog = null },
             )
@@ -485,6 +496,9 @@ private enum class MoreMenuDialogState {
 
     /** 删除全部（含视频文件）的确认弹窗。 */
     DELETE_ALL,
+
+    /** 各抓取站点自定义网址的输入弹窗。 */
+    SCRAPER_URLS,
 }
 
 @Composable

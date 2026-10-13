@@ -30,7 +30,10 @@ import org.jsoup.nodes.Element
  * 名字按精确匹配，匹配不上宁可失败也不用别人的头像。
  */
 @Singleton
-class ActorImageScraperImpl @Inject constructor(private val http: ScraperHttp) : ActorImageScraper {
+class ActorImageScraperImpl @Inject constructor(
+    private val http: ScraperHttp,
+    private val scraperUrlProvider: ScraperUrlProvider,
+) : ActorImageScraper {
 
     /** 串行化 [onResult] 回调：各站点并发抓取，但回调逐个送达，调用方追加状态时无需考虑并发。 */
     private val resultMutex = Mutex()
@@ -67,14 +70,14 @@ class ActorImageScraperImpl @Inject constructor(private val http: ScraperHttp) :
     }
 
     /**
-     * 可用来抓演员头像的站点，按优先级排列；没在本地配置里填地址的会被跳过。
+     * 可用来抓演员头像的站点，按优先级排列；没配置地址的会被跳过。
      *
      * Jav321 不在此列：它的女优搜索接口已失效（见类 KDoc），而且历史上给的女优头像
      * 不区分真假（女优实际没有头像时也会给一个像模像样的地址），无法校验。
      */
     private fun actorImageSites(): List<Pair<ScraperSite, String>> =
         listOf(ScraperSite.JAVBUS, ScraperSite.JAVDB).mapNotNull { site ->
-            site.baseUrl?.let { baseUrl -> site to baseUrl }
+            scraperUrlProvider.baseUrl(site)?.let { baseUrl -> site to baseUrl }
         }
 
     /** 在单个站点上按名字搜演员并下载头像；搜不到与下载失败都转成该站点的失败结果。 */

@@ -14,12 +14,15 @@ import org.jellyfin.sdk.model.api.ImageType
  * [ImageScraper] 的默认实现：把配了地址的站点全部尝试一遍，各站点并发抓取、互不等待。
  *
  * 每个站点无论成败都会产出一条结果，界面据此逐行展示「失败原因」或「抓到的图片 + 上传按钮」；
- * 没有任何站点配置地址时返回空数组（界面提示去 local.properties 里填地址）。
+ * 没有任何站点配置地址时返回空数组（界面提示去「更多」菜单里配置站点网址）。
  */
-class ImageScraperImpl @Inject constructor(private val http: ScraperHttp) : ImageScraper {
+class ImageScraperImpl @Inject constructor(
+    private val http: ScraperHttp,
+    private val scraperUrlProvider: ScraperUrlProvider,
+) : ImageScraper {
 
     override val sites: List<ScraperSite>
-        get() = configuredScraperSites.map { (site, _) -> site }
+        get() = configuredScraperSites(scraperUrlProvider).map { (site, _) -> site }
 
     override suspend fun scrapeImages(
         keyword: String,
@@ -31,7 +34,7 @@ class ImageScraperImpl @Inject constructor(private val http: ScraperHttp) : Imag
             return emptyList()
         }
 
-        val sites = configuredScraperSites
+        val sites = configuredScraperSites(scraperUrlProvider)
         if (sites.isEmpty()) {
             AppLog.w("没有任何站点配置了地址，无法抓取图片")
             return emptyList()

@@ -12,6 +12,8 @@ import dev.jdtech.jellyfin.core.scraper.ImageScraperImpl
 import dev.jdtech.jellyfin.core.scraper.MetadataScraper
 import dev.jdtech.jellyfin.core.scraper.MetadataScraperImpl
 import dev.jdtech.jellyfin.core.scraper.ScraperCookieJar
+import dev.jdtech.jellyfin.core.scraper.ScraperUrlProvider
+import dev.jdtech.jellyfin.core.scraper.ScraperUrlProviderImpl
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 import okhttp3.OkHttpClient
@@ -37,6 +39,10 @@ abstract class ScraperModule {
     @Binds
     @Singleton
     abstract fun bindActorImageScraper(impl: ActorImageScraperImpl): ActorImageScraper
+
+    @Binds
+    @Singleton
+    abstract fun bindScraperUrlProvider(impl: ScraperUrlProviderImpl): ScraperUrlProvider
 
     companion object {
         /** 抓取是前台交互，超时给短一些，站点无响应时尽快切到下一个。 */

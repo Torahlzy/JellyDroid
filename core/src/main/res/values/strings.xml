@@ -177,11 +177,15 @@
     <string name="scrape_site_succeeded">%1$s succeeded</string>
     <string name="scrape_site_failed">%1$s failed: %2$s</string>
     <string name="scrape_all_failed">No data was found on any site</string>
-    <string name="scrape_site_not_configured">No scraping site is configured (fill scraper.*.url in local.properties)</string>
+    <string name="scrape_site_not_configured">No scraping site is configured. Set the site URLs in the more menu (Scraping site URLs).</string>
     <string name="scrape_proxy">Scraping proxy</string>
     <string name="scrape_proxy_summary">Only used when scraping nfo / cover images / actor avatars, e.g. http://127.0.0.1:7890 or socks5://127.0.0.1:1080. Leave empty to connect directly.</string>
     <string name="scrape_proxy_entry">Proxy: %1$s</string>
     <string name="scrape_proxy_unset">Not set</string>
+    <string name="scrape_urls">Scraping site URLs</string>
+    <string name="scrape_urls_title">Enter scraping site URLs</string>
+    <string name="scrape_urls_summary">Fill in the site address used for scraping.</string>
+    <string name="scrape_urls_error_mismatch">May not match</string>
     <string name="translate">Translate</string>
     <string name="translate_settings">Translation settings</string>
     <string name="translate_settings_summary">Translate the scraped title / overview into Simplified Chinese with an OpenAI-compatible model (fill in the full chat completions URL). The settings are stored on this device only.</string>
