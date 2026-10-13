@@ -1,12 +1,9 @@
 package dev.jdtech.jellyfin.presentation.settings
 
 import android.widget.Toast
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -48,6 +45,7 @@ import com.mikepenz.aboutlibraries.ui.compose.m3.LibrariesContainer
 import dev.jdtech.jellyfin.BuildConfig
 import dev.jdtech.jellyfin.R
 import dev.jdtech.jellyfin.core.R as CoreR
+import dev.jdtech.jellyfin.core.presentation.AppBanner
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.settings.R as SettingsR
@@ -109,11 +107,7 @@ fun AboutScreen(navigateBack: () -> Unit) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Spacer(Modifier.height(MaterialTheme.spacings.small))
-                            Image(
-                                painter = painterResource(CoreR.drawable.ic_banner),
-                                contentDescription = null,
-                                modifier = Modifier.width(240.dp),
-                            )
+                            AppBanner(modifier = Modifier.width(240.dp))
                             Spacer(Modifier.height(MaterialTheme.spacings.medium))
                             Text(
                                 text = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
@@ -127,52 +121,26 @@ fun AboutScreen(navigateBack: () -> Unit) {
                             Spacer(Modifier.height(MaterialTheme.spacings.medium))
                             HorizontalDivider()
                             Spacer(Modifier.height(MaterialTheme.spacings.medium))
-                            Row(
-                                horizontalArrangement =
-                                    Arrangement.spacedBy(MaterialTheme.spacings.small)
+                            FilledTonalIconButton(
+                                onClick = {
+                                    try {
+                                        uriHandler.openUri(
+                                            "https://github.com/Torahlzy/MyFindDroid"
+                                        )
+                                    } catch (e: IllegalArgumentException) {
+                                        Toast.makeText(
+                                                context,
+                                                e.localizedMessage,
+                                                Toast.LENGTH_SHORT,
+                                            )
+                                            .show()
+                                    }
+                                }
                             ) {
-                                FilledTonalIconButton(
-                                    onClick = {
-                                        try {
-                                            uriHandler.openUri(
-                                                "https://github.com/jarnedemeulemeester/findroid"
-                                            )
-                                        } catch (e: IllegalArgumentException) {
-                                            Toast.makeText(
-                                                    context,
-                                                    e.localizedMessage,
-                                                    Toast.LENGTH_SHORT,
-                                                )
-                                                .show()
-                                        }
-                                    }
-                                ) {
-                                    Icon(
-                                        painter = painterResource(CoreR.drawable.ic_github),
-                                        contentDescription = null,
-                                    )
-                                }
-                                FilledTonalIconButton(
-                                    onClick = {
-                                        try {
-                                            uriHandler.openUri(
-                                                "https://ko-fi.com/jarnedemeulemeester"
-                                            )
-                                        } catch (e: IllegalArgumentException) {
-                                            Toast.makeText(
-                                                    context,
-                                                    e.localizedMessage,
-                                                    Toast.LENGTH_SHORT,
-                                                )
-                                                .show()
-                                        }
-                                    }
-                                ) {
-                                    Icon(
-                                        painter = painterResource(CoreR.drawable.ic_coffee),
-                                        contentDescription = null,
-                                    )
-                                }
+                                Icon(
+                                    painter = painterResource(CoreR.drawable.ic_github),
+                                    contentDescription = null,
+                                )
                             }
                             Spacer(Modifier.height(MaterialTheme.spacings.small))
                         }

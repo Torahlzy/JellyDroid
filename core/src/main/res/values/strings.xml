@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name" translatable="false">Findroid</string>
+    <string name="app_name" translatable="false">Jellydroid</string>
     <string name="app_description">Third-party native Jellyfin app</string>
     <string name="jellyfin_banner">Jellyfin banner</string>
     <string name="remove">Remove</string>
@@ -98,7 +98,7 @@
     <string name="delete_download">Delete download</string>
     <string name="delete_download_message">Are you sure you want to delete this download from you device?</string>
     <string name="stop_download">Stop download</string>
-    <string name="privacy_policy_notice">By using Findroid you agree with the <a href='https://raw.githubusercontent.com/jarnedemeulemeester/findroid/main/PRIVACY'>Privacy Policy</a> which states that we do not collect any data</string>
+    <string name="privacy_policy_notice">By using Jellydroid you agree with the <a href='https://raw.githubusercontent.com/Torahlzy/MyFindDroid/main/PRIVACY'>Privacy Policy</a> which states that we do not collect any data</string>
     <string name="live_tv">Live TV</string>
     <string name="play">Play</string>
     <string name="watch_trailer">Watch trailer</string>
@@ -124,7 +124,7 @@
     <string name="more_menu_title">More actions</string>
     <string name="edit_item_images">Edit cover images</string>
     <string name="edit_item_metadata">Edit nfo</string>
-    <string name="delete_all">Delete all</string>
+    <string name="delete_movie">Delete movie</string>
     <string name="delete_item_with_files">Delete all (incl. video file)</string>
     <string name="delete_all_message">The video file and its cover images / nfo will be deleted from the server. This cannot be undone.</string>
     <string name="delete_all_message_video_file">video file</string>

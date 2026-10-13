@@ -256,45 +256,44 @@ class PlayerGestureHelper(
                     // Disables seek gestures if view is locked
                     if (isControlsLocked) return false
 
-                    // Check whether swipe was oriented vertically
-                    if (abs(distanceY / distanceX) < 2) {
-                        return if (
-                            (abs(currentEvent.x - firstEvent.x) > 50 || swipeGestureProgressOpen) &&
-                                !swipeGestureBrightnessOpen &&
-                                !swipeGestureVolumeOpen &&
-                                (SystemClock.elapsedRealtime() - lastScaleEvent) > 200
-                        ) {
-                            val currentPos = playerView.player?.currentPosition ?: 0
-                            val vidDuration = (playerView.player?.duration ?: 0).coerceAtLeast(0)
+                    // 用累计位移判向：起始几步的垂直抖动曾按单步增量把横滑误判成竖滑，
+                    // 误置位的 volumeOpen/brightnessOpen 标志会把本次手势的快进锁死
+                    val totalDx = abs(currentEvent.x - firstEvent.x)
+                    val totalDy = abs(currentEvent.y - firstEvent.y)
+                    if (!swipeGestureProgressOpen && totalDy / totalDx >= 2) return false
 
-                            val difference = ((currentEvent.x - firstEvent.x) * 90).toLong()
-                            val newPos = (currentPos + difference).coerceIn(0, vidDuration)
+                    return if (
+                        (totalDx > 50 || swipeGestureProgressOpen) &&
+                            !swipeGestureBrightnessOpen &&
+                            !swipeGestureVolumeOpen &&
+                            (SystemClock.elapsedRealtime() - lastScaleEvent) > 200
+                    ) {
+                        val currentPos = playerView.player?.currentPosition ?: 0
+                        val vidDuration = (playerView.player?.duration ?: 0).coerceAtLeast(0)
 
-                            activity.binding.progressScrubberLayout.visibility = View.VISIBLE
-                            activity.binding.progressScrubberText.text =
-                                "${longToTimestamp(difference)} [${longToTimestamp(newPos, true)}]"
-                            swipeGestureValueTrackerProgress = newPos
+                        val difference = ((currentEvent.x - firstEvent.x) * 90).toLong()
+                        val newPos = (currentPos + difference).coerceIn(0, vidDuration)
 
-                            if (
-                                appPreferences.getValue(appPreferences.playerGesturesSeekTrickplay)
-                            ) {
-                                if (currentTrickplay != null) {
-                                    activity.binding.progressScrubberTrickplay.visibility =
-                                        View.VISIBLE
-                                    updateTrickplayImage(newPos)
-                                } else {
-                                    activity.binding.progressScrubberTrickplay.visibility =
-                                        View.GONE
-                                }
+                        activity.binding.progressScrubberLayout.visibility = View.VISIBLE
+                        activity.binding.progressScrubberText.text =
+                            "${longToTimestamp(difference)} [${longToTimestamp(newPos, true)}]"
+                        swipeGestureValueTrackerProgress = newPos
+
+                        if (appPreferences.getValue(appPreferences.playerGesturesSeekTrickplay)) {
+                            if (currentTrickplay != null) {
+                                activity.binding.progressScrubberTrickplay.visibility =
+                                    View.VISIBLE
+                                updateTrickplayImage(newPos)
+                            } else {
+                                activity.binding.progressScrubberTrickplay.visibility = View.GONE
                             }
-
-                            swipeGestureProgressOpen = true
-                            true
-                        } else {
-                            false
                         }
+
+                        swipeGestureProgressOpen = true
+                        true
+                    } else {
+                        false
                     }
-                    return true
                 }
             },
         )
@@ -316,7 +315,19 @@ class PlayerGestureHelper(
                     // Disables volume gestures when player is locked
                     if (isControlsLocked) return false
 
-                    if (abs(distanceY / distanceX) < 2) return false
+                    // 用累计位移判向，且累计位移太小时不激活：起始几步的垂直抖动
+                    // 曾按单步增量被误判成竖滑，反过来把横滑快进手势锁死
+                    val totalDx = abs(currentEvent.x - firstEvent.x)
+                    val totalDy = abs(currentEvent.y - firstEvent.y)
+                    val isDirectionLocked = swipeGestureVolumeOpen || swipeGestureBrightnessOpen
+                    if (
+                        !isDirectionLocked &&
+                            totalDx + totalDy <
+                                playerView.resources.dip(Constants.GESTURE_DIRECTION_LOCK_DISTANCE)
+                    ) {
+                        return false
+                    }
+                    if (!isDirectionLocked && totalDy / totalDx < 2) return false
 
                     if (swipeGestureValueTrackerProgress > -1 || swipeGestureProgressOpen) {
                         return false
