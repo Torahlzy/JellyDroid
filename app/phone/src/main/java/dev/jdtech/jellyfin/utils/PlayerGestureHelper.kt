@@ -75,6 +75,14 @@ class PlayerGestureHelper(
 
     private var currentNumberOfPointers: Int = 0
 
+    /**
+     * 本次手势是否出现过第二根手指。捏合过程中手指接触经常不稳定（一指短暂抬起会让
+     * pointerCount 回到 1），此时 GestureDetector 还停留在 2 指阶段之前的位置，重新喂入
+     * 移动事件会算出巨大的位移跳变，瞬间触发音量/亮度/快进。因此出现过第二根手指后，
+     * 本串手势内不再分发单指手势，直到所有手指抬起。
+     */
+    private var hasSeenMultiplePointers = false
+
     private val tapGestureDetector =
         GestureDetector(
             playerView.context,
@@ -614,13 +622,23 @@ class PlayerGestureHelper(
         playerView.setOnTouchListener { _, event ->
             if (playerView.useController) {
                 currentNumberOfPointers = event.pointerCount
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> hasSeenMultiplePointers = false
+                    MotionEvent.ACTION_POINTER_DOWN -> hasSeenMultiplePointers = true
+                    // 全部手指抬起后复位，下一串手势重新开始判定
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                        hasSeenMultiplePointers = false
+                }
                 when (event.pointerCount) {
                     1 -> {
-                        tapGestureDetector.onTouchEvent(event)
-                        if (appPreferences.getValue(appPreferences.playerGesturesVB))
-                            vbGestureDetector.onTouchEvent(event)
-                        if (appPreferences.getValue(appPreferences.playerGesturesSeek))
-                            seekGestureDetector.onTouchEvent(event)
+                        // 双指捏合中 pointerCount 抖回 1 时跳过，避免误触发单指手势
+                        if (!hasSeenMultiplePointers) {
+                            tapGestureDetector.onTouchEvent(event)
+                            if (appPreferences.getValue(appPreferences.playerGesturesVB))
+                                vbGestureDetector.onTouchEvent(event)
+                            if (appPreferences.getValue(appPreferences.playerGesturesSeek))
+                                seekGestureDetector.onTouchEvent(event)
+                        }
                     }
                     2 -> {
                         if (appPreferences.getValue(appPreferences.playerGesturesZoom))

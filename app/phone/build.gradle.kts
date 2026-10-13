@@ -46,7 +46,7 @@ android {
     buildToolsVersion = Versions.BUILD_TOOLS
 
     defaultConfig {
-        // 包名用 release 的目标值；debug / staging 在各自 buildType 上加后缀区分
+        // debug 与 release 包名一致，仅 staging 加后缀区分
         applicationId = "com.torah.my.jellyfin"
         minSdk = Versions.MIN_SDK
         targetSdk = Versions.TARGET_SDK
@@ -58,7 +58,6 @@ android {
     }
 
     buildTypes {
-        named("debug") { applicationIdSuffix = ".debug" }
         named("release") {
             // local.properties 配齐签名项时对 release 签名；staging 经 initWith 复用同一签名
             signingConfig = signingConfigs.findByName("release")
