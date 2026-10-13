@@ -23,7 +23,7 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
 /**
  * 电影详情页「更多」菜单：编辑封面 / 编辑 nfo。
  *
- * 「删除全部」会连视频文件一起删且不可撤销，属于低频的破坏性操作，因此不放进菜单列表，
+ * 「删除电影」会连视频文件一起删且不可撤销，属于低频的破坏性操作，因此不放进菜单列表，
  * 而是用错误色放在标题行右上角，既与列表项区分、也能提醒用户这里有风险操作；
  * 点击后仍会再弹一次确认。右上角布局与「编辑封面」的「清理」、「编辑 nfo」的「清空」保持一致。
  */
@@ -53,7 +53,7 @@ fun MoreMenuDialog(
                             contentColor = MaterialTheme.colorScheme.error
                         ),
                 ) {
-                    Text(text = stringResource(CoreR.string.delete_all))
+                    Text(text = stringResource(CoreR.string.delete_movie))
                 }
             }
         },

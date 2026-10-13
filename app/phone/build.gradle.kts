@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose.compiler)
@@ -9,13 +11,43 @@ plugins {
     alias(libs.plugins.aboutlibraries.android)
 }
 
+// release 签名信息属于本地配置，写在 local.properties（已被 .gitignore 忽略，不入库）。
+// 按下面四个 key 填写，四项齐全才会注册签名配置；任一缺失时 release / staging 保持未签名（其他机器构建不受影响）。
+//   release.store.file=
+//   release.store.password=
+//   release.key.alias=
+//   release.key.password=
+val signingProps =
+    Properties().apply {
+        rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+    }
+
+/** 取本地配置里的签名项，缺失或为空白时返回 null。 */
+fun signingProperty(key: String): String? = signingProps.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
+
 android {
+    signingConfigs {
+        val storeFile = signingProperty("release.store.file")
+        val storePassword = signingProperty("release.store.password")
+        val keyAlias = signingProperty("release.key.alias")
+        val keyPassword = signingProperty("release.key.password")
+        if (storeFile != null && storePassword != null && keyAlias != null && keyPassword != null) {
+            create("release") {
+                this.storeFile = rootProject.file(storeFile)
+                this.storePassword = storePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
+        }
+    }
+
     namespace = "dev.jdtech.jellyfin"
     compileSdk = Versions.COMPILE_SDK
     buildToolsVersion = Versions.BUILD_TOOLS
 
     defaultConfig {
-        applicationId = "dev.jdtech.jellyfin"
+        // 包名用 release 的目标值；debug / staging 在各自 buildType 上加后缀区分
+        applicationId = "com.torah.my.jellyfin"
         minSdk = Versions.MIN_SDK
         targetSdk = Versions.TARGET_SDK
 
@@ -28,6 +60,8 @@ android {
     buildTypes {
         named("debug") { applicationIdSuffix = ".debug" }
         named("release") {
+            // local.properties 配齐签名项时对 release 签名；staging 经 initWith 复用同一签名
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
