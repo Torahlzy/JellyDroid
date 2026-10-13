@@ -26,12 +26,15 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
  * 「删除电影」会连视频文件一起删且不可撤销，属于低频的破坏性操作，因此不放进菜单列表，
  * 而是用错误色放在标题行右上角，既与列表项区分、也能提醒用户这里有风险操作；
  * 点击后仍会再弹一次确认。右上角布局与「编辑封面」的「清理」、「编辑 nfo」的「清空」保持一致。
+ *
+ * 左下角的「抓取网址」是低频的配置入口（各抓取站点的自定义网址），放按钮行而不占菜单列表。
  */
 @Composable
 fun MoreMenuDialog(
     onEditImagesClick: () -> Unit,
     onEditMetadataClick: () -> Unit,
     onDeleteItemClick: () -> Unit,
+    onScrapeUrlsClick: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -71,7 +74,16 @@ fun MoreMenuDialog(
         },
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(text = stringResource(CoreR.string.cancel)) }
+            // 按钮行占满整行并两端对齐，把「抓取网址」顶到弹窗左下角（M3 默认把按钮都挤在右侧）
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(onClick = onScrapeUrlsClick) {
+                    Text(text = stringResource(CoreR.string.scrape_urls))
+                }
+                TextButton(onClick = onDismiss) { Text(text = stringResource(CoreR.string.cancel)) }
+            }
         },
     )
 }
@@ -96,6 +108,7 @@ private fun MoreMenuDialogPreview() {
             onEditImagesClick = {},
             onEditMetadataClick = {},
             onDeleteItemClick = {},
+            onScrapeUrlsClick = {},
             onDismiss = {},
         )
     }

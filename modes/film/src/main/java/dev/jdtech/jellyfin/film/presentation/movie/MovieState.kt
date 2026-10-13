@@ -54,6 +54,11 @@ data class MovieState(
     val isTranslating: Boolean = false,
     /** 抓取使用的本地代理地址，留空表示直连；入口在抓取关键词弹窗里，不影响其它网络请求。 */
     val scrapeProxy: String = "",
+    /**
+     * 各抓取站点的自定义网址（key 为 `ScraperSite.key`），空串表示该站点未自定义、回退打包配置；
+     * 入口在「更多」菜单的「抓取网址」弹窗里。
+     */
+    val scrapeSiteUrls: Map<String, String> = emptyMap(),
     /** 翻译设置（OpenAI 兼容的大模型接口），入口在「编辑 nfo」弹窗里；只存本地，与服务器无关。 */
     val translateSettings: TranslateSettings = TranslateSettings(),
     /** 本地配了地址、抓取时会被尝试的站点，进入「编辑封面」时取一次，供界面先把站点列出来。 */

@@ -13,6 +13,8 @@ plugins {
 //   scraper.javdb.url=
 //   scraper.javbus.url=
 //   scraper.jav321.url=
+// 只有 debug 包会把真实地址打进 BuildConfig；release / staging 只放空串占位（运行时可在
+// 「更多」菜单里填写），避免把私有配置泄露进发布包。
 val scraperUrls =
     Properties().apply {
         rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
@@ -29,13 +31,22 @@ android {
     defaultConfig {
         minSdk = Versions.MIN_SDK
 
-        buildConfigField("String", "SCRAPER_JAVDB_URL", scraperUrl("scraper.javdb.url"))
-        buildConfigField("String", "SCRAPER_JAVBUS_URL", scraperUrl("scraper.javbus.url"))
-        buildConfigField("String", "SCRAPER_JAV321_URL", scraperUrl("scraper.jav321.url"))
+        // release / staging 的默认值：空串（运行时 ScraperSite.baseUrl 归一化为 null，站点被跳过），
+        // 用户可在「更多」菜单里按站点 key 填写，经 AppPreferences 在运行时生效
+        buildConfigField("String", "SCRAPER_JAVDB_URL", "\"\"")
+        buildConfigField("String", "SCRAPER_JAVBUS_URL", "\"\"")
+        buildConfigField("String", "SCRAPER_JAV321_URL", "\"\"")
     }
 
     buildTypes {
+        named("debug") {
+            // 仅 debug 包从 local.properties 读入真实地址，覆盖上面的空串占位
+            buildConfigField("String", "SCRAPER_JAVDB_URL", scraperUrl("scraper.javdb.url"))
+            buildConfigField("String", "SCRAPER_JAVBUS_URL", scraperUrl("scraper.javbus.url"))
+            buildConfigField("String", "SCRAPER_JAV321_URL", scraperUrl("scraper.jav321.url"))
+        }
         named("release") { isMinifyEnabled = false }
+        // staging initWith release，同样不带真实地址
         register("staging") { initWith(getByName("release")) }
     }
 

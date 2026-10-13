@@ -66,6 +66,12 @@ sealed interface MovieAction {
     /** 保存抓取使用的本地代理地址，[address] 为空表示直连。 */
     data class UpdateScrapeProxy(val address: String) : MovieAction
 
+    /**
+     * 保存各抓取站点的自定义网址（`ScraperSite.key` -> 网址），空串表示清除；
+     * scheme 已在「抓取网址」弹窗保存时补全（缺省按 https），与站点的匹配只做提示、不阻止保存。
+     */
+    data class SaveScrapeUrls(val urls: Map<String, String>) : MovieAction
+
     /** 保存翻译设置，决定之后的抓取要不要、以及怎么自动翻译。 */
     data class UpdateTranslateSettings(val settings: TranslateSettings) : MovieAction
 

@@ -95,6 +95,12 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     // Network - nfo 抓取专用代理（只作用于抓取，不影响 Jellyfin 接口与下载），留空表示直连
     val scrapeProxy = Preference("pref_scrape_proxy", "")
 
+    /**
+     * nfo 抓取站点的自定义网址：按站点 key（见 `:core` 的 `ScraperSite.key`）在「更多」菜单里
+     * 运行时配置，优先于打包时的 BuildConfig 本地配置（仅 debug 包带入真实值）；留空表示用打包配置。
+     */
+    fun scrapeSiteUrl(siteKey: String) = Preference("pref_scrape_site_url_$siteKey", "")
+
     // nfo 翻译（OpenAI 兼容接口）：只在「编辑 nfo」弹窗里配置，作用范围同抓取代理
     val translateUrl = Preference("pref_translate_url", Constants.TRANSLATE_DEFAULT_URL)
     val translateApiKey = Preference("pref_translate_api_key", "")
