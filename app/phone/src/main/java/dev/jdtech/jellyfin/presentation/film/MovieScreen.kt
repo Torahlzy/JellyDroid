@@ -542,8 +542,8 @@ private fun MovieScreenLayout(
 
     val navScope = LocalNavAnimatedVisibilityScope.current
 
-    // 内容区块在影片数据到达后、与 morph 尾段重叠时就开始组合并依次入场：
-    // 完全等转场结束会显得拖沓；转场期间组合的内容现在基本是纯文本区块，开销可接受
+    // 内容区块在进场转场接近尾声（提前约 100ms）就开始组合并依次入场：
+    // 完全等转场结束会显得拖沓，入场的 stagger 收尾与 morph 落点正好衔接
     var contentAppeared by rememberSaveable { mutableStateOf(false) }
     // 入场动画是否开始播：与 contentAppeared（控制内容组合的时机）分开，保证区块先以 alpha=0 组合再起播
     var entranceStarted by remember { mutableStateOf(contentAppeared) }
@@ -554,15 +554,15 @@ private fun MovieScreenLayout(
             contentAppeared = true
             return@LaunchedEffect
         }
-        // 「转场结束」与「固定等待」谁先到谁触发：数据到得早时入场与 morph 尾段重叠，
-        // 数据到得晚（晚于固定等待）时则等转场自然结束
         coroutineScope {
+            // 「转场结束」与「提前量到点」谁先到谁触发：
+            // 数据到得早时按提前量抢跑，数据到得晚（转场已结束）时 snapshotFlow 立即放行
             launch {
                 snapshotFlow { transition.isRunning }.first { !it }
                 contentAppeared = true
             }
             launch {
-                delay(ENTRANCE_OVERLAP_DELAY_MILLIS.toLong())
+                delay((Motion.DurationLong1 - ENTRANCE_HEAD_START_MILLIS).toLong())
                 contentAppeared = true
             }
         }
@@ -775,23 +775,35 @@ private fun MovieScreenLayout(
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
 
-        ItemTopBar(
-            hasBackButton = true,
-            hasHomeButton = true,
-            onBackClick = { onAction(MovieAction.OnBackClick) },
-            onHomeClick = { onAction(MovieAction.OnHomeClick) },
-        )
-
-        // 封面上的悬浮播放按钮：跟随封面滚动，封面滑出超过一半后收起并飞到顶栏「回到首页」按钮后方。
-        // 等进场内容（文字依次入场）就位后再淡入，且带一小段延迟排在演员行之后，避免它在 morph /
-        // 入场过程中突兀地闪现
+        // 顶栏：与文字区块同一时机淡入（entranceStarted，见 contentAppeared 处注释），
+        // 转场期间不显示，避免随页面级 fadeIn 提前出现
         AnimatedVisibility(
-            visible = contentAppeared && entranceStarted,
+            visible = entranceStarted,
             enter =
                 fadeIn(
                     tween(
                         durationMillis = Motion.DurationShort3,
-                        delayMillis = APPEAR_STEP_MILLIS * 5,
+                        easing = Motion.EasingEmphasizedDecelerate,
+                    )
+                ),
+        ) {
+            ItemTopBar(
+                hasBackButton = true,
+                hasHomeButton = true,
+                onBackClick = { onAction(MovieAction.OnBackClick) },
+                onHomeClick = { onAction(MovieAction.OnHomeClick) },
+            )
+        }
+
+        // 封面上的悬浮播放按钮：跟随封面滚动，封面滑出超过一半后收起并飞到顶栏「回到首页」按钮后方。
+        // 与文字区块同一时机淡入（entranceStarted），仅带一小段延迟排在顶栏之后，保持 stagger 节奏
+        AnimatedVisibility(
+            visible = entranceStarted,
+            enter =
+                fadeIn(
+                    tween(
+                        durationMillis = Motion.DurationShort3,
+                        delayMillis = APPEAR_STEP_MILLIS * 2,
                         easing = Motion.EasingEmphasizedDecelerate,
                     )
                 ),
@@ -818,9 +830,9 @@ private fun MovieScreenLayout(
 private const val APPEAR_STEP_MILLIS = 25
 private val APPEAR_SLIDE_DISTANCE = 12.dp
 
-// 内容入场与 morph 的重叠等待：数据到达后最多等这么久就开始入场（morph 全程约 450ms）。
-// 入场从 morph 中段开始、在 morph 结束点附近收尾，动画一停文字即已就位
-private const val ENTRANCE_OVERLAP_DELAY_MILLIS = 150
+// 入场相对转场结束的提前量：morph 全程约 450ms（Motion.DurationLong1），
+// 提前 100ms 开始入场，让 stagger 收尾与 morph 落点衔接、不显拖沓
+private const val ENTRANCE_HEAD_START_MILLIS = 100
 
 // 加载转圈的延迟出现阈值：数据在此之前到达就完全不显示 loading
 private const val LOADING_SPINNER_DELAY_MILLIS = 400
