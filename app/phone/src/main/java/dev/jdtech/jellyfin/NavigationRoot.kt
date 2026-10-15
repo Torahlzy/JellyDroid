@@ -3,15 +3,23 @@ package dev.jdtech.jellyfin
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +34,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavOptions
 import androidx.navigation.NavOptionsBuilder
@@ -70,7 +79,10 @@ import dev.jdtech.jellyfin.presentation.setup.login.LoginScreen
 import dev.jdtech.jellyfin.presentation.setup.servers.ServersScreen
 import dev.jdtech.jellyfin.presentation.setup.users.UsersScreen
 import dev.jdtech.jellyfin.presentation.setup.welcome.WelcomeScreen
+import dev.jdtech.jellyfin.presentation.theme.Motion
+import dev.jdtech.jellyfin.presentation.utils.LocalNavAnimatedVisibilityScope
 import dev.jdtech.jellyfin.presentation.utils.LocalOfflineMode
+import dev.jdtech.jellyfin.presentation.utils.LocalSharedTransitionScope
 import java.util.UUID
 import kotlinx.serialization.Serializable
 
@@ -221,13 +233,9 @@ fun NavigationRoot(
         )
 
     Box(modifier = Modifier.fillMaxSize().nestedScroll(hideOnScrollConnection)) {
-        NavHost(
+        SharedTransitionNavHost(
             navController = navController,
             startDestination = startDestination,
-            enterTransition = { fadeIn(tween(300)) },
-            exitTransition = { fadeOut(tween(300)) },
-            predictivePopEnterTransition = { fadeIn(tween(300)) },
-            predictivePopExitTransition = { fadeOut(tween(300)) },
         ) {
             composable<WelcomeRoute> {
                 WelcomeScreen(onContinueClick = { navController.safeNavigate(ServersRoute) })
@@ -293,106 +301,127 @@ fun NavigationRoot(
                 )
             }
             composable<HomeRoute> {
-                HomeScreen(
-                    onLibraryClick = {
-                        navController.safeNavigate(
-                            LibraryRoute(
-                                libraryId = it.id.toString(),
-                                libraryName = it.name,
-                                libraryType = it.type,
+                SharedElementHost(this) {
+                    HomeScreen(
+                        onLibraryClick = {
+                            navController.safeNavigate(
+                                LibraryRoute(
+                                    libraryId = it.id.toString(),
+                                    libraryName = it.name,
+                                    libraryType = it.type,
+                                )
                             )
-                        )
-                    },
-                    onSearchClick = {
-                        searchExpanded = true
-                        navController.safeNavigate(MediaRoute) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    onDownloadsClick = { navController.safeNavigate(DownloadsRoute) },
-                    onManageServers = { navController.safeNavigate(ServersRoute) },
-                    onItemClick = { item ->
-                        navigateToItem(navController = navController, item = item)
-                    },
-                )
+                        },
+                        onSearchClick = {
+                            searchExpanded = true
+                            navController.safeNavigate(MediaRoute) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onDownloadsClick = { navController.safeNavigate(DownloadsRoute) },
+                        onManageServers = { navController.safeNavigate(ServersRoute) },
+                        onItemClick = { item ->
+                            navigateToItem(navController = navController, item = item)
+                        },
+                    )
+                }
             }
             composable<MediaRoute> {
-                MediaScreen(
-                    onItemClick = { item ->
-                        navigateToItem(navController = navController, item = item)
-                    },
-                    onFavoritesClick = { navController.safeNavigate(FavoritesRoute) },
-                    onFacetClick = { facet ->
-                        navController.safeNavigate(MetadataBrowseRoute(facet))
-                    },
-                    searchExpanded = searchExpanded,
-                    onSearchExpand = { searchExpanded = it },
-                )
+                SharedElementHost(this) {
+                    MediaScreen(
+                        onItemClick = { item ->
+                            navigateToItem(navController = navController, item = item)
+                        },
+                        onFavoritesClick = { navController.safeNavigate(FavoritesRoute) },
+                        onFacetClick = { facet ->
+                            navController.safeNavigate(MetadataBrowseRoute(facet))
+                        },
+                        searchExpanded = searchExpanded,
+                        onSearchExpand = { searchExpanded = it },
+                    )
+                }
             }
             composable<DownloadsRoute> {
-                DownloadsScreen(
-                    onItemClick = { item ->
-                        navigateToItem(navController = navController, item = item)
-                    }
-                )
+                SharedElementHost(this) {
+                    DownloadsScreen(
+                        onItemClick = { item ->
+                            navigateToItem(navController = navController, item = item)
+                        }
+                    )
+                }
             }
             composable<LibraryRoute> { backStackEntry ->
                 val route: LibraryRoute = backStackEntry.toRoute()
-                LibraryScreen(
-                    libraryId = UUID.fromString(route.libraryId),
-                    libraryName = route.libraryName,
-                    libraryType = route.libraryType,
-                    onItemClick = { item ->
-                        navigateToItem(navController = navController, item = item)
-                    },
-                    navigateBack = { navController.safePopBackStack() },
-                )
+                SharedElementHost(this) {
+                    LibraryScreen(
+                        libraryId = UUID.fromString(route.libraryId),
+                        libraryName = route.libraryName,
+                        libraryType = route.libraryType,
+                        onItemClick = { item ->
+                            navigateToItem(navController = navController, item = item)
+                        },
+                        navigateBack = { navController.safePopBackStack() },
+                    )
+                }
             }
             composable<CollectionRoute> { backStackEntry ->
                 val route: CollectionRoute = backStackEntry.toRoute()
-                CollectionScreen(
-                    collectionId = UUID.fromString(route.collectionId),
-                    collectionName = route.collectionName,
-                    onItemClick = { item ->
-                        navigateToItem(navController = navController, item = item)
-                    },
-                    navigateBack = { navController.safePopBackStack() },
-                )
+                SharedElementHost(this) {
+                    CollectionScreen(
+                        collectionId = UUID.fromString(route.collectionId),
+                        collectionName = route.collectionName,
+                        onItemClick = { item ->
+                            navigateToItem(navController = navController, item = item)
+                        },
+                        navigateBack = { navController.safePopBackStack() },
+                    )
+                }
             }
             composable<FavoritesRoute> {
-                FavoritesScreen(
-                    onItemClick = { item ->
-                        navigateToItem(navController = navController, item = item)
-                    },
-                    navigateBack = { navController.safePopBackStack() },
-                )
+                SharedElementHost(this) {
+                    FavoritesScreen(
+                        onItemClick = { item ->
+                            navigateToItem(navController = navController, item = item)
+                        },
+                        navigateBack = { navController.safePopBackStack() },
+                    )
+                }
             }
-            composable<MovieRoute> { backStackEntry ->
+            composable<MovieRoute>(
+                // 详情页：进入淡入 + 轻微放大，返回淡出 + 轻微收缩，与封面共享元素一起构成容器变换感
+                enterTransition = { detailEnterTransition() },
+                popExitTransition = { detailPopExitTransition() },
+            ) { backStackEntry ->
                 val route: MovieRoute = backStackEntry.toRoute()
-                MovieScreen(
-                    movieId = UUID.fromString(route.movieId),
-                    navigateBack = { navController.safePopBackStack() },
-                    navigateHome = { navigateHome(navController) },
-                    navigateToPerson = { personId, personName ->
-                        navController.safeNavigate(
-                            ItemFilterRoute(
-                                facet = MetadataFacet.ACTOR,
-                                key = personId.toString(),
-                                title = personName,
+                SharedElementHost(this) {
+                    MovieScreen(
+                        movieId = UUID.fromString(route.movieId),
+                        navigateBack = { navController.safePopBackStack() },
+                        navigateHome = { navigateHome(navController) },
+                        navigateToPerson = { personId, personName ->
+                            navController.safeNavigate(
+                                ItemFilterRoute(
+                                    facet = MetadataFacet.ACTOR,
+                                    key = personId.toString(),
+                                    title = personName,
+                                )
                             )
-                        )
-                    },
-                    navigateToMetadataFacet = { facet, key ->
-                        // 类型 / 标签没有独立实体 id，直接按值筛选
-                        navController.safeNavigate(
-                            ItemFilterRoute(facet = facet, key = key, title = key)
-                        )
-                    },
-                )
+                        },
+                        navigateToMetadataFacet = { facet, key ->
+                            // 类型 / 标签没有独立实体 id，直接按值筛选
+                            navController.safeNavigate(
+                                ItemFilterRoute(facet = facet, key = key, title = key)
+                            )
+                        },
+                    )
+                }
             }
-            composable<ShowRoute> { backStackEntry ->
+            composable<ShowRoute>(
+                enterTransition = { detailEnterTransition() },
+                popExitTransition = { detailPopExitTransition() },
+            ) { backStackEntry ->
                 val route: ShowRoute = backStackEntry.toRoute()
                 ShowScreen(
                     showId = UUID.fromString(route.showId),
@@ -412,7 +441,10 @@ fun NavigationRoot(
                     },
                 )
             }
-            composable<SeasonRoute> { backStackEntry ->
+            composable<SeasonRoute>(
+                enterTransition = { detailEnterTransition() },
+                popExitTransition = { detailPopExitTransition() },
+            ) { backStackEntry ->
                 val route: SeasonRoute = backStackEntry.toRoute()
                 SeasonScreen(
                     seasonId = UUID.fromString(route.seasonId),
@@ -429,7 +461,10 @@ fun NavigationRoot(
                     },
                 )
             }
-            composable<EpisodeRoute> { backStackEntry ->
+            composable<EpisodeRoute>(
+                enterTransition = { detailEnterTransition() },
+                popExitTransition = { detailPopExitTransition() },
+            ) { backStackEntry ->
                 val route: EpisodeRoute = backStackEntry.toRoute()
                 EpisodeScreen(
                     episodeId = UUID.fromString(route.episodeId),
@@ -507,15 +542,17 @@ fun NavigationRoot(
             }
             composable<ItemFilterRoute> { backStackEntry ->
                 val route: ItemFilterRoute = backStackEntry.toRoute()
-                ItemFilterScreen(
-                    facet = route.facet,
-                    filterKey = route.key,
-                    title = route.title,
-                    onItemClick = { item ->
-                        navigateToItem(navController = navController, item = item)
-                    },
-                    navigateBack = { navController.safePopBackStack() },
-                )
+                SharedElementHost(this) {
+                    ItemFilterScreen(
+                        facet = route.facet,
+                        filterKey = route.key,
+                        title = route.title,
+                        onItemClick = { item ->
+                            navigateToItem(navController = navController, item = item)
+                        },
+                        navigateBack = { navController.safePopBackStack() },
+                    )
+                }
             }
             composable<SettingsRoute> { backStackEntry ->
                 val route: SettingsRoute = backStackEntry.toRoute()
@@ -636,3 +673,106 @@ private fun NavHostController.safePopBackStack(): Boolean {
         false
     }
 }
+
+/**
+ * NavHost + SharedTransitionLayout 的组合。
+ *
+ * 全局注册共享元素作用域（[LocalSharedTransitionScope]），并把全局转场统一为 M3 规范：
+ * 进入用 decelerate（快起缓停），退出用 accelerate 且更快（M3 非对称规则）。
+ */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun SharedTransitionNavHost(
+    navController: NavHostController,
+    startDestination: Any,
+    builder: NavGraphBuilder.() -> Unit,
+) {
+    SharedTransitionLayout {
+        CompositionLocalProvider(LocalSharedTransitionScope provides this) {
+            NavHost(
+                navController = navController,
+                startDestination = startDestination,
+                enterTransition = {
+                    fadeIn(
+                        tween(
+                            durationMillis = Motion.DurationMedium4,
+                            easing = Motion.EasingEmphasizedDecelerate,
+                        )
+                    )
+                },
+                exitTransition = {
+                    fadeOut(
+                        tween(
+                            durationMillis = Motion.DurationShort4,
+                            easing = Motion.EasingEmphasizedAccelerate,
+                        )
+                    )
+                },
+                popEnterTransition = {
+                    fadeIn(
+                        tween(
+                            durationMillis = Motion.DurationMedium4,
+                            easing = Motion.EasingEmphasizedDecelerate,
+                        )
+                    )
+                },
+                popExitTransition = {
+                    fadeOut(
+                        tween(
+                            durationMillis = Motion.DurationShort4,
+                            easing = Motion.EasingEmphasizedAccelerate,
+                        )
+                    )
+                },
+                predictivePopEnterTransition = {
+                    fadeIn(
+                        tween(
+                            durationMillis = Motion.DurationMedium4,
+                            easing = Motion.EasingEmphasizedDecelerate,
+                        )
+                    )
+                },
+                predictivePopExitTransition = {
+                    fadeOut(
+                        tween(
+                            durationMillis = Motion.DurationShort4,
+                            easing = Motion.EasingEmphasizedAccelerate,
+                        )
+                    )
+                },
+            ) {
+                builder()
+            }
+        }
+    }
+}
+
+/** 把目的地的转场作用域经 CompositionLocal 下发，供列表封面与详情页头部建立共享元素关联。 */
+@Composable
+private fun SharedElementHost(scope: AnimatedVisibilityScope, content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides scope, content = content)
+}
+
+/** 详情页进入：整体淡入并轻微放大（0.94 → 1），与返回时的收缩构成容器变换感。 */
+private fun detailEnterTransition(): EnterTransition =
+    fadeIn(tween(durationMillis = Motion.DurationMedium4, easing = Motion.EasingEmphasizedDecelerate)) +
+        scaleIn(
+            initialScale = 0.94f,
+            animationSpec =
+                tween(
+                    durationMillis = Motion.DurationMedium4,
+                    easing = Motion.EasingEmphasizedDecelerate,
+                ),
+        )
+
+/** 详情页退出（返回）：淡出并轻微收缩，退出比进入更快（M3 非对称规则）。 */
+private fun detailPopExitTransition(): ExitTransition =
+    fadeOut(tween(durationMillis = Motion.DurationShort4, easing = Motion.EasingEmphasizedAccelerate)) +
+        scaleOut(
+            targetScale = 0.94f,
+            animationSpec =
+                tween(
+                    durationMillis = Motion.DurationShort4,
+                    easing = Motion.EasingEmphasizedAccelerate,
+                ),
+        )
