@@ -9,6 +9,7 @@
 - 保持修改最小化、聚焦，避免不必要的重构或大范围重写。
 - **默认只改手机版（`:app:phone`），不考虑 TV 版（`:app:tv`）。** 只有与界面无关的共享逻辑（`:core`、`:data`、`:player:*`、`:settings`）才可能一并影响 TV 版。
 - **注释一律使用中文**（代码注释、KDoc、TODO 说明）。
+- **UI 与动画一律遵守「[UI 与动效规范（Material 3 Expressive）](#ui-与动效规范material-3-expressive)」**。
 - **新增或修改功能前，先读「[代码设计与编码规范](#代码设计与编码规范)」**，按其分层、分包与代码风味要求实现。
 - **日志一律走 `AppLog`**（见「[日志规范](#日志规范)」），禁止直接用 `Timber` / `Log` / `println`。
 
@@ -111,6 +112,51 @@
 - [ ] 关键处有中文注释，且无冗余注释。
 - [ ] 日志统一走 `AppLog`。
 - [ ] 新增 / 删除 / 修改了页面或路由 → 已同步 `wiki/pages.md`（只写路径、不带行号）。
+
+## UI 与动效规范（Material 3 Expressive）
+
+生成、修改或优化任何 UI 与动画代码时，严格遵守以下规则。
+
+### 1. 基础技术架构标准
+
+- 统一使用 Jetpack Compose 的 `androidx.compose.material3` 官方库，**禁止引入 Material 2 或 View 系统的代码**。
+- 动效实现优先使用 Compose 官方标准 API（`SharedTransitionLayout`、`AnimatedVisibility`、`AnimatedContent`、`PredictiveBackHandler` 等），不手写等效实现。
+
+### 2. M3 物理弹簧动效（Spring Motion）
+
+- 摒弃线性（`LinearEasing`）或简单贝塞尔曲线缓动，全面切换到物理弹簧动画：
+  - **位移 / 缩放 / 形状变化**（Spatial Motion）：使用带超越与回弹的弹簧配置，如 `spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)`。
+  - **淡入淡出 / 颜色过渡**（Effects Motion）：使用无回弹弹簧，如 `spring(dampingRatio = Spring.DampingRatioNoBouncy)`。
+- 全局使用 `MotionScheme` 机制管理组件的统一微动效与反馈，避免各处散落各自一套弹簧参数。
+
+### 3. M3 核心交互与微交互
+
+- **形变动画（Shape Morphing）**：用 `graphicsLayer` 或 M3 容器转换（Container Transform）实现组件点击、展开、切换时的平滑形状演变（如从 Card 扩张为全屏 Surface）。
+- **手势与中断支持（Interruption handling）**：弹簧动画保证用户在连续拖拽或快速中断操作时动画流畅衔接，不发生骤跳。
+- **预测性返回（Predictive Back）**：对 Navigation 或 Dialog / Sheet 交互，集成 Android 13+ 预测性返回手势动画（返回前拉伸缩放预览）。
+
+### 4. 视觉与反馈
+
+- 交互组件需包含 M3 波纹效果（Ripple）、按压缩放（Press scale feedback）以及基于 `tonalElevation`（色调仰角）的视觉过渡，**避免生硬的硬切换**。
+- 选用当前最稳定、标准的 Compose M3 语法，不使用已废弃或实验性不稳定的 API（确需 `@ExperimentalMaterial3Api` 时注明理由）。
+
+### 5. 借助 compose-expert 技能落地（默认生效）
+
+本机已全局安装 `compose-expert` 技能（`~\.codebuddy\skills\compose-expert`，基于 androidx 源码）。**涉及 Compose UI、动画、M3 主题与动效的任务，优先加载该技能并按其参考文档实现**，以下为可直接套用的基础用法：
+
+- **MotionScheme 用法（替代手写 spring/tween）**：
+  ```kotlin
+  val motionScheme = MaterialTheme.motionScheme
+  // 位移/尺寸/布局变化（空间动效）→ defaultSpatialSpec（expressive 主题下自带回弹）
+  // 颜色/透明度过渡（效果动效）→ defaultEffectsSpec（近临界阻尼，永不回弹）
+  val size by animateDpAsState(target, animationSpec = motionScheme.defaultSpatialSpec(), label = "card-size")
+  val color by animateColorAsState(target, animationSpec = motionScheme.defaultEffectsSpec(), label = "card-color")
+  ```
+- **主题根节点**：全局动效性格由主题决定，在根节点用 `MaterialTheme(motionScheme = MotionScheme.expressive())`（或 `MaterialExpressiveTheme`）设置一次即可，调用处不改代码。
+- **空间与效果不可混用**：回弹感只属于空间动效；用 `defaultSpatialSpec()` 动画颜色/透明度是最常见错误（淡入淡出会抖动）。
+- **必须写 `tween()` 时用 M3 Token**，禁止魔法数字：时长取 `MotionTokens.Duration*`（常用：微交互 50–100ms、组件状态变化 150–200ms、容器变化 250–300ms、对话框/抽屉等屏幕级元素 350–400ms、共享元素转场 450–500ms），如 `tween(durationMillis = MotionTokens.DurationMedium2.toInt())`。
+- **缓动规则**：进入用 `EasingEmphasizedDecelerateCubicBezier`，退出用 `EasingEmphasizedAccelerateCubicBezier`（退出总是更快），停留状态变化用 `EasingEmphasizedCubicBezier`；禁止 `FastOutSlowInEasing` 等 M3 之前的旧缓动。
+- **动画评审反模式**（改代码时顺手检查，出现即修复）：`tween(整数)` 硬编码时长、未指定 `animationSpec` 的 `animate*AsState`、enter/exit 用同一缓动、非共享元素动画超过 600ms。
 
 ## 本地化核对命令
 
