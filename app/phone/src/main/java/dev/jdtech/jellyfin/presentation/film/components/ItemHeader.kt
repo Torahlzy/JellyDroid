@@ -1,6 +1,9 @@
 package dev.jdtech.jellyfin.presentation.film.components
 
 import android.net.Uri
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Box
@@ -28,10 +31,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.FindroidSeason
+import dev.jdtech.jellyfin.presentation.theme.Motion
 import dev.jdtech.jellyfin.presentation.theme.spacings
+import dev.jdtech.jellyfin.presentation.utils.LocalNavAnimatedVisibilityScope
 import dev.jdtech.jellyfin.presentation.utils.parallaxLayoutModifier
 
 // 背景图加载完成前用于占位、以及避免异常宽高比导致布局失真的取值范围
@@ -82,7 +89,12 @@ fun ItemHeader(
             if (fitBackdrop) backdropAspectRatio ?: DEFAULT_BACKDROP_ASPECT_RATIO else null,
         backdropImage = {
             AsyncImage(
-                model = backdropUri,
+                // crossfade 淡入大图，避免占位色块到图片的硬切
+                model =
+                    ImageRequest.Builder(context)
+                        .data(backdropUri)
+                        .crossfade(true)
+                        .build(),
                 contentDescription = null,
                 modifier =
                     Modifier.fillMaxSize()
@@ -153,7 +165,12 @@ fun ItemHeader(
             if (fitBackdrop) backdropAspectRatio ?: DEFAULT_BACKDROP_ASPECT_RATIO else null,
         backdropImage = {
             AsyncImage(
-                model = backdropUri,
+                // crossfade 淡入大图，避免占位色块到图片的硬切
+                model =
+                    ImageRequest.Builder(context)
+                        .data(backdropUri)
+                        .crossfade(true)
+                        .build(),
                 contentDescription = null,
                 modifier =
                     Modifier.fillMaxSize()
@@ -192,6 +209,25 @@ private fun ItemHeaderBase(
 ) {
     val backgroundColor = MaterialTheme.colorScheme.background
 
+    // fitBackdrop 模式下图片加载完成后宽高比会变化：
+    // 进场转场（共享元素 morph）进行中直接跳到最终比例——共享元素的目标边界随之提前重定向，
+    // 落定即是真实尺寸，不会落定后再长高；其余情况用动画过渡避免布局瞬跳
+    val navScope = LocalNavAnimatedVisibilityScope.current
+    val animatedBackdropAspectRatio by
+        animateFloatAsState(
+            targetValue = backdropAspectRatio ?: DEFAULT_BACKDROP_ASPECT_RATIO,
+            animationSpec =
+                if (navScope?.transition?.isRunning == true) {
+                    snap()
+                } else {
+                    tween(
+                        durationMillis = Motion.DurationMedium2,
+                        easing = Motion.EasingEmphasized,
+                    )
+                },
+            label = "backdrop-aspect-ratio",
+        )
+
     val logoUri =
         when (item) {
             is FindroidEpisode -> item.images.showLogo
@@ -204,7 +240,7 @@ private fun ItemHeaderBase(
                 .then(
                     if (backdropAspectRatio != null) {
                         // 有宽高比时按比例算高度，图片完整显示、不裁切
-                        Modifier.aspectRatio(backdropAspectRatio)
+                        Modifier.aspectRatio(animatedBackdropAspectRatio)
                     } else {
                         // 不按宽高比展示时保持原有行为：高度不小于 288dp，内容多时自动增高
                         Modifier.heightIn(min = 288.dp)

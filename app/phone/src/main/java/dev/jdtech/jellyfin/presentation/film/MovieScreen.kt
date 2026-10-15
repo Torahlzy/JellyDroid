@@ -3,6 +3,11 @@ package dev.jdtech.jellyfin.presentation.film
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,15 +33,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -79,11 +88,18 @@ import dev.jdtech.jellyfin.presentation.film.components.ScrapeProgressDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScraperUrlsDialog
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
+import dev.jdtech.jellyfin.presentation.theme.Motion
 import dev.jdtech.jellyfin.presentation.theme.spacings
+import dev.jdtech.jellyfin.presentation.utils.LocalNavAnimatedVisibilityScope
 import dev.jdtech.jellyfin.presentation.utils.LocalOfflineMode
+import dev.jdtech.jellyfin.presentation.utils.heroSharedBounds
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
 import dev.jdtech.jellyfin.utils.ObserveAsEvents
 import java.util.UUID
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import org.jellyfin.sdk.model.api.BaseItemKind
 
 @Composable
@@ -246,6 +262,7 @@ fun MovieScreen(
     }
 
     MovieScreenLayout(
+        movieId = movieId,
         state = state,
         downloaderState = downloaderState,
         onScrapeImageClick = { person ->
@@ -503,6 +520,7 @@ private enum class MoreMenuDialogState {
 
 @Composable
 private fun MovieScreenLayout(
+    movieId: UUID,
     state: MovieState,
     downloaderState: DownloaderState,
     onScrapeImageClick: (person: FindroidItemPerson) -> Unit,
@@ -522,163 +540,240 @@ private fun MovieScreenLayout(
     // 封面高度（不含状态栏 padding），驱动悬浮播放按钮的展开 / 收起与飞行位置
     var headerHeightPx by remember { mutableIntStateOf(0) }
 
+    val navScope = LocalNavAnimatedVisibilityScope.current
+
+    // 内容区块在影片数据到达后、与 morph 尾段重叠时就开始组合并依次入场：
+    // 完全等转场结束会显得拖沓；转场期间组合的内容现在基本是纯文本区块，开销可接受
+    var contentAppeared by rememberSaveable { mutableStateOf(false) }
+    // 入场动画是否开始播：与 contentAppeared（控制内容组合的时机）分开，保证区块先以 alpha=0 组合再起播
+    var entranceStarted by remember { mutableStateOf(contentAppeared) }
+    LaunchedEffect(state.movie, navScope) {
+        if (state.movie == null || contentAppeared) return@LaunchedEffect
+        val transition = navScope?.transition
+        if (transition == null) {
+            contentAppeared = true
+            return@LaunchedEffect
+        }
+        // 「转场结束」与「固定等待」谁先到谁触发：数据到得早时入场与 morph 尾段重叠，
+        // 数据到得晚（晚于固定等待）时则等转场自然结束
+        coroutineScope {
+            launch {
+                snapshotFlow { transition.isRunning }.first { !it }
+                contentAppeared = true
+            }
+            launch {
+                delay(ENTRANCE_OVERLAP_DELAY_MILLIS.toLong())
+                contentAppeared = true
+            }
+        }
+    }
+    LaunchedEffect(contentAppeared) {
+        if (contentAppeared && !entranceStarted) {
+            withFrameNanos { }
+            entranceStarted = true
+        }
+    }
+
+    // 加载转圈延迟出现：数据通常几百毫秒内就到，立即显示会「一闪而过」；
+    // 超过阈值还没到才显示，快路径下加载期间是干净的空页面（正好被 morph 覆盖）
+    var showLoadingSpinner by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(LOADING_SPINNER_DELAY_MILLIS.toLong())
+        // state 是属性委托，此处读到的是延迟结束后的最新值（不是首帧快照）：
+        // 数据已到就不显示转圈
+        showLoadingSpinner = state.movie == null
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        state.movie?.let { movie ->
-            Column(modifier = Modifier.fillMaxWidth().verticalScroll(scrollState)) {
-                ItemHeader(
-                    item = movie,
-                    scrollState = scrollState,
-                    // 头部图片上方留出状态栏高度
+        Column(modifier = Modifier.fillMaxWidth().verticalScroll(scrollState)) {
+            state.movie?.let { movie ->
+                // 头部：数据到位后立即渲染，承接共享元素落点；
+                // 数据到达前没有落点，morph 自动退化为普通转场
+                Box(
                     modifier =
-                        Modifier.padding(top = safePadding.top).onSizeChanged {
-                            headerHeightPx = it.height
-                        },
-                    // 标题已移到图片下方，不再需要底部渐隐，避免图片下方出现空白
-                    fadeToBackground = false,
-                    // 按图片实际宽高比自适应高度，完整显示背景图、不裁切左右
-                    fitBackdrop = true,
-                )
+                        Modifier.padding(top = safePadding.top)
+                            .heroSharedBounds(key = "movie-hero-$movieId")
+                ) {
+                    ItemHeader(
+                        item = movie,
+                        scrollState = scrollState,
+                        modifier =
+                            Modifier.fillMaxWidth().onSizeChanged { headerHeightPx = it.height },
+                        // 标题已移到图片下方，不再需要底部渐隐，避免图片下方出现空白
+                        fadeToBackground = false,
+                        // 按图片实际宽高比自适应高度，完整显示背景图、不裁切左右
+                        fitBackdrop = true,
+                    )
+                }
+            }
+            state.movie?.takeIf { contentAppeared }?.let { movie ->
                 Column(modifier = Modifier.padding(start = paddingStart, end = paddingEnd)) {
                     Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
-                    // 标题：默认收起 3 行，超出时可点击展开 / 收起
-                    CollapsibleText(
-                        text = movie.name,
-                        collapsedMaxLines = 3,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontSize = (MaterialTheme.typography.headlineMedium.fontSize.value - 2).sp,
-                    )
-                    movie.originalTitle?.let { originalTitle ->
-                        if (originalTitle != movie.name) {
-                            Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
-                            // 副标题（原名）：默认收起 2 行，超出时可点击展开 / 收起
-                            CollapsibleText(
-                                text = originalTitle,
-                                collapsedMaxLines = 2,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                    }
-                    // 文件存放路径：已下载时先显示本地路径（文件夹图标），再显示服务器路径（云图标）
-                    // 多个版本会各自占一行（在 State 里去重后拼接），每行默认只显示 1 行，超出时可点击展开 / 收起
-                    state.localFilePath?.let { filePath ->
-                        Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
-                        FilePathText(path = filePath, isRemote = false)
-                    }
-                    state.remoteFilePath?.let { filePath ->
-                        Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
-                        FilePathText(path = filePath, isRemote = true)
-                    }
-                    Spacer(Modifier.height(MaterialTheme.spacings.small))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.small),
-                        verticalAlignment = Alignment.Bottom,
-                    ) {
-                        movie.premiereDate?.let { premiereDate ->
-                            Text(
-                                text = premiereDate.year.toString(),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                        Text(
-                            text =
-                                stringResource(
-                                    CoreR.string.runtime_minutes,
-                                    movie.runtimeTicks.div(600000000),
-                                ),
-                            style = MaterialTheme.typography.bodyMedium,
+                    // 标题与文件路径：依次入场的第 1 组
+                    AppearingSection(index = 0, visible = entranceStarted) {
+                        // 标题：默认收起 3 行，超出时可点击展开 / 收起
+                        CollapsibleText(
+                            text = movie.name,
+                            collapsedMaxLines = 3,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontSize =
+                                (MaterialTheme.typography.headlineMedium.fontSize.value - 2).sp,
                         )
-                        movie.officialRating?.let { officialRating ->
-                            Text(text = officialRating, style = MaterialTheme.typography.bodyMedium)
-                        }
-                        movie.communityRating?.let { communityRating ->
-                            Row(verticalAlignment = Alignment.Bottom) {
-                                Icon(
-                                    painter = painterResource(CoreR.drawable.ic_star),
-                                    contentDescription = null,
-                                    tint = Color("#F2C94C".toColorInt()),
-                                )
-                                Spacer(Modifier.width(MaterialTheme.spacings.extraSmall))
-                                Text(
-                                    text = "%.1f".format(communityRating),
+                        movie.originalTitle?.let { originalTitle ->
+                            if (originalTitle != movie.name) {
+                                Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
+                                // 副标题（原名）：默认收起 2 行，超出时可点击展开 / 收起
+                                CollapsibleText(
+                                    text = originalTitle,
+                                    collapsedMaxLines = 2,
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                             }
                         }
+                        // 文件存放路径：已下载时先显示本地路径（文件夹图标），再显示服务器路径（云图标）
+                        // 多个版本会各自占一行（在 State 里去重后拼接），每行默认只显示 1 行，超出时可点击展开 / 收起
+                        state.localFilePath?.let { filePath ->
+                            Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
+                            FilePathText(path = filePath, isRemote = false)
+                        }
+                        state.remoteFilePath?.let { filePath ->
+                            Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
+                            FilePathText(path = filePath, isRemote = true)
+                        }
                     }
                     Spacer(Modifier.height(MaterialTheme.spacings.small))
-                    state.videoMetadata?.let { videoMetadata ->
-                        VideoMetadataBar(videoMetadata)
+                    // 年份 / 时长 / 分级 / 视频信息行：依次入场的第 2 组
+                    AppearingSection(index = 1, visible = entranceStarted) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement =
+                                Arrangement.spacedBy(MaterialTheme.spacings.small),
+                            verticalAlignment = Alignment.Bottom,
+                        ) {
+                            movie.premiereDate?.let { premiereDate ->
+                                Text(
+                                    text = premiereDate.year.toString(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            Text(
+                                text =
+                                    stringResource(
+                                        CoreR.string.runtime_minutes,
+                                        movie.runtimeTicks.div(600000000),
+                                    ),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            movie.officialRating?.let { officialRating ->
+                                Text(
+                                    text = officialRating,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            movie.communityRating?.let { communityRating ->
+                                Row(verticalAlignment = Alignment.Bottom) {
+                                    Icon(
+                                        painter = painterResource(CoreR.drawable.ic_star),
+                                        contentDescription = null,
+                                        tint = Color("#F2C94C".toColorInt()),
+                                    )
+                                    Spacer(Modifier.width(MaterialTheme.spacings.extraSmall))
+                                    Text(
+                                        text = "%.1f".format(communityRating),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
+                            }
+                        }
                         Spacer(Modifier.height(MaterialTheme.spacings.small))
+                        state.videoMetadata?.let { videoMetadata ->
+                            VideoMetadataBar(videoMetadata)
+                            Spacer(Modifier.height(MaterialTheme.spacings.small))
+                        }
                     }
-                    ItemButtonsBar(
-                        item = movie,
-                        downloaderState = downloaderState,
-                        onPlayClick = { startFromBeginning ->
-                            onAction(MovieAction.Play(startFromBeginning = startFromBeginning))
-                        },
-                        onMarkAsPlayedClick = {
-                            when (movie.played) {
-                                true -> onAction(MovieAction.UnmarkAsPlayed)
-                                false -> onAction(MovieAction.MarkAsPlayed)
-                            }
-                        },
-                        onMarkAsFavoriteClick = {
-                            when (movie.favorite) {
-                                true -> onAction(MovieAction.UnmarkAsFavorite)
-                                false -> onAction(MovieAction.MarkAsFavorite)
-                            }
-                        },
-                        onTrailerClick = { uri -> onAction(MovieAction.PlayTrailer(uri)) },
-                        onDownloadClick = { storageIndex ->
-                            onDownloaderAction(DownloaderAction.Download(movie, storageIndex))
-                        },
-                        onDownloadCancelClick = {
-                            onDownloaderAction(DownloaderAction.CancelDownload(movie))
-                        },
-                        onDownloadDeleteClick = {
-                            onDownloaderAction(DownloaderAction.DeleteDownload(movie))
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        onMoreClick = onMoreClick,
-                    )
+                    // 操作按钮行：依次入场的第 3 组
+                    AppearingSection(index = 2, visible = entranceStarted) {
+                        ItemButtonsBar(
+                            item = movie,
+                            downloaderState = downloaderState,
+                            onPlayClick = { startFromBeginning ->
+                                onAction(MovieAction.Play(startFromBeginning = startFromBeginning))
+                            },
+                            onMarkAsPlayedClick = {
+                                when (movie.played) {
+                                    true -> onAction(MovieAction.UnmarkAsPlayed)
+                                    false -> onAction(MovieAction.MarkAsPlayed)
+                                }
+                            },
+                            onMarkAsFavoriteClick = {
+                                when (movie.favorite) {
+                                    true -> onAction(MovieAction.UnmarkAsFavorite)
+                                    false -> onAction(MovieAction.MarkAsFavorite)
+                                }
+                            },
+                            onTrailerClick = { uri -> onAction(MovieAction.PlayTrailer(uri)) },
+                            onDownloadClick = { storageIndex ->
+                                onDownloaderAction(DownloaderAction.Download(movie, storageIndex))
+                            },
+                            onDownloadCancelClick = {
+                                onDownloaderAction(DownloaderAction.CancelDownload(movie))
+                            },
+                            onDownloadDeleteClick = {
+                                onDownloaderAction(DownloaderAction.DeleteDownload(movie))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            onMoreClick = onMoreClick,
+                        )
+                    }
                     Spacer(Modifier.height(MaterialTheme.spacings.small))
-                    if (state.displayExtraInfo && state.videoMetadata != null) {
-                        ExtraInfoText(videoMetadata = state.videoMetadata!!)
+                    // 简介 / 类型 / 标签：依次入场的第 4 组
+                    AppearingSection(index = 3, visible = entranceStarted) {
+                        if (state.displayExtraInfo && state.videoMetadata != null) {
+                            ExtraInfoText(videoMetadata = state.videoMetadata!!)
+                            Spacer(Modifier.height(MaterialTheme.spacings.medium))
+                        }
+                        OverviewText(text = movie.overview, maxCollapsedLines = 3)
+                        Spacer(Modifier.height(MaterialTheme.spacings.medium))
+                        InfoText(
+                            genres = movie.genres,
+                            tags = movie.tags,
+                            director = state.director,
+                            writers = state.writers,
+                            // 离线模式下筛选结果页不可用，类型 / 标签保持纯文本
+                            onGenreClick =
+                                if (isOfflineMode) null
+                                else { genre -> onAction(MovieAction.NavigateToGenre(genre)) },
+                            onTagClick =
+                                if (isOfflineMode) null
+                                else { tag -> onAction(MovieAction.NavigateToTag(tag)) },
+                        )
                         Spacer(Modifier.height(MaterialTheme.spacings.medium))
                     }
-                    OverviewText(text = movie.overview, maxCollapsedLines = 3)
-                    Spacer(Modifier.height(MaterialTheme.spacings.medium))
-                    InfoText(
-                        genres = movie.genres,
-                        tags = movie.tags,
-                        director = state.director,
-                        writers = state.writers,
-                        // 离线模式下筛选结果页不可用，类型 / 标签保持纯文本
-                        onGenreClick =
-                            if (isOfflineMode) null
-                            else { genre -> onAction(MovieAction.NavigateToGenre(genre)) },
-                        onTagClick =
-                            if (isOfflineMode) null
-                            else { tag -> onAction(MovieAction.NavigateToTag(tag)) },
-                    )
-                    Spacer(Modifier.height(MaterialTheme.spacings.medium))
                 }
-                if (state.actors.isNotEmpty()) {
-                    ActorsRow(
-                        actors = state.actors,
-                        onActorClick = { person ->
-                            onAction(MovieAction.NavigateToPerson(person))
-                        },
-                        contentPadding = PaddingValues(start = paddingStart, end = paddingEnd),
-                        // 抓取头像要联网也要写服务器，离线模式不提供长按菜单
-                        onScrapeImageClick =
-                            if (isOfflineMode) null else { person -> onScrapeImageClick(person) },
-                    )
+                // 演员行：依次入场的第 5 组
+                AppearingSection(index = 4, visible = entranceStarted) {
+                    if (state.actors.isNotEmpty()) {
+                        ActorsRow(
+                            actors = state.actors,
+                            onActorClick = { person ->
+                                onAction(MovieAction.NavigateToPerson(person))
+                            },
+                            contentPadding = PaddingValues(start = paddingStart, end = paddingEnd),
+                            // 抓取头像要联网也要写服务器，离线模式不提供长按菜单
+                            onScrapeImageClick =
+                                if (isOfflineMode) null
+                                else { person -> onScrapeImageClick(person) },
+                        )
+                    }
                 }
                 Spacer(Modifier.height(paddingBottom))
             }
-        } ?: run { CircularProgressIndicator(modifier = Modifier.align(Alignment.Center)) }
+        }
+
+        // 加载中：居中转圈（延迟出现）；内容区块仍等进场转场结束再组合，避免与 morph 抢帧
+        if (state.movie == null && showLoadingSpinner) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        }
 
         ItemTopBar(
             hasBackButton = true,
@@ -687,8 +782,27 @@ private fun MovieScreenLayout(
             onHomeClick = { onAction(MovieAction.OnHomeClick) },
         )
 
-        // 封面上的悬浮播放按钮：跟随封面滚动，封面滑出超过一半后收起并飞到顶栏「回到首页」按钮后方
-        state.movie?.let {
+        // 封面上的悬浮播放按钮：跟随封面滚动，封面滑出超过一半后收起并飞到顶栏「回到首页」按钮后方。
+        // 等进场内容（文字依次入场）就位后再淡入，且带一小段延迟排在演员行之后，避免它在 morph /
+        // 入场过程中突兀地闪现
+        AnimatedVisibility(
+            visible = contentAppeared && entranceStarted,
+            enter =
+                fadeIn(
+                    tween(
+                        durationMillis = Motion.DurationShort3,
+                        delayMillis = APPEAR_STEP_MILLIS * 5,
+                        easing = Motion.EasingEmphasizedDecelerate,
+                    )
+                ),
+            exit =
+                fadeOut(
+                    tween(
+                        durationMillis = Motion.DurationShort4,
+                        easing = Motion.EasingEmphasizedAccelerate,
+                    )
+                ),
+        ) {
             ItemPlayButton(
                 scrollState = scrollState,
                 headerHeightPx = headerHeightPx,
@@ -700,11 +814,61 @@ private fun MovieScreenLayout(
     }
 }
 
+// 依次入场的节奏：相邻区块的延迟与整体位移量（属于动画量而非布局间距，故不用 MaterialTheme.spacings）
+private const val APPEAR_STEP_MILLIS = 25
+private val APPEAR_SLIDE_DISTANCE = 12.dp
+
+// 内容入场与 morph 的重叠等待：数据到达后最多等这么久就开始入场（morph 全程约 450ms）。
+// 入场从 morph 中段开始、在 morph 结束点附近收尾，动画一停文字即已就位
+private const val ENTRANCE_OVERLAP_DELAY_MILLIS = 150
+
+// 加载转圈的延迟出现阈值：数据在此之前到达就完全不显示 loading
+private const val LOADING_SPINNER_DELAY_MILLIS = 400
+
+/**
+ * 详情页内容区块的依次入场：淡入 + 轻微上移。
+ *
+ * [index] 越大延迟越久，形成自上而下的 stagger 节奏；时长与缓动取 M3 token。
+ */
+@Composable
+private fun AppearingSection(
+    index: Int,
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val progress by
+        animateFloatAsState(
+            targetValue = if (visible) 1f else 0f,
+            animationSpec =
+                tween(
+                    durationMillis = Motion.DurationShort3,
+                    delayMillis = index * APPEAR_STEP_MILLIS,
+                    easing = Motion.EasingEmphasizedDecelerate,
+                ),
+            label = "movie-section-appear-$index",
+        )
+    // 用 Column 而不是 Box：一组内的多个文字块（标题 / 原名 / 文件路径等）是纵向排列的，
+    // Box 会把它们叠在同一位置；Column 同时保持与原先 Column 直接子级一致的宽度约束
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    alpha = progress
+                    translationY = (1f - progress) * APPEAR_SLIDE_DISTANCE.toPx()
+                }
+    ) {
+        content()
+    }
+}
+
 @PreviewScreenSizes
 @Composable
 private fun EpisodeScreenLayoutPreview() {
     FindroidTheme {
         MovieScreenLayout(
+            movieId = dummyMovie.id,
             state =
                 MovieState(
                     movie = dummyMovie,

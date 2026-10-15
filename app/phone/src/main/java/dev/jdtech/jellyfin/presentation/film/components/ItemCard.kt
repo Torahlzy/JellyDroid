@@ -29,9 +29,11 @@ import dev.jdtech.jellyfin.core.presentation.dummy.dummyMovie
 import dev.jdtech.jellyfin.models.FindroidBoxSet
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItem
+import dev.jdtech.jellyfin.models.FindroidMovie
 import dev.jdtech.jellyfin.models.isDownloaded
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
+import dev.jdtech.jellyfin.presentation.utils.heroSharedBounds
 
 @Composable
 fun ItemCard(
@@ -73,6 +75,13 @@ fun ItemCard(
                         direction = direction,
                         aspectRatio = aspectRatio,
                         placeholderIconRes = placeholderIconRes,
+                        // 电影封面与电影详情页头部建立共享元素 morph；其他类型暂无对应落点
+                        modifier =
+                            if (item is FindroidMovie) {
+                                Modifier.heroSharedBounds(key = "movie-hero-${item.id}")
+                            } else {
+                                Modifier
+                            },
                     )
                     Row(
                         modifier =
