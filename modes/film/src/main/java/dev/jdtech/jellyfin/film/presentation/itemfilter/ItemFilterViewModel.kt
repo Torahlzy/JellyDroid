@@ -36,6 +36,21 @@ constructor(
     // 避免每次重新取数都覆盖用户在当前页面刚做的选择
     private var isPreferencesLoaded = false
 
+    // 已成功取到分页流的筛选条件；从详情页返回时界面会重新组合并再次请求，
+    // 靠它跳过重复取数，避免新建分页流导致列表清空后从头加载、滚动位置回到顶部
+    private var loadedFilter: Pair<MetadataFacet, String>? = null
+
+    /**
+     * 界面进入（含从详情页返回）时调用。
+     *
+     * 同一筛选条件且分页流已就绪时直接跳过；排序变更等确实需要重新取数的场景直接调 [loadItems]。
+     * 判断放在 ViewModel 而不是界面的 rememberSaveable，进程重建后也能正确重新取数。
+     */
+    fun loadItemsIfNeeded(facet: MetadataFacet, key: String) {
+        if (loadedFilter == (facet to key)) return
+        loadItems(facet, key)
+    }
+
     fun loadItems(facet: MetadataFacet, key: String) {
         this.facet = facet
         this.key = key
@@ -74,8 +89,11 @@ constructor(
                         )
                         .cachedIn(viewModelScope)
                 _state.emit(_state.value.copy(items = items))
+                loadedFilter = facet to key
             } catch (e: Exception) {
                 AppLog.e(e, "按元数据筛选条目失败：%s = %s", facet, key)
+                // 取数失败不算已加载，重新进入页面时还要再试一次
+                loadedFilter = null
                 _state.emit(_state.value.copy(error = e))
             }
         }
