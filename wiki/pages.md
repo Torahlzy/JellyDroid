@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-10-15**
+**最后更新：2026-10-19**
 
 ---
 
@@ -174,7 +174,7 @@ else -> WelcomeRoute
 
 ### LibraryScreen — 媒体库详情
 
-- **职责**：单个媒体库的内容列表，支持分页加载、排序切换（含随机排序）与封面显示模式切换（右上角 `SortByDialog` 同时承载两项设置），条目点击进入详情。
+- **职责**：单个媒体库的内容列表，支持分页加载、排序切换（含随机排序）与封面显示模式切换（右上角 `SortByDialog` 同时承载两项设置），条目点击进入详情。排序与封面模式偏好与「收藏」页共用，两处任一改动都会在下次进入时生效。
 - **路由**：`LibraryRoute(libraryId, libraryName, libraryType)`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/LibraryScreen.kt`；设置弹窗为 `PHONE/presentation/film/components/SortByDialog.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/library/LibraryViewModel.kt`、`FILM/presentation/library/LibraryState.kt`、`FILM/presentation/library/LibraryAction.kt`。
@@ -197,13 +197,14 @@ else -> WelcomeRoute
 
 ### FavoritesScreen — 收藏
 
-- **职责**：读取收藏条目，按电影 / 剧集 / 单集分组展示。
+- **职责**：读取收藏条目，按电影 / 剧集 / 单集分组展示；右上角提供排序与封面显示设置，与媒体库列表共用同一套偏好（`AppPreferences.sortBy` / `sortOrder` / `libraryCoverMode`），在此切换后媒体库列表下次进入即生效。
 - **路由**：`FavoritesRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
-- **Screen**：`PHONE/presentation/film/FavoritesScreen.kt`。
+- **Screen**：`PHONE/presentation/film/FavoritesScreen.kt`；复用 `PHONE/presentation/film/CollectionScreen.kt` 的 `CollectionScreenLayout`（`showDisplaySettings = true` 时顶栏显示设置入口），设置弹窗为 `PHONE/presentation/film/components/SortByDialog.kt`。
 - **ViewModel**：`FILM/presentation/favorites/FavoritesViewModel.kt`。
-- **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action）。
-- **State 字段**：`sections`、`isLoading`、`error`。
-- **主要方法**：`loadItems()`（`repository.getFavoriteItems()`）。
+- **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action）；其中排序与封面模式字段仅由收藏页填充，合集 / 下载页保持默认值。
+- **State 字段**：`sections`、`sortBy`、`sortOrder`、`coverMode`、`isLoading`、`error`。
+- **主要方法 / Action**：`loadItems()`（`repository.getFavoriteItems(sortBy, sortOrder)`，排序由服务端完成）、`onAction()`；`OnItemClick`、`OnBackClick`（导航由界面处理）、`ChangeSorting`（更新 State、写入共享偏好并重新取数）、`ChangeCoverMode`（更新 State 并写入共享偏好，不重新取数）。
+- **封面显示模式**：横图模式（`CollectionGrid.coverMode`）所有条目走 `Direction.HORIZONTAL` + `BANNER_ASPECT_RATIO`、列宽按可用宽度自适应；竖图模式保留分集原有的 16:9 剧照形态，其余条目用竖图。
 - **入口**：媒体库页的「收藏」入口（`PHONE/NavigationRoot.kt`）。
 
 ### MovieScreen — 电影详情
@@ -431,7 +432,7 @@ else -> WelcomeRoute
 - **MVVM + 单向数据流**：`ViewModel` 暴露 `StateFlow<XxxState>`，Screen 通过 `collectAsStateWithLifecycle()` 观察；用户交互分发 `XxxAction` 给 `onAction()`。
 - **State / Action 复用**：`DownloadsViewModel` 与 `FavoritesViewModel` 复用 `FILM/presentation/collection/CollectionState.kt` + `FILM/presentation/collection/CollectionAction.kt`，**没有**独立的 `DownloadsState` / `FavoritesState`。
 - **无 ViewModel 的页面**：`WelcomeScreen`（仅 `WelcomeAction`，Screen 内联处理）、`AboutScreen`（纯静态 UI）。
-- **无 `onAction` 的 ViewModel**：`DownloadsViewModel`、`FavoritesViewModel`。
+- **无 `onAction` 的 ViewModel**：`DownloadsViewModel`。
 - **导航**：统一使用类型安全路由；`navigateToItem(navController, item)`（`PHONE/NavigationRoot.kt`）按 `FindroidItem` 子类型分发到具体详情页；`safeNavigate` / `safePopBackStack` 仅在生命周期为 `RESUMED` 时执行导航（`PHONE/NavigationRoot.kt`）。
 - **共享元素转场**：NavHost 由 `PHONE/NavigationRoot.kt` 的 `SharedTransitionNavHost` 包裹（内含 `SharedTransitionLayout` 与 M3 全局转场）；需要参与共享元素的目的地（首页 / 媒体库 / 下载 / 媒体库详情 / 合集 / 收藏 / 筛选结果 / 电影详情）在 `composable` 块内用 `SharedElementHost` 下发转场作用域，列表侧封面经 `PHONE/presentation/utils/SharedTransition.kt` 的 `heroSharedBounds` 标记。
 - **离线模式**：由 `LocalOfflineMode` CompositionLocal 控制（`PHONE/presentation/utils/`），离线时隐藏「媒体」标签与仅联网功能。

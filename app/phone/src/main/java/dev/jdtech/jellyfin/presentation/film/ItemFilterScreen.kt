@@ -55,6 +55,7 @@ import dev.jdtech.jellyfin.models.MetadataFacet
 import dev.jdtech.jellyfin.presentation.film.components.BANNER_ASPECT_RATIO
 import dev.jdtech.jellyfin.presentation.film.components.Direction
 import dev.jdtech.jellyfin.presentation.film.components.ItemCard
+import dev.jdtech.jellyfin.presentation.film.components.LANDSCAPE_COVER_MIN_WIDTH_DP
 import dev.jdtech.jellyfin.presentation.film.components.PagingErrorGroup
 import dev.jdtech.jellyfin.presentation.film.components.SortByDialog
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
@@ -62,9 +63,6 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.GridCellsAdaptiveWithMinColumns
 import dev.jdtech.jellyfin.presentation.utils.plus
 import kotlinx.coroutines.flow.flowOf
-
-// 横图封面的最小宽度（dp）：窄屏排一列，折叠屏展开等宽屏可放下两列
-private const val LANDSCAPE_COVER_MIN_WIDTH_DP = 300
 
 @Composable
 fun ItemFilterScreen(
