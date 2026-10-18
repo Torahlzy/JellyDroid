@@ -16,6 +16,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
@@ -31,6 +34,7 @@ import dev.jdtech.jellyfin.models.CollectionSection
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.UiText
 import dev.jdtech.jellyfin.presentation.film.components.CollectionGrid
+import dev.jdtech.jellyfin.presentation.film.components.SortByDialog
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import java.util.UUID
 
@@ -54,6 +58,9 @@ fun CollectionScreen(
                 is CollectionAction.OnItemClick -> onItemClick(action.item)
                 is CollectionAction.OnItemDetails -> {}
                 is CollectionAction.OnBackClick -> navigateBack()
+                // 合集页不提供展示设置入口
+                is CollectionAction.ChangeSorting,
+                is CollectionAction.ChangeCoverMode -> Unit
             }
         },
     )
@@ -65,8 +72,12 @@ fun CollectionScreenLayout(
     collectionName: String,
     state: CollectionState,
     onAction: (CollectionAction) -> Unit,
+    // 只有「我喜欢」页提供排序与封面显示设置（与媒体库列表共用同一套配置）
+    showDisplaySettings: Boolean = false,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+
+    var showDisplaySettingsDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier =
@@ -84,13 +95,41 @@ fun CollectionScreenLayout(
                         )
                     }
                 },
+                actions = {
+                    if (showDisplaySettings) {
+                        IconButton(onClick = { showDisplaySettingsDialog = true }) {
+                            Icon(
+                                painter = painterResource(CoreR.drawable.ic_arrow_down_up),
+                                contentDescription = null,
+                            )
+                        }
+                    }
+                },
                 windowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
                 scrollBehavior = scrollBehavior,
             )
         },
         contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
     ) { innerPadding ->
-        CollectionGrid(sections = state.sections, innerPadding = innerPadding, onAction = onAction)
+        CollectionGrid(
+            sections = state.sections,
+            innerPadding = innerPadding,
+            onAction = onAction,
+            coverMode = state.coverMode,
+        )
+    }
+
+    if (showDisplaySettings && showDisplaySettingsDialog) {
+        SortByDialog(
+            currentSortBy = state.sortBy,
+            currentSortOrder = state.sortOrder,
+            currentCoverMode = state.coverMode,
+            onUpdate = { sortBy, sortOrder, coverMode ->
+                onAction(CollectionAction.ChangeSorting(sortBy, sortOrder))
+                onAction(CollectionAction.ChangeCoverMode(coverMode))
+            },
+            onDismissRequest = { showDisplaySettingsDialog = false },
+        )
     }
 }
 

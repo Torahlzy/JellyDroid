@@ -476,7 +476,7 @@ class JellyfinRepositoryImpl(
             )
         }
 
-    override suspend fun getFavoriteItems(): List<FindroidItem> =
+    override suspend fun getFavoriteItems(sortBy: SortBy, sortOrder: SortOrder): List<FindroidItem> =
         withContext(Dispatchers.IO) {
             jellyfinApi.itemsApi
                 .getItems(
@@ -485,6 +485,8 @@ class JellyfinRepositoryImpl(
                     includeItemTypes =
                         listOf(BaseItemKind.MOVIE, BaseItemKind.SERIES, BaseItemKind.EPISODE),
                     recursive = true,
+                    sortBy = listOf(ItemSortBy.fromName(sortBy.sortString)),
+                    sortOrder = listOf(ItemSortOrder.fromName(sortOrder.sortString)),
                 )
                 .content
                 .items

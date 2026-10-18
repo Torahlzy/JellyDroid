@@ -111,7 +111,8 @@ interface JellyfinRepository {
     /** 一次性取回服务端提供的可用筛选值（标签、分级、年份）。 */
     suspend fun getFilterValues(): FilterValues
 
-    suspend fun getFavoriteItems(): List<FindroidItem>
+    /** 收藏条目（电影 / 剧集 / 单集），排序由服务端完成，与媒体库列表共用同一套排序偏好。 */
+    suspend fun getFavoriteItems(sortBy: SortBy, sortOrder: SortOrder): List<FindroidItem>
 
     suspend fun getSearchItems(query: String): List<FindroidItem>
 

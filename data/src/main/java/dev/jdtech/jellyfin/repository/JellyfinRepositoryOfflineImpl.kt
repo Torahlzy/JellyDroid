@@ -144,9 +144,10 @@ class JellyfinRepositoryOfflineImpl(
 
     override suspend fun getFilterValues(): FilterValues = FilterValues()
 
-    override suspend fun getFavoriteItems(): List<FindroidItem> {
-        TODO("Not yet implemented")
-    }
+    // 收藏列表入口挂在联网才有的「媒体」页里，离线模式下用户走不到；
+    // 这里返回空列表而不是抛 NotImplementedError，避免将来入口放开时直接崩溃
+    override suspend fun getFavoriteItems(sortBy: SortBy, sortOrder: SortOrder): List<FindroidItem> =
+        emptyList()
 
     override suspend fun getSearchItems(query: String): List<FindroidItem> {
         return withContext(Dispatchers.IO) {

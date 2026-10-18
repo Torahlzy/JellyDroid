@@ -35,8 +35,13 @@ fun FavoritesScreen(
                 is CollectionAction.OnItemClick -> onItemClick(action.item)
                 is CollectionAction.OnItemDetails -> {}
                 is CollectionAction.OnBackClick -> navigateBack()
+                // 排序与封面模式由 ViewModel 落到共享偏好，这里只做导航
+                is CollectionAction.ChangeSorting,
+                is CollectionAction.ChangeCoverMode -> Unit
             }
+            viewModel.onAction(action)
         },
+        showDisplaySettings = true,
     )
 }
 
