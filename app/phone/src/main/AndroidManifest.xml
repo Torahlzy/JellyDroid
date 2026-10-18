@@ -11,10 +11,16 @@
         android:name="android.hardware.wifi"
         android:required="false" />
 
+    <!-- 关闭系统的预测性返回（predictive back）：开着手势 / 按住返回键时，系统会按手势进度
+         驱动页面转场，详情页在被整体淡出 / 收缩的同时，浮在其上的返回与播放按钮也会跟着
+         忽隐忽现，观感像闪烁。关闭后按住期间画面完全静止，松手确认返回时才播放正常的返回转场。
+         属性是 application 级，播放器页同样适用；仓库里返回都走 BackHandler / nav-compose，
+         关掉后回退到旧派发路径，功能不受影响。Google 把它定位为临时退路，本项目决定不启用
+         预测性返回，NavHost 里也不再注册 predictivePop* 转场 -->
     <application
         android:name=".BaseApplication"
         android:allowBackup="true"
-        android:enableOnBackInvokedCallback="true"
+        android:enableOnBackInvokedCallback="false"
         android:fullBackupOnly="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

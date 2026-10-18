@@ -2,6 +2,7 @@ package dev.jdtech.jellyfin
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.EnterTransition
@@ -34,6 +35,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavOptions
@@ -692,53 +694,21 @@ private fun SharedTransitionNavHost(
             NavHost(
                 navController = navController,
                 startDestination = startDestination,
+                // 底部标签之间是瞬时切换（共享元素轮不到标签间播放，详情页仍走自己的转场）；
+                // 其余导航沿用 M3 规范的全局淡入淡出。
+                // 预测性返回已在 AndroidManifest 关闭（enableOnBackInvokedCallback=false），
+                // 因此这里不再注册 predictivePop* 转场；若日后恢复预测性返回，需一并补回
                 enterTransition = {
-                    fadeIn(
-                        tween(
-                            durationMillis = Motion.DurationMedium4,
-                            easing = Motion.EasingEmphasizedDecelerate,
-                        )
-                    )
+                    if (isTabSwitch()) EnterTransition.None else defaultEnterTransition()
                 },
                 exitTransition = {
-                    fadeOut(
-                        tween(
-                            durationMillis = Motion.DurationShort4,
-                            easing = Motion.EasingEmphasizedAccelerate,
-                        )
-                    )
+                    if (isTabSwitch()) ExitTransition.None else defaultExitTransition()
                 },
                 popEnterTransition = {
-                    fadeIn(
-                        tween(
-                            durationMillis = Motion.DurationMedium4,
-                            easing = Motion.EasingEmphasizedDecelerate,
-                        )
-                    )
+                    if (isTabSwitch()) EnterTransition.None else defaultEnterTransition()
                 },
                 popExitTransition = {
-                    fadeOut(
-                        tween(
-                            durationMillis = Motion.DurationShort4,
-                            easing = Motion.EasingEmphasizedAccelerate,
-                        )
-                    )
-                },
-                predictivePopEnterTransition = {
-                    fadeIn(
-                        tween(
-                            durationMillis = Motion.DurationMedium4,
-                            easing = Motion.EasingEmphasizedDecelerate,
-                        )
-                    )
-                },
-                predictivePopExitTransition = {
-                    fadeOut(
-                        tween(
-                            durationMillis = Motion.DurationShort4,
-                            easing = Motion.EasingEmphasizedAccelerate,
-                        )
-                    )
+                    if (isTabSwitch()) ExitTransition.None else defaultExitTransition()
                 },
             ) {
                 builder()
@@ -752,6 +722,42 @@ private fun SharedTransitionNavHost(
 private fun SharedElementHost(scope: AnimatedVisibilityScope, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides scope, content = content)
 }
+
+/**
+ * 目的地对应的底部标签序号；不是标签页（详情、设置子页等）返回 null。
+ *
+ * 序号只用来区分「是不是同一个标签」，取值本身没有含义。
+ */
+private fun tabIndexOf(entry: NavBackStackEntry): Int? {
+    // 目的地上的 route 是「模式串」，带参路由会追加 ?indexes={indexes}，先还原成类名再比对
+    val routeClass = entry.destination.route?.substringBefore('?') ?: return null
+    return when (routeClass) {
+        HomeRoute::class.qualifiedName -> 0
+        MediaRoute::class.qualifiedName -> 1
+        SettingsRoute::class.qualifiedName -> {
+            // 设置页复用同一个目的地，根部与各级子页只能靠参数区分：一级分类页（如「语言」）的
+            // indexes 同样只有一项，所以要看内容是不是标签标题，不能按长度判断
+            val indexes = runCatching { entry.toRoute<SettingsRoute>().indexes }.getOrNull()
+            if (indexes?.firstOrNull() == CoreR.string.title_settings) 2 else null
+        }
+        else -> null
+    }
+}
+
+/** 是否在两个不同的底部标签之间切换（标签间切换不做动画）。 */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.isTabSwitch(): Boolean {
+    val fromIndex = tabIndexOf(initialState) ?: return false
+    val toIndex = tabIndexOf(targetState) ?: return false
+    return fromIndex != toIndex
+}
+
+/** 全局前进导航进入：淡入（快起缓停）。 */
+private fun defaultEnterTransition(): EnterTransition =
+    fadeIn(tween(durationMillis = Motion.DurationMedium4, easing = Motion.EasingEmphasizedDecelerate))
+
+/** 全局前进导航退出：淡出，比进入更快（M3 非对称规则）。 */
+private fun defaultExitTransition(): ExitTransition =
+    fadeOut(tween(durationMillis = Motion.DurationShort4, easing = Motion.EasingEmphasizedAccelerate))
 
 /** 详情页进入：整体淡入并轻微放大（0.94 → 1），与返回时的收缩构成容器变换感。 */
 private fun detailEnterTransition(): EnterTransition =

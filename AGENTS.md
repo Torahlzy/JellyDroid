@@ -133,7 +133,7 @@
 
 - **形变动画（Shape Morphing）**：用 `graphicsLayer` 或 M3 容器转换（Container Transform）实现组件点击、展开、切换时的平滑形状演变（如从 Card 扩张为全屏 Surface）。
 - **手势与中断支持（Interruption handling）**：弹簧动画保证用户在连续拖拽或快速中断操作时动画流畅衔接，不发生骤跳。
-- **预测性返回（Predictive Back）**：对 Navigation 或 Dialog / Sheet 交互，集成 Android 13+ 预测性返回手势动画（返回前拉伸缩放预览）。
+- **预测性返回（Predictive Back）默认关闭，不要启用**：`app/phone` 的 `AndroidManifest.xml` 里 `android:enableOnBackInvokedCallback="false"`。原因：开启后按住返回手势时，系统按进度驱动详情页的淡出 / 收缩，浮在其上的返回与播放按钮会跟着忽隐忽现，观感像闪烁。因此 `NavHost` 也不再注册 `predictivePopEnterTransition` / `predictivePopExitTransition`；若要恢复预测性返回，必须先解决详情页按住期间的闪烁问题。
 
 ### 4. 视觉与反馈
 

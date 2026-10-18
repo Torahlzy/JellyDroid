@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -76,7 +77,10 @@ fun ItemFilterScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    LaunchedEffect(facet, filterKey) { viewModel.loadItems(facet, filterKey) }
+    // 从详情页返回时本页会重新进入组合、effect 再执行一次；已取过分页流就不再重取，
+    // 否则会新建 PagingData 流、列表被清空后重新加载，滚动位置回到顶部。
+    // 排序变更走 onAction → ViewModel 内部重新取数，不经过这里
+    LaunchedEffect(facet, filterKey) { viewModel.loadItemsIfNeeded(facet, filterKey) }
 
     ItemFilterScreenLayout(
         title = title,
@@ -99,6 +103,10 @@ private fun ItemFilterScreenLayout(
     val contentPadding = PaddingValues(all = MaterialTheme.spacings.default)
 
     val items = state.items.collectAsLazyPagingItems()
+
+    // 网格状态提到分支外面：加载中 / 空结果时网格会暂时不组合，
+    // 状态若放在网格内部会随组件一起丢弃，从详情页返回后滚动位置就丢了
+    val gridState = rememberLazyGridState()
 
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
@@ -175,6 +183,7 @@ private fun ItemFilterScreenLayout(
                                     GridCellsAdaptiveWithMinColumns(minSize = 160.dp, minColumns = 2)
                                 },
                             modifier = Modifier.fillMaxSize(),
+                            state = gridState,
                             contentPadding = contentPadding + innerPadding,
                             horizontalArrangement =
                                 Arrangement.spacedBy(MaterialTheme.spacings.default),
