@@ -1,8 +1,36 @@
-Findroid is a third-party Android application for Jellyfin that provides a native user interface to browse and play movies and series.
+Jellydroid is a fork of Findroid, a third-party Android client for Jellyfin with a native interface for browsing and playing movies and series. It keeps the original experience and focuses on large libraries, tablets, foldables and self-hosted setups.
 
-To use this app you must have a Jellyfin server.
+You need your own Jellyfin server to use this app.
 
-You can also download movies and TV shows for offline playback while on the road.
-And with the built-in mpv player you are sure that all media formats will play correctly including styled SSA/ASS subtitles.
+BROWSING
+- Responsive home carousel: the number of items per screen and the aspect ratio adapt to phone, tablet and foldable widths.
+- Library sorting includes a random mode that shuffles locally page by page without duplicates.
+- Browse your library by genre, tag, rating, year, actor, director, writer or studio, with sorting and a poster/still cover toggle.
+- Search results are cached, so switching back and forth does not reload the same query.
 
-Thanks for using Findroid!
+ITEM DETAILS
+- Long titles collapse to three lines and expand on tap.
+- Editable poster: view, upload, scrape from sites you configure, or clear all images of an item.
+- Editable NFO metadata: title, original title, overview, genres, tags, studios, rating, cast and crew.
+- Metadata scraping: fetch title, overview and related fields from sites you configure yourself. Scraping only reads text on the device and writes to the server after you confirm.
+- Optional AI translation for scraped titles and overviews. It uses an OpenAI-compatible endpoint and the API key is stored on the device. The feature is optional and off by default.
+- Actor avatars can be scraped by name and uploaded to the server.
+
+PLAYBACK
+- Two backends: ExoPlayer and mpv.
+- Choose between multiple versions of the same movie, with local and server files clearly marked.
+- Capture the current frame and set it as the backdrop image.
+- Brightness is only remembered after you change it manually.
+- Transparent playback controls that do not cover the picture.
+
+DOWNLOADS
+- Downloads run in a WorkManager foreground service and continue after you leave the download screen.
+- Large files are split into concurrent segments when the server supports range requests, with automatic fallback to a single connection.
+- Real-time speed and clear states: queued, paused, failed, completed.
+- Interrupted downloads resume from the bytes already transferred.
+
+COMPATIBILITY
+- Works with Jellyfin 10.10.x and newer, including common NAS Docker images.
+- The layout adapts to phones, tablets and foldables.
+
+Jellydroid is licensed under GPLv3 and inherits the original work by Jarne Demeulemeester (Findroid). It is not affiliated with the Jellyfin project or the Findroid project. All trademarks belong to their respective owners.

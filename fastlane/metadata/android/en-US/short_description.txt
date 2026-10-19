@@ -1,1 +1,1 @@
-Third-party native Jellyfin app
+Findroid-based Jellyfin client with richer library and download tools

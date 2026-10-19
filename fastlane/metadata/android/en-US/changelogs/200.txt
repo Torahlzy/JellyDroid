@@ -1,0 +1,13 @@
+Jellydroid 2.0, based on Findroid 1.1.0.
+
+Highlights:
+- Responsive home and library layouts for phones, tablets and foldables
+- Browse by genre, tag, rating, year, actor, director, writer and studio
+- Random library sort, poster/still cover toggle, cached search results
+- Editable poster and NFO metadata with multi-site scraping
+- Optional AI translation of scraped titles and overviews, off by default
+- Downloads continue in background, with concurrent segments and resume
+- Pick between multiple versions and capture the current frame as a backdrop
+- Support for Jellyfin 10.10.x servers
+
+Plus a bunch of UI fixes and stability improvements.
