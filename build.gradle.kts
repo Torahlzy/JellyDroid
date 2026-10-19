@@ -11,12 +11,8 @@ plugins {
     alias(libs.plugins.ktfmt) apply false
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
+// 依赖仓库统一在 settings.gradle.kts 的 dependencyResolutionManagement 中声明，
+// 本地镜像从 local.properties 读取，避免把国内镜像写进入库文件。
 
 subprojects {
     plugins.apply("com.ncorti.ktfmt.gradle")
