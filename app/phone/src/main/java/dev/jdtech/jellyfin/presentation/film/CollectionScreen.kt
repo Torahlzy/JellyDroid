@@ -56,12 +56,11 @@ fun CollectionScreen(
         onAction = { action ->
             when (action) {
                 is CollectionAction.OnItemClick -> onItemClick(action.item)
-                is CollectionAction.OnItemDetails -> {}
                 is CollectionAction.OnBackClick -> navigateBack()
-                // 合集页不提供展示设置入口
-                is CollectionAction.ChangeSorting,
-                is CollectionAction.ChangeCoverMode -> Unit
+                // 排序与封面模式由 ViewModel 落到共享偏好，这里只做导航
+                else -> Unit
             }
+            viewModel.onAction(action)
         },
     )
 }
@@ -72,8 +71,6 @@ fun CollectionScreenLayout(
     collectionName: String,
     state: CollectionState,
     onAction: (CollectionAction) -> Unit,
-    // 只有「我喜欢」页提供排序与封面显示设置（与媒体库列表共用同一套配置）
-    showDisplaySettings: Boolean = false,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
@@ -96,13 +93,12 @@ fun CollectionScreenLayout(
                     }
                 },
                 actions = {
-                    if (showDisplaySettings) {
-                        IconButton(onClick = { showDisplaySettingsDialog = true }) {
-                            Icon(
-                                painter = painterResource(CoreR.drawable.ic_arrow_down_up),
-                                contentDescription = null,
-                            )
-                        }
+                    // 排序与封面显示设置，与媒体库列表 / 收藏页共用同一套偏好
+                    IconButton(onClick = { showDisplaySettingsDialog = true }) {
+                        Icon(
+                            painter = painterResource(CoreR.drawable.ic_arrow_down_up),
+                            contentDescription = null,
+                        )
                     }
                 },
                 windowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
@@ -119,7 +115,7 @@ fun CollectionScreenLayout(
         )
     }
 
-    if (showDisplaySettings && showDisplaySettingsDialog) {
+    if (showDisplaySettingsDialog) {
         SortByDialog(
             currentSortBy = state.sortBy,
             currentSortOrder = state.sortOrder,
