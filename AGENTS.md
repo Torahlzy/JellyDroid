@@ -209,6 +209,38 @@ Compare-Object $en $zh | Where-Object { $_.SideIndicator -eq '<=' } | ForEach-Ob
 
 Findroid 是 Jellyfin 的第三方 Android 应用——使用原生 Jetpack Compose 界面浏览和播放电影 / 剧集，支持 ExoPlayer 与 mpv 两种视频后端。
 
+## README 增量维护
+
+README 面向产品宣发，保持清晰易懂；Git 核对基线统一记录在本节，重写或精简 README 时不得丢失。用户要求更新 README 时，默认同时核对最新提交与未提交改动，补齐功能变化，不能只重写旧文案。
+
+### 当前核对基线
+
+- **上游分叉点**：`ba610679`。
+- **已完整核对到的提交**：`91890d900938c4f7a74267fc85d6ccbff31dd272`（简称 `91890d90`，2026-10-25，`docs: 重写 README 为产品介绍结构，突出番号抓取、翻译与演员资料整理`）。
+- **核对日期与范围**：2026-10-25，沿用原 README 对分叉点至 `8c305c07` 的历史核对记录，完整检查 `8c305c07..91890d90` 的全部 10 个提交及其文件变化，并核对暂存区、工作区和未跟踪文件。此前产品文案重写未完整核对增量，本次已补齐；核对时暂存区与未跟踪文件均无新增改动。
+- **本次 README 补齐内容**：抓取网址运行时配置及发布版需自行配置站点的说明；「我喜欢」页排序、封面切换与共享偏好；电影详情共享元素转场与内容淡入；底部标签即时切换、返回手势画面稳定及筛选列表滚动位置保持。收藏请求取消与失败回滚归入稳定性改进，构建仓库调整和商店元数据不作为新增产品功能宣传。
+
+### 已纳入 README 的未提交功能
+
+- **复制完整演员名**：长按电影详情页演员条目或人物列表中的演员卡片，可复制完整姓名。涉及 `app/phone/src/main/java/dev/jdtech/jellyfin/presentation/film/PersonListScreen.kt`、`app/phone/src/main/java/dev/jdtech/jellyfin/presentation/film/components/PersonItem.kt`、`core/src/main/res/values/strings.xml`、`core/src/main/res/values-zh-rCN/strings.xml`、`core/src/main/res/values-zh-rTW/strings.xml` 与 `wiki/pages.md`。本次已核对工作区实现并写入 README，尚无对应提交；后续提交后再核对并纳入新基线。
+- 本次 README 与本节维护记录的修改同样尚未提交，不代表上述基线之后已有新的已提交版本。
+
+### 后续更新方法
+
+1. 从本节记录的核对基线开始，检查后续提交、暂存区、工作区及未跟踪文件，不必重复翻阅已核对的全部历史：
+
+   ```bash
+   git log --reverse --oneline 91890d90..HEAD
+   git diff --stat 91890d90..HEAD
+   git diff --cached
+   git diff
+   git status --short
+   ```
+
+2. 结合 `git show <提交>`、相关源码与 `wiki/pages.md` 核实变化，将用户可感知的新功能、入口变化与重要限制合并进 README 对应章节；不把内部重构和逐条提交记录直接堆进产品介绍。
+3. 完整核对增量后，更新本节的核对基线、提交日期与说明，并同步替换示例命令中的旧哈希。只改措辞或只抽查部分功能时，不得直接把基线推进到 HEAD；尚未核对的范围须保留说明。
+4. 未提交改动不属于已核对提交范围；若已写进 README，在本节注明涉及的功能或文件，待其提交后再核对并纳入新基线。
+
 ## Wiki 知识库
 
 `wiki/` 目录存放按代码生成的项目知识文档，用于快速定位功能实现：

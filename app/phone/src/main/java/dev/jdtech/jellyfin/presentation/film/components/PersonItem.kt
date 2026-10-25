@@ -1,5 +1,7 @@
 package dev.jdtech.jellyfin.presentation.film.components
 
+import android.content.ClipData
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -17,11 +19,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -33,6 +39,7 @@ import dev.jdtech.jellyfin.core.presentation.dummy.dummyPerson
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
+import kotlinx.coroutines.launch
 
 /**
  * 演员条目：点击进入作品列表；[onScrapeImageClick] 非空时支持长按弹出「获取头像」菜单
@@ -48,6 +55,9 @@ fun PersonItem(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier =
@@ -99,6 +109,22 @@ fun PersonItem(
                     onClick = {
                         menuExpanded = false
                         onScrapeImageClick()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(CoreR.string.copy_actor_name)) },
+                    onClick = {
+                        menuExpanded = false
+                        scope.launch {
+                            clipboard.setClipEntry(
+                                ClipEntry(ClipData.newPlainText(person.name, person.name))
+                            )
+                            Toast.makeText(
+                                context,
+                                CoreR.string.actor_name_copied,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
                     },
                 )
             }

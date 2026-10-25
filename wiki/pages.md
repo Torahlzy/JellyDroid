@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-10-19**
+**最后更新：2026-10-25**
 
 ---
 
@@ -209,7 +209,7 @@ else -> WelcomeRoute
 
 ### MovieScreen — 电影详情
 
-- **职责**：加载影片元数据 / 视频信息 / 演员，提供播放、预告、标记已看、收藏、下载、跳转演员、点击类型 / 标签跳到对应筛选结果页，以及「更多」菜单（编辑封面 / 编辑 nfo / 删除全部 / 抓取网址），并处理离线模式（离线时类型 / 标签不可点）。信息行的类型 / 标签取值由 `PHONE/presentation/film/components/InfoText.kt` 渲染，点击经 `MovieAction.NavigateToGenre` / `NavigateToTag` → `PHONE/NavigationRoot.kt` 的 `navigateToMetadataFacet` 跳转 `ItemFilterRoute`。
+- **职责**：加载影片元数据 / 视频信息 / 演员，演员长按菜单支持获取头像与复制完整演员名，提供播放、预告、标记已看、收藏、下载、跳转演员、点击类型 / 标签跳到对应筛选结果页，以及「更多」菜单（编辑封面 / 编辑 nfo / 删除全部 / 抓取网址），并处理离线模式（离线时类型 / 标签不可点）。信息行的类型 / 标签取值由 `PHONE/presentation/film/components/InfoText.kt` 渲染，点击经 `MovieAction.NavigateToGenre` / `NavigateToTag` → `PHONE/NavigationRoot.kt` 的 `navigateToMetadataFacet` 跳转 `ItemFilterRoute`。
 - **路由**：`MovieRoute(movieId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **进场动画**：列表封面与详情页头部之间是共享元素 morph（key 为 `movie-hero-<movieId>`，经 `PHONE/presentation/utils/SharedTransition.kt` 的 `heroSharedBounds` 建立，两个转场作用域由 `PHONE/NavigationRoot.kt` 的 `SharedTransitionNavHost` / `SharedElementHost` 经 CompositionLocal 下发）；加载态为居中转圈，内容区块等进场转场（morph）结束后才组合并让标题 / 信息行 / 按钮栏 / 简介 / 演员行依次入场（`AppearingSection`），避免转场中途组合整页内容抢帧卡顿；详情页进入为淡入 + 轻微放大、返回反向收缩，转场参数在 `PHONE/NavigationRoot.kt`（全局 token 镜像在 `PHONE/presentation/theme/Motion.kt`）。
 - **Screen**：`PHONE/presentation/film/MovieScreen.kt`；弹窗与小组件都在 `PHONE/presentation/film/components/` 下：
@@ -273,7 +273,7 @@ else -> WelcomeRoute
 
 ### PersonListScreen — 人物列表
 
-- **职责**：按人物类型列出演员 / 导演 / 编剧，顶部搜索走服务端（输入防抖）；人物没有独立详情页，点击某人直接进入按该人物筛选的作品列表（`ItemFilterRoute`，facet 随当前列表的维度）。演员维度（`MetadataFacet.ACTOR`）且非离线模式时，长按人物卡片（`PersonGridCard`）弹出「获取头像」小菜单，打开与电影详情页共用的 `ScrapeActorImageDialog`（编排见 `FILM/presentation/actorimage/ActorImageScrapeViewModel.kt`，与 `MovieScreen.kt` 共用同一个 ViewModel）；上传成功后 Toast 提示并复用 `Retry` 重取列表让新头像显示出来。
+- **职责**：按人物类型列出演员 / 导演 / 编剧，顶部搜索走服务端（输入防抖）；人物没有独立详情页，点击某人直接进入按该人物筛选的作品列表（`ItemFilterRoute`，facet 随当前列表的维度）。演员维度（`MetadataFacet.ACTOR`）且非离线模式时，长按人物卡片（`PersonGridCard`）弹出「获取头像 / 复制演员名」小菜单，点击「复制演员名」将完整姓名复制到剪贴板并关闭菜单，成功后显示 Toast 提示；点击「获取头像」打开与电影详情页共用的 `ScrapeActorImageDialog`（编排见 `FILM/presentation/actorimage/ActorImageScrapeViewModel.kt`，与 `MovieScreen.kt` 共用同一个 ViewModel）；上传成功后 Toast 提示并复用 `Retry` 重取列表让新头像显示出来。
 - **路由**：`MetadataBrowseRoute`（`facet` 为 `MetadataFacet.ACTOR` / `MetadataFacet.DIRECTOR` / `MetadataFacet.WRITER`），定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/PersonListScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/personlist/PersonListViewModel.kt`、`FILM/presentation/personlist/PersonListState.kt`、`FILM/presentation/personlist/PersonListAction.kt`；另使用共享的 `FILM/presentation/actorimage/ActorImageScrapeViewModel.kt`。

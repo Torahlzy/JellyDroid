@@ -200,6 +200,8 @@
     <string name="translate_failed">Translation failed, kept the existing text: %1$s</string>
     <string name="clear">Clear</string>
     <string name="scrape_actor_image">Get avatar</string>
+    <string name="copy_actor_name">Copy actor name</string>
+    <string name="actor_name_copied">Actor name copied</string>
     <string name="actor_has_avatar_warning">This person already has an avatar, uploading will replace it</string>
     <string name="actor_images_uploaded">Actor avatar uploaded</string>
     <string name="actor_images_upload_failed">Failed to upload actor avatar: %1$s</string>
