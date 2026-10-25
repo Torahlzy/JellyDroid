@@ -41,7 +41,6 @@ fun FavoritesScreen(
             }
             viewModel.onAction(action)
         },
-        showDisplaySettings = true,
     )
 }
 

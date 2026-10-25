@@ -26,7 +26,7 @@ internal const val LANDSCAPE_COVER_MIN_WIDTH_DP = 300
 /**
  * 分组条目网格。
  *
- * [coverMode] 由「我喜欢」页从偏好读出后传入（与媒体库列表共用），合集与下载页不传，保持竖图。
+ * [coverMode] 由「我喜欢」页与合集页从偏好读出后传入（与媒体库列表共用），下载页不传，保持竖图。
  */
 @Composable
 fun CollectionGrid(

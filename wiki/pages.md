@@ -174,7 +174,7 @@ else -> WelcomeRoute
 
 ### LibraryScreen — 媒体库详情
 
-- **职责**：单个媒体库的内容列表，支持分页加载、排序切换（含随机排序）与封面显示模式切换（右上角 `SortByDialog` 同时承载两项设置），条目点击进入详情。排序与封面模式偏好与「收藏」页共用，两处任一改动都会在下次进入时生效。
+- **职责**：单个媒体库的内容列表，支持分页加载、排序切换（含随机排序）与封面显示模式切换（右上角 `SortByDialog` 同时承载两项设置），条目点击进入详情。排序与封面模式偏好与「收藏」「合集详情」页共用，任一处改动都会在下次进入其他页面时生效。
 - **路由**：`LibraryRoute(libraryId, libraryName, libraryType)`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/LibraryScreen.kt`；设置弹窗为 `PHONE/presentation/film/components/SortByDialog.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/library/LibraryViewModel.kt`、`FILM/presentation/library/LibraryState.kt`、`FILM/presentation/library/LibraryAction.kt`。
@@ -187,21 +187,22 @@ else -> WelcomeRoute
 
 ### CollectionScreen — 合集详情
 
-- **职责**：合集（BoxSet）详情页，按电影 / 剧集 / 单集分组展示合集内条目。
+- **职责**：合集（BoxSet）详情页，按电影 / 剧集 / 单集分组展示合集内条目；右上角提供排序与封面显示设置，与媒体库列表共用同一套偏好（`AppPreferences.sortBy` / `sortOrder` / `libraryCoverMode`），切换后媒体库列表与收藏页下次进入即生效。
 - **路由**：`CollectionRoute(collectionId, collectionName)`，定义并注册于 `PHONE/NavigationRoot.kt`。
-- **Screen**：`PHONE/presentation/film/CollectionScreen.kt`。
-- **ViewModel / State / Action**：`FILM/presentation/collection/CollectionViewModel.kt`、`FILM/presentation/collection/CollectionState.kt`、`FILM/presentation/collection/CollectionAction.kt`。
-- **State 字段**：`sections`、`isLoading`、`error`。
-- **主要方法 / Action**：`loadItems(parentId)`；`OnItemClick`、`OnItemDetails`、`OnBackClick`。
+- **Screen**：`PHONE/presentation/film/CollectionScreen.kt`；条目网格为 `PHONE/presentation/film/components/CollectionGrid.kt`，设置弹窗为 `PHONE/presentation/film/components/SortByDialog.kt`。
+- **ViewModel / State / Action**：`FILM/presentation/collection/CollectionViewModel.kt`、`FILM/presentation/collection/CollectionState.kt`、`FILM/presentation/collection/CollectionAction.kt`；分组逻辑共用 `FILM/presentation/collection/CollectionSections.kt` 的 `buildCollectionSections()`（收藏页与下载页同一实现）。
+- **State 字段**：`sections`、`sortBy`、`sortOrder`、`coverMode`、`isLoading`、`error`。
+- **主要方法 / Action**：`loadItems(parentId)`（`repository.getItems(parentId, sortBy, sortOrder)`）、`onAction()`；`OnItemClick`、`OnItemDetails`、`OnBackClick`、`ChangeSorting`（更新 State、写入共享偏好并重新取数，失败回滚）、`ChangeCoverMode`（更新 State 并写入共享偏好，不重新取数）。
+- **封面显示模式**：首次进入读取共享偏好，因此默认外观与媒体库电影列表一致——横图模式走 `Direction.HORIZONTAL` + `BANNER_ASPECT_RATIO`、列宽按可用宽度自适应，竖图模式保留分集 16:9 剧照、其余条目用竖图。
 - **入口**：点击 `FindroidBoxSet` 条目（`PHONE/NavigationRoot.kt`）。
 
 ### FavoritesScreen — 收藏
 
 - **职责**：读取收藏条目，按电影 / 剧集 / 单集分组展示；右上角提供排序与封面显示设置，与媒体库列表共用同一套偏好（`AppPreferences.sortBy` / `sortOrder` / `libraryCoverMode`），在此切换后媒体库列表下次进入即生效。
 - **路由**：`FavoritesRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
-- **Screen**：`PHONE/presentation/film/FavoritesScreen.kt`；复用 `PHONE/presentation/film/CollectionScreen.kt` 的 `CollectionScreenLayout`（`showDisplaySettings = true` 时顶栏显示设置入口），设置弹窗为 `PHONE/presentation/film/components/SortByDialog.kt`。
-- **ViewModel**：`FILM/presentation/favorites/FavoritesViewModel.kt`。
-- **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action）；其中排序与封面模式字段仅由收藏页填充，合集 / 下载页保持默认值。
+- **Screen**：`PHONE/presentation/film/FavoritesScreen.kt`；复用 `PHONE/presentation/film/CollectionScreen.kt` 的 `CollectionScreenLayout`（顶栏固定展示设置入口），设置弹窗为 `PHONE/presentation/film/components/SortByDialog.kt`。
+- **ViewModel**：`FILM/presentation/favorites/FavoritesViewModel.kt`；分组逻辑复用 `FILM/presentation/collection/CollectionSections.kt` 的 `buildCollectionSections()`。
+- **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action）；其中排序与封面模式字段由收藏页与合集页填充，下载页保持默认值。
 - **State 字段**：`sections`、`sortBy`、`sortOrder`、`coverMode`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadItems()`（`repository.getFavoriteItems(sortBy, sortOrder)`，排序由服务端完成）、`onAction()`；`OnItemClick`、`OnBackClick`（导航由界面处理）、`ChangeSorting`（更新 State、写入共享偏好并重新取数）、`ChangeCoverMode`（更新 State 并写入共享偏好，不重新取数）。
 - **封面显示模式**：横图模式（`CollectionGrid.coverMode`）所有条目走 `Direction.HORIZONTAL` + `BANNER_ASPECT_RATIO`、列宽按可用宽度自适应；竖图模式保留分集原有的 16:9 剧照形态，其余条目用竖图。

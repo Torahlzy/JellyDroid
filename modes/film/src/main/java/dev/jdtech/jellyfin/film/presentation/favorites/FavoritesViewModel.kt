@@ -3,20 +3,13 @@ package dev.jdtech.jellyfin.film.presentation.favorites
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.jdtech.jellyfin.core.Constants
-import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.film.presentation.collection.CollectionAction
 import dev.jdtech.jellyfin.film.presentation.collection.CollectionState
+import dev.jdtech.jellyfin.film.presentation.collection.buildCollectionSections
 import dev.jdtech.jellyfin.logging.AppLog
-import dev.jdtech.jellyfin.models.CollectionSection
 import dev.jdtech.jellyfin.models.CoverDisplayMode
-import dev.jdtech.jellyfin.models.FindroidEpisode
-import dev.jdtech.jellyfin.models.FindroidItem
-import dev.jdtech.jellyfin.models.FindroidMovie
-import dev.jdtech.jellyfin.models.FindroidShow
 import dev.jdtech.jellyfin.models.SortBy
 import dev.jdtech.jellyfin.models.SortOrder
-import dev.jdtech.jellyfin.models.UiText
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import javax.inject.Inject
@@ -110,7 +103,7 @@ constructor(
                     sortBy = _state.value.sortBy,
                     sortOrder = _state.value.sortOrder,
                 )
-            val sections = withContext(Dispatchers.Default) { buildSections(items) }
+            val sections = withContext(Dispatchers.Default) { buildCollectionSections(items) }
             _state.emit(_state.value.copy(isLoading = false, sections = sections))
             true
         } catch (e: CancellationException) {
@@ -121,44 +114,6 @@ constructor(
             _state.emit(_state.value.copy(isLoading = false, error = e))
             false
         }
-    }
-
-    /** 服务端返回的是混合列表，按电影 / 剧集 / 单集拆组，空分组不展示。 */
-    private fun buildSections(items: List<FindroidItem>): List<CollectionSection> {
-        val sections = mutableListOf<CollectionSection>()
-
-        CollectionSection(
-                Constants.FAVORITE_TYPE_MOVIES,
-                UiText.StringResource(CoreR.string.movies_label),
-                items.filterIsInstance<FindroidMovie>(),
-            )
-            .let {
-                if (it.items.isNotEmpty()) {
-                    sections.add(it)
-                }
-            }
-        CollectionSection(
-                Constants.FAVORITE_TYPE_SHOWS,
-                UiText.StringResource(CoreR.string.shows_label),
-                items.filterIsInstance<FindroidShow>(),
-            )
-            .let {
-                if (it.items.isNotEmpty()) {
-                    sections.add(it)
-                }
-            }
-        CollectionSection(
-                Constants.FAVORITE_TYPE_EPISODES,
-                UiText.StringResource(CoreR.string.episodes_label),
-                items.filterIsInstance<FindroidEpisode>(),
-            )
-            .let {
-                if (it.items.isNotEmpty()) {
-                    sections.add(it)
-                }
-            }
-
-        return sections
     }
 
     // 首次进入时沿用媒体库列表的排序与封面模式偏好，之后不再读取，避免覆盖用户在当前页面的选择
