@@ -57,17 +57,26 @@ data class ScrapedMovie(
  * 标题按 JavSP 的 `nfo.title_pattern`（`{num} {title}`）拼成「番号 + 片名」，番号排在前面。
  * 抓取结果只用来回填表单，保存仍走用户确认后的既有编辑流程，不会直接写入服务器。
  *
+ * 写进表单前做两件清理：剔除垃圾标题 / 简介（压制工具水印、文件名、网址广告会被站点当成
+ * 片名或简介抓进来），以及把站点分类归一成「分类 + 标签」两列。
+ *
  * @param fallbackTitle 标题兜底值（通常是抓取关键词）：极少数情况下站点连番号和片名都给不出，
  *   而表单里标题必填，为空会卡住确认按钮，因此按「番号 + 片名 → 原名 → 兜底值」取第一个非空值。
  */
 fun ScrapedMovie.toItemMetadataEdit(fallbackTitle: String = ""): ItemMetadataEdit {
-    val scrapedName = listOfNotNull(number, title).filter { it.isNotBlank() }.joinToString(" ")
+    // 标题被剔掉后就只剩番号，避免出现「SSIS-001 SVFI 7.31.6 Professional」这种片名
+    val cleanTitle = title?.takeUnless(JunkTextDetector::isJunkTitle)
+    val scrapedName = listOfNotNull(number, cleanTitle).filter { it.isNotBlank() }.joinToString(" ")
     val resolvedName = scrapedName.ifBlank { originalTitle.orEmpty() }.ifBlank { fallbackTitle }
+    // 站点把「4K」「内嵌字幕」这类文件特征也塞进分类，Jellyfin 上分类可跳转、标签不可，
+    // 因此按 JavSP 的规则拆分多值、统一繁简与同义词，并把特征值迁到标签
+    val (normalizedGenres, normalizedTags) = MetadataTagNormalizer.normalize(genres)
     return ItemMetadataEdit(
         name = resolvedName,
         originalTitle = originalTitle.orEmpty(),
-        overview = plot.orEmpty(),
-        genres = genres,
+        overview = plot?.takeUnless(JunkTextDetector::isJunkPlot).orEmpty(),
+        genres = normalizedGenres,
+        tags = normalizedTags,
         studios = listOfNotNull(producer, publisher).map { it.trim() }.filter { it.isNotEmpty() },
         actresses = actresses,
         directors = directors,

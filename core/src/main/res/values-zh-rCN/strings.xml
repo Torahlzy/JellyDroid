@@ -145,6 +145,7 @@
     <string name="scrape_images_keyword_title">抓取封面</string>
     <string name="scrape_images_result_title">抓取结果</string>
     <string name="metadata_updated">nfo 已更新</string>
+    <string name="metadata_unchanged">内容未变化，已跳过更新</string>
     <string name="update_metadata_failed">更新 nfo 失败：%1$s</string>
     <string name="edit_metadata_field_name">标题</string>
     <string name="edit_metadata_field_original_title">原名</string>
@@ -193,9 +194,10 @@
     <string name="translate_api_key">API Key</string>
     <string name="translate_model">模型</string>
     <string name="translate_fields">要翻译的字段</string>
+    <string name="translate_genres_tags">分类 / 标签</string>
     <string name="translate_auto">抓取后自动翻译</string>
     <string name="translate_auto_unconfigured">地址 / 密钥 / 模型没填全，自动翻译会被跳过。</string>
-    <string name="translate_in_progress">正在翻译标题 / 简介…</string>
+    <string name="translate_in_progress">正在翻译…</string>
     <string name="translate_existing">翻译现有内容</string>
     <string name="translate_failed">翻译失败，已保留原有内容：%1$s</string>
     <string name="clear">清空</string>

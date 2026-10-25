@@ -16,6 +16,8 @@ data class TranslateSettings(
     val translateTitle: Boolean = true,
     /** 是否翻译简介。 */
     val translatePlot: Boolean = true,
+    /** 是否翻译分类 / 标签（站点分类里的日文、英文值先查内置词典，查不到才交给模型）。 */
+    val translateGenresTags: Boolean = true,
     /** 抓取完成后是否自动翻译；关掉后抓取结果保持原文。 */
     val autoTranslate: Boolean = true,
 ) {

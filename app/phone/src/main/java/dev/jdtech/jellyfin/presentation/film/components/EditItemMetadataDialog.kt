@@ -129,6 +129,8 @@ fun EditItemMetadataDialog(
     // 由设置弹窗与它当场勾选的值合起来判断——只勾了标题而标题为空时就该禁用
     val hasTranslatableTitle = form.isValid && form.name.isNotBlank()
     val hasTranslatableOverview = form.isValid && form.overview.isNotBlank()
+    // 分类 / 标签只要有内容就允许点「翻译现有」：具体哪几个值需要翻译由翻译器自己判定
+    val hasTranslatableGenresTags = form.isValid && (form.genres.isNotBlank() || form.tags.isNotBlank())
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -268,6 +270,7 @@ fun EditItemMetadataDialog(
             settings = translateSettings,
             hasTranslatableTitle = hasTranslatableTitle,
             hasTranslatableOverview = hasTranslatableOverview,
+            hasTranslatableGenresTags = hasTranslatableGenresTags,
             onConfirm = { settings ->
                 showTranslateSettings = false
                 onTranslateSettingsChange(settings)

@@ -6,12 +6,14 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.jdtech.jellyfin.core.scraper.AvidParser
 import dev.jdtech.jellyfin.core.scraper.ImageScraper
 import dev.jdtech.jellyfin.core.scraper.MetadataScraper
+import dev.jdtech.jellyfin.core.scraper.MetadataTagNormalizer
 import dev.jdtech.jellyfin.core.scraper.ScrapedImage
 import dev.jdtech.jellyfin.core.scraper.ScraperSite
 import dev.jdtech.jellyfin.core.scraper.SiteImageScrapeResult
 import dev.jdtech.jellyfin.core.scraper.SiteMetadataScrapeResult
 import dev.jdtech.jellyfin.core.scraper.toItemMetadataEdit
 import dev.jdtech.jellyfin.core.translator.MetadataTranslator
+import dev.jdtech.jellyfin.core.translator.TagTranslator
 import dev.jdtech.jellyfin.film.domain.VideoMetadataParser
 import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.FindroidItemImage
@@ -25,6 +27,7 @@ import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.settings.domain.models.TranslateSettings
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
@@ -52,6 +55,7 @@ constructor(
     private val metadataScraper: MetadataScraper,
     private val imageScraper: ImageScraper,
     private val translator: MetadataTranslator,
+    private val tagTranslator: TagTranslator,
 ) : ViewModel() {
     // 抓取站点进页面时取一次（运行时配置优先于打包配置），直接放进初始 state，
     // 免得打开「编辑封面」/「编辑 nfo」弹窗时要等一次异步加载、先闪一下「没配站点」的空态；
@@ -80,6 +84,13 @@ constructor(
 
     /** 正在跑的图片抓取任务，用户取消时直接 cancel 掉。 */
     private var imageScrapeJob: Job? = null
+
+    /**
+     * 本轮抓取里分类 / 标签翻译的连续失败次数，达到上限后本批不再请求引擎（归一照常执行）。
+     *
+     * 各站点的翻译是并发的，因此用原子计数：普通 Int 的自增会少计，导致「停用阈值」形同虚设。
+     */
+    private val tagTranslateFailures = AtomicInteger()
 
     fun loadMovie(movieId: UUID) {
         this.movieId = movieId
@@ -346,6 +357,12 @@ constructor(
     /** 用弹窗提交的内容覆盖服务器上的 nfo。 */
     private fun updateItemMetadata(metadata: ItemMetadataEdit) {
         viewModelScope.launch {
+            // 与服务器现值完全一致时不写：服务端每次写入都会重新落盘 nfo，白白触发一次扫描
+            val current = _state.value.itemMetadata
+            if (current != null && current == metadata) {
+                eventsChannel.send(MovieEvent.MetadataUnchanged)
+                return@launch
+            }
             try {
                 repository.updateItemMetadata(movieId, metadata)
                 // 元数据已变，清掉表单缓存，避免下次打开弹窗看到旧值
@@ -374,6 +391,8 @@ constructor(
         scrapeJob?.cancel()
         val trimmed = keyword.trim()
         activeScrapeKeyword = trimmed
+        // 新一轮抓取重新给翻译机会：上一轮可能因为连续失败被停用
+        tagTranslateFailures.set(0)
         scrapeJob =
             // 抓取是「发请求 + 解析 HTML」，解析阶段是纯 CPU 活，整段放到 IO 线程，别占着主线程
             viewModelScope.launch(Dispatchers.IO) {
@@ -524,64 +543,112 @@ constructor(
     }
 
     /**
-     * 抓取后自动翻译各站点抓到的标题 / 简介。
+     * 抓取后自动翻译各站点抓到的标题 / 简介，以及分类 / 标签。
      *
-     * 逐站各发一次请求（每站「标题 + 简介」合成一次），站点之间并发——弹窗里切到哪个站点都要能
-     * 立刻看到译文。关掉自动翻译、设置没填全、或要翻的字段都是空的，都直接返回原文。
-     * 某一站翻不出来就保留该站原文（抓到的内容比译文重要），有站点失败时提示一次、原因取第一个。
+     * 逐站各发一次请求（每站「标题 + 简介」合成一次、分类 / 标签再合成一次），站点之间并发——
+     * 弹窗里切到哪个站点都要能立刻看到译文。关掉自动翻译、设置没填全、或要翻的字段都是空的，
+     * 都直接返回原文。某一段翻不出来只让该段保留原文（抓到的内容比译文重要），其余段照常应用；
+     * 有站点失败时提示一次、原因取第一个。
      */
     private suspend fun translateScrapedSites(
         sites: List<ScrapedSiteMetadata>,
     ): List<ScrapedSiteMetadata> {
         val settings = _state.value.translateSettings
         if (!settings.autoTranslate || !settings.isConfigured) return sites
-        val jobs =
-            sites.mapNotNull { site ->
-                val requested = translatableFields(site.metadata, settings)
-                if (requested.isEmpty()) null else site to requested
-            }
+        val jobs = sites.filter { site -> hasTranslatableContent(site.metadata, settings) }
         if (jobs.isEmpty()) return sites
         // 翻译要跑好几秒，先让进度弹窗把提示切成「正在翻译」，别让用户以为卡在抓取上
         _state.emit(_state.value.copy(isTranslating = true))
         val results =
             coroutineScope {
                 jobs
-                    .map { (site, requested) ->
-                        async { site.site to translateFields(site.metadata, requested) }
-                    }
+                    .map { site -> async { site.site to translateSite(site.metadata, settings) } }
                     .awaitAll()
             }
         // 一次故障往往几个站点一起失败，只提示一次，免得连着弹好几个同样的 Toast
         results
-            .mapNotNull { (_, result) ->
-                when (result) {
-                    is SiteTranslation.Failure -> result.error
-                    is SiteTranslation.Success -> null
-                }
-            }
+            .mapNotNull { (_, result) -> result.error }
             .firstOrNull()
             ?.let { error -> eventsChannel.send(MovieEvent.MetadataTranslateFailed(error)) }
-        // 没翻出来的站点原样返回：切到它时看到的是站点原文
-        val translatedBySite =
-            results
-                .mapNotNull { (site, result) ->
-                    when (result) {
-                        is SiteTranslation.Success -> site to result.metadata
-                        is SiteTranslation.Failure -> null
-                    }
-                }
-                .toMap()
+        // 每段失败只让该段保留原文，站点结果照常备进表单
+        val translatedBySite = results.associate { (site, result) -> site to result.metadata }
         return sites.map { site ->
             translatedBySite[site.site]?.let { translated -> site.copy(metadata = translated) } ?: site
         }
     }
 
+    /** 该站点的内容里是否有需要翻的字段：标题 / 简介按勾选的字段各判一次，分类 / 标签按自身开关。 */
+    private fun hasTranslatableContent(
+        metadata: ItemMetadataEdit,
+        settings: TranslateSettings,
+    ): Boolean =
+        translatableFields(metadata, settings).isNotEmpty() ||
+            (settings.translateGenresTags &&
+                (metadata.genres + metadata.tags).any { tagTranslator.needsTranslation(it) })
+
     /**
-     * 「翻译现有」：用弹窗里刚填好的设置，把编辑 nfo 表单里的标题 / 简介翻一遍再填回去。
+     * 翻一个站点的内容：标题 / 简介一次请求，分类 / 标签另一次（词典与缓存命中的不发请求）。
      *
-     * 与抓取后的自动翻译共用同一条链路，区别在内容来源与失败处理：这里翻不出来就什么都不动，
-     * 用户手里的内容原样留着，也不标成「已更新（未保存）」。翻成功则把当前表单标成抓取内容，
-     * 并把当前来源站点的备好内容一并换成译文——否则切走再切回来看到的还是没有翻过的旧内容。
+     * 两段互不牵连：标题 / 简介那段失败只是这两项保留原文，分类 / 标签照常翻（下一段失败同理），
+     * 失败原因随结果一起带回，由调用方统一提示一次。
+     */
+    private suspend fun translateSite(
+        metadata: ItemMetadataEdit,
+        settings: TranslateSettings,
+    ): SiteTranslation {
+        val requested = translatableFields(metadata, settings)
+        val fields =
+            if (requested.isEmpty()) {
+                SiteTranslation(metadata)
+            } else {
+                translateFields(metadata, requested)
+            }
+        return SiteTranslation(translateGenresTags(fields.metadata, settings), fields.error)
+    }
+
+    /**
+     * 翻译分类 / 标签里的日文、英文值，翻完再归一一次：译文可能是特征值（如 `高画质`），
+     * 要从分类迁到标签。
+     *
+     * 失败不致命——未知词保留原值，词典与缓存命中的译文照常填上；连续失败达到上限后
+     * 本轮不再请求引擎（归一照常执行），且只在本轮第一次失败时提示用户（一次故障往往几个站点一起失败）。
+     */
+    private suspend fun translateGenresTags(
+        metadata: ItemMetadataEdit,
+        settings: TranslateSettings,
+    ): ItemMetadataEdit {
+        if (!settings.translateGenresTags) return metadata
+        if (tagTranslateFailures.get() >= MAX_TAG_TRANSLATE_FAILURES) return metadata
+        val values = metadata.genres + metadata.tags
+        if (values.none { tagTranslator.needsTranslation(it) }) return metadata
+        val result = tagTranslator.translate(values)
+        // 引擎那段失败时词典与缓存命中的译文仍然可用：失败照旧计数与提示，命中的译文照常落表单
+        val error = result.error
+        if (error != null) {
+            AppLog.e(error, "翻译分类/标签失败，未知词保留原文：%s", movieId)
+            if (tagTranslateFailures.incrementAndGet() == 1) {
+                eventsChannel.send(MovieEvent.MetadataTranslateFailed(error))
+            }
+        } else {
+            tagTranslateFailures.set(0)
+        }
+        val translated = result.translations
+        if (translated.isEmpty()) return metadata
+        val (genres, tags) =
+            MetadataTagNormalizer.normalize(
+                metadata.genres.map { translated[it] ?: it },
+                metadata.tags.map { translated[it] ?: it },
+            )
+        return metadata.copy(genres = genres, tags = tags)
+    }
+
+    /**
+     * 「翻译现有」：用弹窗里刚填好的设置，把编辑 nfo 表单里的标题 / 简介 / 分类 / 标签翻一遍再填回去。
+     *
+     * 与抓取后的自动翻译共用同一条链路，区别在内容来源与失败处理：翻不出来的那部分保留原文，
+     * 一个值都没翻出来就什么都不动，用户手里的内容原样留着，也不标成「已更新（未保存）」。
+     * 翻出了内容则把当前表单标成抓取内容，并把当前来源站点的备好内容一并换成译文——
+     * 否则切走再切回来看到的还是没有翻过的旧内容。
      */
     private fun translateExistingMetadata(metadata: ItemMetadataEdit, settings: TranslateSettings) {
         viewModelScope.launch {
@@ -589,23 +656,26 @@ constructor(
             _state.emit(_state.value.copy(translateSettings = settings))
             // 已经在翻就只落设置，不再叠一次请求：两次结果会把同一个表单先后覆盖一遍
             if (_state.value.isTranslating) return@launch
-            val requested = translatableFields(metadata, settings)
-            if (requested.isEmpty()) return@launch
+            // 手动点的翻译不受上一轮「连续失败已停用」的影响
+            tagTranslateFailures.set(0)
+            if (!hasTranslatableContent(metadata, settings)) return@launch
             _state.emit(_state.value.copy(isTranslating = true))
-            when (val translated = translateFields(metadata, requested)) {
-                is SiteTranslation.Success ->
-                    _state.emit(
-                        _state.value.copy(
-                            isTranslating = false,
-                            scrapedMetadata = translated.metadata,
-                            scrapedSiteMetadata = replaceSelectedSiteContent(translated.metadata),
-                        )
-                    )
-                is SiteTranslation.Failure -> {
-                    eventsChannel.send(MovieEvent.MetadataTranslateFailed(translated.error))
-                    _state.emit(_state.value.copy(isTranslating = false))
-                }
+            val result = translateSite(metadata, settings)
+            result.error?.let { error ->
+                eventsChannel.send(MovieEvent.MetadataTranslateFailed(error))
             }
+            // 一个值都没翻出来时不改表单：否则会把原文标成抓取内容，弹窗提示「已更新（未保存）」
+            if (result.metadata == metadata) {
+                _state.emit(_state.value.copy(isTranslating = false))
+                return@launch
+            }
+            _state.emit(
+                _state.value.copy(
+                    isTranslating = false,
+                    scrapedMetadata = result.metadata,
+                    scrapedSiteMetadata = replaceSelectedSiteContent(result.metadata),
+                )
+            )
         }
     }
 
@@ -632,7 +702,8 @@ constructor(
     /**
      * 调接口翻译 [requested]，把译文落回 [metadata]；响应里缺哪个字段就用哪个字段的原文。
      *
-     * 请求失败时返回失败结果（原因已记日志），由调用方决定是退回原文、保留现有内容，还是提示用户。
+     * 请求失败时返回原文并带上失败原因（原因已记日志）：标题 / 简介翻不出来不该牵连分类 / 标签，
+     * 由调用方决定怎么提示用户。
      */
     private suspend fun translateFields(
         metadata: ItemMetadataEdit,
@@ -640,7 +711,7 @@ constructor(
     ): SiteTranslation =
         try {
             val translated = translator.translate(requested)
-            SiteTranslation.Success(
+            SiteTranslation(
                 metadata.copy(
                     name = translated[FIELD_NAME] ?: metadata.name,
                     overview = translated[FIELD_OVERVIEW] ?: metadata.overview,
@@ -650,15 +721,19 @@ constructor(
             throw e
         } catch (e: Exception) {
             AppLog.e(e, "翻译元数据失败：%s", movieId)
-            SiteTranslation.Failure(e)
+            SiteTranslation(metadata, e)
         }
 
-    /** 一次翻译的结果：要么拿到译文，要么留下失败原因（原因已记日志），由调用方决定怎么兜底。 */
-    private sealed interface SiteTranslation {
-        data class Success(val metadata: ItemMetadataEdit) : SiteTranslation
-
-        data class Failure(val error: Exception) : SiteTranslation
-    }
+    /**
+     * 一次站点翻译的结果：译文已经落进 [metadata]。
+     *
+     * [error] 非空表示其中某一段（标题 / 简介或分类 / 标签）失败，失败的那段保留原文、
+     * 其余段照常应用；由调用方决定怎么提示用户。
+     */
+    private data class SiteTranslation(
+        val metadata: ItemMetadataEdit,
+        val error: Exception? = null,
+    )
 
     /**
      * 以 [keyword] 为关键词抓取封面图片（横图 + 竖图），配了地址的站点并发尝试一遍，互不等待。
@@ -742,12 +817,18 @@ constructor(
                     actresses = _state.value.actors.map { it.name },
                     directors = listOfNotNull(_state.value.director?.name),
                 )
+        // 分类要按「分类 + 标签」一起判断：归一后「4K」这类特征值会从分类迁到标签，分类可能整个为空，
+        // 此时若按「列表为空就回退现值」处理，会把服务器上的旧分类又捡回来
+        val scrapedHasGenresOrTags = genres.isNotEmpty() || tags.isNotEmpty()
         return copy(
             name = name.ifBlank { current.name },
             originalTitle = originalTitle.ifBlank { current.originalTitle },
             overview = overview.ifBlank { current.overview },
-            genres = genres.ifEmpty { current.genres },
-            tags = tags.ifEmpty { current.tags },
+            genres = if (scrapedHasGenresOrTags) genres else current.genres,
+            // 标签与服务器现值取并集而不是覆盖：站点本身不提供标签列，抓到的标签只是从分类里
+            // 迁出来的文件特征（`4K`、`内嵌字幕`），覆盖会把用户自己加的标签整批丢掉；
+            // 旧的特征值宁可留着，需要清理由用户在表单里手动删
+            tags = (current.tags + tags).distinct(),
             actresses = actresses.ifEmpty { current.actresses },
             directors = directors.ifEmpty { current.directors },
             studios = studios.ifEmpty { current.studios },
@@ -832,5 +913,8 @@ constructor(
         /** 一次翻译请求里区分标题与简介的键名，接口按同样的键把译文回传。 */
         const val FIELD_NAME = "title"
         const val FIELD_OVERVIEW = "plot"
+
+        /** 分类 / 标签翻译连续失败多少次后停用：继续试只会把时间耗在超时上。 */
+        const val MAX_TAG_TRANSLATE_FAILURES = 3
     }
 }

@@ -107,7 +107,11 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     val translateModel = Preference("pref_translate_model", Constants.TRANSLATE_DEFAULT_MODEL)
     val translateTitle = Preference("pref_translate_title", true)
     val translatePlot = Preference("pref_translate_plot", true)
+    val translateGenresTags = Preference("pref_translate_genres_tags", true)
     val translateAuto = Preference("pref_translate_auto", true)
+
+    /** 分类 / 标签的译文缓存（json：原值 → 译文），跨会话复用，避免同一个词反复请求大模型。 */
+    val tagTranslateCache = Preference("pref_tag_translate_cache", "")
 
     // Cache
     val imageCache = Preference("pref_image_cache", true)
@@ -132,6 +136,7 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
             model = getValue(translateModel),
             translateTitle = getValue(translateTitle),
             translatePlot = getValue(translatePlot),
+            translateGenresTags = getValue(translateGenresTags),
             autoTranslate = getValue(translateAuto),
         )
 
@@ -142,6 +147,7 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
         setValue(translateModel, settings.model)
         setValue(translateTitle, settings.translateTitle)
         setValue(translatePlot, settings.translatePlot)
+        setValue(translateGenresTags, settings.translateGenresTags)
         setValue(translateAuto, settings.autoTranslate)
     }
 

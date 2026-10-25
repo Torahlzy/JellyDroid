@@ -6,6 +6,8 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import dev.jdtech.jellyfin.core.translator.MetadataTranslator
 import dev.jdtech.jellyfin.core.translator.MetadataTranslatorImpl
+import dev.jdtech.jellyfin.core.translator.TagTranslator
+import dev.jdtech.jellyfin.core.translator.TagTranslatorImpl
 import javax.inject.Singleton
 
 /**
@@ -22,4 +24,9 @@ abstract class TranslatorModule {
     @Binds
     @Singleton
     abstract fun bindMetadataTranslator(impl: MetadataTranslatorImpl): MetadataTranslator
+
+    /** 分类 / 标签的翻译器：词典优先、引擎兜底，译文缓存到本地偏好。 */
+    @Binds
+    @Singleton
+    abstract fun bindTagTranslator(impl: TagTranslatorImpl): TagTranslator
 }

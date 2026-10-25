@@ -221,6 +221,13 @@ fun MovieScreen(
                         Toast.LENGTH_SHORT,
                     )
                     .show()
+            is MovieEvent.MetadataUnchanged ->
+                Toast.makeText(
+                        context,
+                        context.getString(CoreR.string.metadata_unchanged),
+                        Toast.LENGTH_SHORT,
+                    )
+                    .show()
             is MovieEvent.ItemDeleted -> {
                 Toast.makeText(
                         context,
