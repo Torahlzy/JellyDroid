@@ -1,5 +1,7 @@
 package dev.jdtech.jellyfin.presentation.film.components
 
+import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -31,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -63,9 +67,14 @@ private val METADATA_FORM_MAX_HEIGHT = 360.dp
  *
  * 抓取是各站点同时抓一遍，因此抓到内容后标题行下方会多出一行来源选项（[scrapedSites] +「原来」）：
  * 点站点名换成该站抓到的内容，点「原来」回到抓取前服务器上的内容（[onSelectScrapeSource]）。
+ * 再点一次当前选中的站点会整份重置成该站结果，把逐框点标签恢复过的字段重新填回来。
  *
- * 抓取换掉内容的字段（与服务器现值逐框比较，整框同色、不做字内 diff）标签用提示色标出，
- * 没换的保持普通颜色；没抓到内容或服务器元数据没加载出来（没有可比基准）时不标。
+ * 表单里是抓取结果时，点某个字段的标签（如「标题」）就把这一框恢复成服务器原值，
+ * 其余字段保持抓取内容——站点结果可以只采用一部分，点完给一次「字段已重置」的提示。
+ *
+ * 内容仍来自抓取、且与服务器现值不同的字段（与服务器现值逐框比较，整框同色、不做字内 diff）
+ * 标签用提示色标出；某个框被恢复成原值后标记随之消失，一眼能看出还剩哪些框是站点的内容。
+ * 没抓到内容或服务器元数据没加载出来（没有可比基准）时不标，标签也不可点。
  *
  * 「翻译」打开翻译设置弹窗（OpenAI 兼容接口），本身不直接翻译；真正的翻译有两个入口：
  * 勾了自动翻译时由抓取触发，或在设置弹窗里点「翻译现有」翻当前表单的内容（[onTranslateExisting]）。
@@ -95,21 +104,56 @@ fun EditItemMetadataDialog(
     // 「清空」的结果不是空表单，而是只剩标题（用文件名兜底）——其余字段确实清掉了
     val clearedForm = MetadataForm(name = fileName.orEmpty())
 
+    // 服务器上的原值：既是「原来」来源的内容，也是逐框点标签恢复时的目标
+    val originalForm = remember(metadata) { metadata?.toForm() }
+
+    // 每点一次来源选项就自增，作为重建表单的额外依据：同一站点再点一次时
+    // scrapedMetadata 的值没变，只靠它无法把用户手动恢复过的框重新填成站点内容
+    var sourceSwitchCount by remember { mutableIntStateOf(0) }
+
     // 表单整体按文本保存，确认时才解析成 ItemMetadataEdit，避免输入途中的半成品值被丢弃；
     // 抓取结果一到就整份覆盖表单，所以把它也作为重建表单的依据；
     // 这里刻意不把 fileName 作为重建依据：文件名随后到达（如下载完成）时不该冲掉用户正在编辑的内容
-    var form by remember(metadata, scrapedMetadata) {
+    var form by remember(metadata, scrapedMetadata, sourceSwitchCount) {
         mutableStateOf((scrapedMetadata ?: metadata)?.toForm() ?: clearedForm)
     }
 
-    // 抓取换掉内容的字段用提示色标注：抓取内容与服务器现值逐框比较，内容不同的框才标；
-    // 只随两份源数据变化，用户往框里打字不重算（比较的是来源，不是当前输入）
-    val changedFields =
-        remember(metadata, scrapedMetadata) {
-            if (scrapedMetadata != null) {
-                scrapedMetadata.toForm().changedFieldsFrom(metadata?.toForm())
-            } else {
+    // 抓取结果相对服务器原值换掉了哪些框（只看来源，不随用户输入变化）
+    val scrapedChangedFields =
+        remember(scrapedMetadata, originalForm) {
+            if (scrapedMetadata == null || originalForm == null) {
                 emptySet()
+            } else {
+                scrapedMetadata.toForm().changedFieldsFrom(originalForm)
+            }
+        }
+
+    // 其中当前仍与服务器原值不同的才用提示色标注：某个框点标签恢复成原值后标记随之消失，
+    // 一眼能看出还剩哪些框是站点的内容；抓取之前或没有原值可比（originalForm 为空）时不标
+    val changedFields =
+        if (originalForm == null) {
+            emptySet()
+        } else {
+            scrapedChangedFields intersect form.changedFieldsFrom(originalForm)
+        }
+
+    // 表单里是抓取结果、且知道服务器原值时才能逐框恢复（否则没有「原来的」可回）
+    val restoreBaseline = originalForm?.takeIf { scrapedMetadata != null }
+
+    val context = LocalContext.current
+
+    // 弹窗内的即时反馈与 MovieScreen 里的事件提示一致，都用 Toast：
+    // 恢复 / 重置这类操作在表单里只改动一两个框，光看界面不容易察觉到底生效了没有
+    fun showToast(messageRes: Int) {
+        Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_SHORT).show()
+    }
+
+    // 逐框恢复成服务器原值，并提示一次，说明这次点击确实生效了
+    val restoreFieldAction: ((MetadataField) -> Unit)? =
+        restoreBaseline?.let { baseline ->
+            { field ->
+                form = form.restoreField(field, baseline)
+                showToast(CoreR.string.edit_metadata_field_reset)
             }
         }
 
@@ -175,7 +219,13 @@ fun EditItemMetadataDialog(
                         selectedSite = selectedScrapeSite,
                         // 服务器元数据没加载出来时「原来」没有内容可回，禁用
                         isOriginalAvailable = metadata != null,
-                        onSelect = onSelectScrapeSource,
+                        onSelect = { site ->
+                            // 每次点选（含重复点当前站点）都整份重建表单，把逐框恢复过的内容重新填满
+                            sourceSwitchCount++
+                            onSelectScrapeSource(site)
+                            // 「原来」是回到服务器内容，与「应用站点数据」不是一回事，不给这条提示
+                            if (site != null) showToast(CoreR.string.edit_metadata_site_applied)
+                        },
                     )
                 }
                 Spacer(Modifier.height(MaterialTheme.spacings.small))
@@ -191,10 +241,16 @@ fun EditItemMetadataDialog(
                                     Modifier.heightIn(max = METADATA_FORM_MAX_HEIGHT)
                                         .verticalScroll(rememberScrollState())
                             ) {
+                                // 提示放进滚动区首项而不是占弹窗固定高度：英文与放大字号下它会折行，
+                                // 写死高度要么挤压按钮行、要么裁字
+                                if (restoreBaseline != null) {
+                                    RestoreFieldHint()
+                                }
                                 MetadataFormFields(
                                     form = form,
                                     changedFields = changedFields,
                                     onFormChange = { changed -> form = changed },
+                                    onRestoreField = restoreFieldAction,
                                 )
                             }
                         // 加载失败时说明原因，避免让用户误以为服务器上真的没有这些字段
@@ -323,6 +379,17 @@ private fun ScrapeSourceRow(
     }
 }
 
+/** 抓取结果填进表单后的说明：点字段标签即可把这一框恢复成服务器原值，实现站点结果的部分采用。 */
+@Composable
+private fun RestoreFieldHint(modifier: Modifier = Modifier) {
+    Text(
+        text = stringResource(CoreR.string.edit_metadata_restore_hint),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(bottom = MaterialTheme.spacings.small),
+    )
+}
+
 /** 表单的各个输入框，供抓取后与服务器现值逐框比较、标注「这一框的内容被换过」。 */
 private enum class MetadataField {
     NAME,
@@ -390,31 +457,61 @@ private data class MetadataForm(
     val isPremiereDateInvalid: Boolean
         get() = premiereDate.isNotBlank() && premiereDateValue == null
 
+    /** 按字段取当前文本：逐框比较与单框恢复都按它来，避免两处各写一份 when。 */
+    fun textOf(field: MetadataField): String =
+        when (field) {
+            MetadataField.NAME -> name
+            MetadataField.ORIGINAL_TITLE -> originalTitle
+            MetadataField.OVERVIEW -> overview
+            MetadataField.GENRES -> genres
+            MetadataField.TAGS -> tags
+            MetadataField.ACTRESSES -> actresses
+            MetadataField.DIRECTORS -> directors
+            MetadataField.STUDIOS -> studios
+            MetadataField.PRODUCTION_LOCATIONS -> productionLocations
+            MetadataField.TAGLINE -> tagline
+            MetadataField.OFFICIAL_RATING -> officialRating
+            MetadataField.PRODUCTION_YEAR -> productionYear
+            MetadataField.PREMIERE_DATE -> premiereDate
+            MetadataField.COMMUNITY_RATING -> communityRating
+        }
+
+    /** 换掉单个字段的文本，其余字段保持当前输入。 */
+    fun withText(field: MetadataField, text: String): MetadataForm =
+        when (field) {
+            MetadataField.NAME -> copy(name = text)
+            MetadataField.ORIGINAL_TITLE -> copy(originalTitle = text)
+            MetadataField.OVERVIEW -> copy(overview = text)
+            MetadataField.GENRES -> copy(genres = text)
+            MetadataField.TAGS -> copy(tags = text)
+            MetadataField.ACTRESSES -> copy(actresses = text)
+            MetadataField.DIRECTORS -> copy(directors = text)
+            MetadataField.STUDIOS -> copy(studios = text)
+            MetadataField.PRODUCTION_LOCATIONS -> copy(productionLocations = text)
+            MetadataField.TAGLINE -> copy(tagline = text)
+            MetadataField.OFFICIAL_RATING -> copy(officialRating = text)
+            MetadataField.PRODUCTION_YEAR -> copy(productionYear = text)
+            MetadataField.PREMIERE_DATE -> copy(premiereDate = text)
+            MetadataField.COMMUNITY_RATING -> copy(communityRating = text)
+        }
+
     /**
      * 与 [baseline]（通常是服务器现值）逐框比较文本，返回内容不同的字段；整框同色，不做字内 diff。
      * [baseline] 为 null（没有可比较的原值）时返回空集。
      */
     fun changedFieldsFrom(baseline: MetadataForm?): Set<MetadataField> {
         if (baseline == null) return emptySet()
-        return buildSet {
-            if (name != baseline.name) add(MetadataField.NAME)
-            if (originalTitle != baseline.originalTitle) add(MetadataField.ORIGINAL_TITLE)
-            if (overview != baseline.overview) add(MetadataField.OVERVIEW)
-            if (genres != baseline.genres) add(MetadataField.GENRES)
-            if (tags != baseline.tags) add(MetadataField.TAGS)
-            if (actresses != baseline.actresses) add(MetadataField.ACTRESSES)
-            if (directors != baseline.directors) add(MetadataField.DIRECTORS)
-            if (studios != baseline.studios) add(MetadataField.STUDIOS)
-            if (productionLocations != baseline.productionLocations) {
-                add(MetadataField.PRODUCTION_LOCATIONS)
-            }
-            if (tagline != baseline.tagline) add(MetadataField.TAGLINE)
-            if (officialRating != baseline.officialRating) add(MetadataField.OFFICIAL_RATING)
-            if (productionYear != baseline.productionYear) add(MetadataField.PRODUCTION_YEAR)
-            if (premiereDate != baseline.premiereDate) add(MetadataField.PREMIERE_DATE)
-            if (communityRating != baseline.communityRating) add(MetadataField.COMMUNITY_RATING)
-        }
+        return MetadataField.entries
+            .filter { field -> textOf(field) != baseline.textOf(field) }
+            .toSet()
     }
+
+    /**
+     * 把 [field] 恢复成 [baseline]（服务器原值）里的内容，其余字段保持当前输入：
+     * 抓取结果只采用一部分时，逐框点标签走这里。
+     */
+    fun restoreField(field: MetadataField, baseline: MetadataForm): MetadataForm =
+        withText(field, baseline.textOf(field))
 }
 
 private fun ItemMetadataEdit.toForm(): MetadataForm =
@@ -469,7 +566,12 @@ private fun MetadataFormFields(
     form: MetadataForm,
     changedFields: Set<MetadataField>,
     onFormChange: (MetadataForm) -> Unit,
+    onRestoreField: ((MetadataField) -> Unit)?,
 ) {
+    // 点标签把该框恢复成服务器原值；没有可回的原值（[onRestoreField] 为 null）时标签保持普通文本
+    fun restoreAction(field: MetadataField): (() -> Unit)? =
+        onRestoreField?.let { restore -> { restore(field) } }
+
     Column {
         MetadataTextField(
             label = stringResource(CoreR.string.edit_metadata_field_name),
@@ -477,6 +579,7 @@ private fun MetadataFormFields(
             onValueChange = { onFormChange(form.copy(name = it)) },
             isError = form.name.isBlank(),
             isChanged = MetadataField.NAME in changedFields,
+            onRestore = restoreAction(MetadataField.NAME),
             minLines = 2,
             // 必填项常驻提示，标题为空时转为错误色
             supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_required)) },
@@ -486,12 +589,14 @@ private fun MetadataFormFields(
             value = form.originalTitle,
             onValueChange = { onFormChange(form.copy(originalTitle = it)) },
             isChanged = MetadataField.ORIGINAL_TITLE in changedFields,
+            onRestore = restoreAction(MetadataField.ORIGINAL_TITLE),
         )
         MetadataTextField(
             label = stringResource(CoreR.string.edit_metadata_field_overview),
             value = form.overview,
             onValueChange = { onFormChange(form.copy(overview = it)) },
             isChanged = MetadataField.OVERVIEW in changedFields,
+            onRestore = restoreAction(MetadataField.OVERVIEW),
             minLines = 3,
         )
         MetadataTextField(
@@ -499,6 +604,7 @@ private fun MetadataFormFields(
             value = form.genres,
             onValueChange = { onFormChange(form.copy(genres = it)) },
             isChanged = MetadataField.GENRES in changedFields,
+            onRestore = restoreAction(MetadataField.GENRES),
             supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_list_hint)) },
         )
         MetadataTextField(
@@ -506,6 +612,7 @@ private fun MetadataFormFields(
             value = form.tags,
             onValueChange = { onFormChange(form.copy(tags = it)) },
             isChanged = MetadataField.TAGS in changedFields,
+            onRestore = restoreAction(MetadataField.TAGS),
             supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_list_hint)) },
         )
         MetadataTextField(
@@ -513,6 +620,7 @@ private fun MetadataFormFields(
             value = form.actresses,
             onValueChange = { onFormChange(form.copy(actresses = it)) },
             isChanged = MetadataField.ACTRESSES in changedFields,
+            onRestore = restoreAction(MetadataField.ACTRESSES),
             supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_list_hint)) },
         )
         MetadataTextField(
@@ -520,6 +628,7 @@ private fun MetadataFormFields(
             value = form.directors,
             onValueChange = { onFormChange(form.copy(directors = it)) },
             isChanged = MetadataField.DIRECTORS in changedFields,
+            onRestore = restoreAction(MetadataField.DIRECTORS),
             supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_list_hint)) },
         )
         MetadataTextField(
@@ -527,6 +636,7 @@ private fun MetadataFormFields(
             value = form.studios,
             onValueChange = { onFormChange(form.copy(studios = it)) },
             isChanged = MetadataField.STUDIOS in changedFields,
+            onRestore = restoreAction(MetadataField.STUDIOS),
             supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_list_hint)) },
         )
         MetadataTextField(
@@ -534,6 +644,7 @@ private fun MetadataFormFields(
             value = form.productionLocations,
             onValueChange = { onFormChange(form.copy(productionLocations = it)) },
             isChanged = MetadataField.PRODUCTION_LOCATIONS in changedFields,
+            onRestore = restoreAction(MetadataField.PRODUCTION_LOCATIONS),
             supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_list_hint)) },
         )
         MetadataTextField(
@@ -541,12 +652,14 @@ private fun MetadataFormFields(
             value = form.tagline,
             onValueChange = { onFormChange(form.copy(tagline = it)) },
             isChanged = MetadataField.TAGLINE in changedFields,
+            onRestore = restoreAction(MetadataField.TAGLINE),
         )
         MetadataTextField(
             label = stringResource(CoreR.string.edit_metadata_field_official_rating),
             value = form.officialRating,
             onValueChange = { onFormChange(form.copy(officialRating = it)) },
             isChanged = MetadataField.OFFICIAL_RATING in changedFields,
+            onRestore = restoreAction(MetadataField.OFFICIAL_RATING),
         )
         MetadataTextField(
             label = stringResource(CoreR.string.edit_metadata_field_production_year),
@@ -554,6 +667,7 @@ private fun MetadataFormFields(
             onValueChange = { onFormChange(form.copy(productionYear = it)) },
             isError = form.isProductionYearInvalid,
             isChanged = MetadataField.PRODUCTION_YEAR in changedFields,
+            onRestore = restoreAction(MetadataField.PRODUCTION_YEAR),
             supportingText =
                 if (form.isProductionYearInvalid) {
                     { Text(text = stringResource(CoreR.string.edit_metadata_invalid_number)) }
@@ -567,6 +681,7 @@ private fun MetadataFormFields(
             onValueChange = { onFormChange(form.copy(premiereDate = it)) },
             isError = form.isPremiereDateInvalid,
             isChanged = MetadataField.PREMIERE_DATE in changedFields,
+            onRestore = restoreAction(MetadataField.PREMIERE_DATE),
             supportingText = {
                 Text(
                     text =
@@ -586,6 +701,7 @@ private fun MetadataFormFields(
             onValueChange = { onFormChange(form.copy(communityRating = it)) },
             isError = form.isCommunityRatingInvalid,
             isChanged = MetadataField.COMMUNITY_RATING in changedFields,
+            onRestore = restoreAction(MetadataField.COMMUNITY_RATING),
             supportingText =
                 if (form.isCommunityRatingInvalid) {
                     { Text(text = stringResource(CoreR.string.edit_metadata_invalid_number)) }
@@ -603,6 +719,7 @@ private fun MetadataTextField(
     onValueChange: (String) -> Unit,
     isError: Boolean = false,
     isChanged: Boolean = false,
+    onRestore: (() -> Unit)? = null,
     minLines: Int = 1,
     supportingText: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -610,12 +727,16 @@ private fun MetadataTextField(
     // 抓取换掉内容的字段标签用警告色（偏红的提醒色，与错误红有区分）；
     // 只覆盖 label 颜色，isError 的红色提示不受影响
     val labelColor = if (isChanged) MaterialTheme.warningColor else Color.Unspecified
+    // 抓取结果在表单里时，点标签把这一框恢复成服务器原值（只采用站点结果的一部分）；
+    // 可点的标签带纹波，没有原值可回时保持纯文本
+    val labelModifier =
+        if (onRestore != null) Modifier.clickable(onClick = onRestore) else Modifier
     Column(modifier = modifier.fillMaxWidth()) {
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = label) },
+            label = { Text(text = label, modifier = labelModifier) },
             colors =
                 OutlinedTextFieldDefaults.colors(
                     focusedLabelColor = labelColor,

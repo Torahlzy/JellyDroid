@@ -169,6 +169,9 @@
     <string name="edit_metadata_load_failed">Failed to load metadata: %1$s</string>
     <string name="edit_metadata_scraped_title">Updated (unsaved)</string>
     <string name="edit_metadata_source_original">Original</string>
+    <string name="edit_metadata_restore_hint">Tap a field label to restore its original value</string>
+    <string name="edit_metadata_field_reset">Field restored to its original value</string>
+    <string name="edit_metadata_site_applied">Applied all fields from this site</string>
     <string name="scrape">Scrape</string>
     <string name="scrape_keyword_title">Scrape nfo</string>
     <string name="scrape_keyword_label">Keyword</string>

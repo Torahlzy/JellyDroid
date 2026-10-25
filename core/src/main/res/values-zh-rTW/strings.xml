@@ -168,6 +168,9 @@
     <string name="edit_metadata_load_failed">載入中繼資料失敗：%1$s</string>
     <string name="edit_metadata_scraped_title">已更新（未儲存）</string>
     <string name="edit_metadata_source_original">原來</string>
+    <string name="edit_metadata_restore_hint">點欄位標題可恢復原來的內容</string>
+    <string name="edit_metadata_field_reset">欄位已重設</string>
+    <string name="edit_metadata_site_applied">全部欄位已套用站點資料</string>
     <string name="scrape">抓取</string>
     <string name="scrape_keyword_title">抓取 nfo</string>
     <string name="scrape_keyword_label">關鍵詞</string>
