@@ -47,8 +47,9 @@ private val FORM_MAX_HEIGHT = 260.dp
  *
  * 「抓取后自动翻译」勾上后，抓取一结束就按所选字段翻译，某一字段翻译失败时保留该字段的原文；
  * 不想为了翻译再抓一次时用「翻译现有」，它翻的是调用方（编辑 nfo 弹窗）当前表单里的内容，
- * 因此「当前表单里哪个字段有内容」由调用方通过 [hasTranslatableTitle] / [hasTranslatableOverview] 告诉它，
- * 与这里当场勾选的值合起来判断能否点——刚勾上的字段才不会被已保存的设置挡住。
+ * 因此「当前表单里哪个字段有内容」由调用方通过 [hasTranslatableTitle] / [hasTranslatableOverview] /
+ * [hasTranslatableGenresTags] 告诉它，与这里当场勾选的值合起来判断能否点——刚勾上的字段才不会被
+ * 已保存的设置挡住。
  *
  * 两个动作都会把弹窗里改过的设置一起交出去，避免「刚改完密钥就点翻译，却用了旧设置」。
  */
@@ -57,6 +58,7 @@ fun TranslateSettingsDialog(
     settings: TranslateSettings,
     hasTranslatableTitle: Boolean,
     hasTranslatableOverview: Boolean,
+    hasTranslatableGenresTags: Boolean,
     onConfirm: (TranslateSettings) -> Unit,
     onTranslateExisting: (TranslateSettings) -> Unit,
     onDismiss: () -> Unit,
@@ -66,6 +68,7 @@ fun TranslateSettingsDialog(
     var model by remember { mutableStateOf(settings.model) }
     var translateTitle by remember { mutableStateOf(settings.translateTitle) }
     var translatePlot by remember { mutableStateOf(settings.translatePlot) }
+    var translateGenresTags by remember { mutableStateOf(settings.translateGenresTags) }
     var autoTranslate by remember { mutableStateOf(settings.autoTranslate) }
 
     val collectSettings = {
@@ -75,6 +78,7 @@ fun TranslateSettingsDialog(
             model = model.trim(),
             translateTitle = translateTitle,
             translatePlot = translatePlot,
+            translateGenresTags = translateGenresTags,
             autoTranslate = autoTranslate,
         )
     }
@@ -137,6 +141,12 @@ fun TranslateSettingsDialog(
                     checked = translatePlot,
                     onCheckedChange = { translatePlot = it },
                 )
+                // 分类 / 标签走内置词典 + 引擎兜底，只翻译词典查不到且含假名的值
+                TranslateCheckbox(
+                    label = stringResource(CoreR.string.translate_genres_tags),
+                    checked = translateGenresTags,
+                    onCheckedChange = { translateGenresTags = it },
+                )
                 Spacer(Modifier.height(MaterialTheme.spacings.small))
                 TranslateCheckbox(
                     label = stringResource(CoreR.string.translate_auto),
@@ -165,7 +175,8 @@ fun TranslateSettingsDialog(
                     // 勾了哪个字段、那个字段在当前表单里就得有内容，否则这趟翻译无事可做
                     enabled =
                         (translateTitle && hasTranslatableTitle) ||
-                            (translatePlot && hasTranslatableOverview),
+                            (translatePlot && hasTranslatableOverview) ||
+                            (translateGenresTags && hasTranslatableGenresTags),
                 ) {
                     Text(text = stringResource(CoreR.string.translate_existing))
                 }
@@ -223,6 +234,7 @@ private fun TranslateSettingsDialogPreview() {
             settings = TranslateSettings(url = "https://api.deepseek.com/chat/completions"),
             hasTranslatableTitle = true,
             hasTranslatableOverview = true,
+            hasTranslatableGenresTags = true,
             onConfirm = {},
             onTranslateExisting = {},
             onDismiss = {},

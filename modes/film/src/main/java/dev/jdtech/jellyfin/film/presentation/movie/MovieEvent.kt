@@ -8,6 +8,9 @@ sealed interface MovieEvent {
     /** nfo 更新完成。 */
     data object MetadataUpdated : MovieEvent
 
+    /** 提交的内容与服务器现值完全一致，跳过了写入。 */
+    data object MetadataUnchanged : MovieEvent
+
     /** 抓取到的封面图片已上传到服务器。 */
     data object ItemImagesUploaded : MovieEvent
 
@@ -26,6 +29,10 @@ sealed interface MovieEvent {
     /** 删除服务器条目失败，[error] 用于向用户展示失败原因。 */
     data class ItemDeleteFailed(val error: Exception) : MovieEvent
 
-    /** 翻译抓取结果失败，[error] 用于向用户展示失败原因；此时相应字段保留的是原文。 */
+    /**
+     * 翻译抓取结果失败，[error] 用于向用户展示失败原因。
+     *
+     * 失败的那部分内容保留原文；分类 / 标签里已由词典或缓存命中的译文仍会填上。
+     */
     data class MetadataTranslateFailed(val error: Exception) : MovieEvent
 }

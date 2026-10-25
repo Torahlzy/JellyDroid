@@ -145,6 +145,7 @@
     <string name="scrape_images_keyword_title">Scrape cover images</string>
     <string name="scrape_images_result_title">Scrape results</string>
     <string name="metadata_updated">nfo updated</string>
+    <string name="metadata_unchanged">Nothing changed, update skipped</string>
     <string name="update_metadata_failed">Failed to update nfo: %1$s</string>
     <string name="edit_metadata_field_name">Title</string>
     <string name="edit_metadata_field_original_title">Original title</string>
@@ -193,9 +194,10 @@
     <string name="translate_api_key">API key</string>
     <string name="translate_model">Model</string>
     <string name="translate_fields">Fields to translate</string>
+    <string name="translate_genres_tags">Genres / tags</string>
     <string name="translate_auto">Translate after scraping</string>
     <string name="translate_auto_unconfigured">The URL, API key and model are not all filled in, so translation will be skipped.</string>
-    <string name="translate_in_progress">Translating the title / overview…</string>
+    <string name="translate_in_progress">Translating…</string>
     <string name="translate_existing">Translate current text</string>
     <string name="translate_failed">Translation failed, kept the existing text: %1$s</string>
     <string name="clear">Clear</string>

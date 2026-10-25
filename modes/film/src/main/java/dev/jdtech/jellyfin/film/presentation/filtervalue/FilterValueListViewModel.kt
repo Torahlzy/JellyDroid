@@ -35,6 +35,10 @@ class FilterValueListViewModel @Inject constructor(private val repository: Jelly
                     }
 
                 AppLog.d("筛选值列表加载完成：%s，共 %d 项", facet, values.size)
+                // 标签常出现「逗号导致多条并成一条」的脏数据，需要整批导出给外部清洗
+                if (facet == MetadataFacet.TAG) {
+                    logTagValues(values)
+                }
                 // 用 copy 保留用户已经输入的搜索词，别让「重试」把输入框清空
                 _state.emit(
                     _state.value.copy(
@@ -61,5 +65,29 @@ class FilterValueListViewModel @Inject constructor(private val repository: Jelly
             // 导航由界面处理，ViewModel 只负责状态
             is FilterValueListAction.OnValueClick, is FilterValueListAction.OnBackClick -> Unit
         }
+    }
+
+    /**
+     * 把标签全量输出到日志，便于导出给外部工具重新清洗。
+     *
+     * 每个标签单独加引号，且按批分多行输出：既避免相邻标签因逗号混成一块，
+     * 也避免单条日志过长被 logcat 截断。
+     */
+    private fun logTagValues(tags: List<String>) {
+        AppLog.d("标签总数：%d", tags.size)
+        tags.chunked(TAG_LOG_BATCH_SIZE).forEachIndexed { index, batch ->
+            val start = index * TAG_LOG_BATCH_SIZE + 1
+            AppLog.d(
+                "标签 %d-%d：%s",
+                start,
+                start + batch.size - 1,
+                batch.joinToString(", ") { "\"$it\"" },
+            )
+        }
+    }
+
+    private companion object {
+        /** 单条日志最多放几个标签，避免超长被截断 */
+        const val TAG_LOG_BATCH_SIZE = 10
     }
 }
