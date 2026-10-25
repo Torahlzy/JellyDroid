@@ -199,6 +199,8 @@
     <string name="translate_failed">翻譯失敗，已保留原有內容：%1$s</string>
     <string name="clear">清空</string>
     <string name="scrape_actor_image">取得頭像</string>
+    <string name="copy_actor_name">複製演員名</string>
+    <string name="actor_name_copied">演員名已複製</string>
     <string name="actor_has_avatar_warning">此人物已有頭像，上傳將覆蓋現有頭像</string>
     <string name="actor_images_uploaded">演員頭像已上傳</string>
     <string name="actor_images_upload_failed">上傳演員頭像失敗：%1$s</string>

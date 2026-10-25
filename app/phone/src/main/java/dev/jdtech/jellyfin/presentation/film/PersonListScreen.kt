@@ -1,5 +1,6 @@
 package dev.jdtech.jellyfin.presentation.film
 
+import android.content.ClipData
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -41,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +51,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -81,6 +85,7 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.GridCellsAdaptiveWithMinColumns
 import dev.jdtech.jellyfin.presentation.utils.LocalOfflineMode
 import dev.jdtech.jellyfin.utils.ObserveAsEvents
+import kotlinx.coroutines.launch
 
 // 人物卡片的最小宽度与头像直径（dp）
 private const val PERSON_MIN_WIDTH_DP = 110
@@ -301,6 +306,9 @@ private fun PersonGridCard(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier =
@@ -344,6 +352,22 @@ private fun PersonGridCard(
                     onClick = {
                         menuExpanded = false
                         onScrapeImageClick()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(CoreR.string.copy_actor_name)) },
+                    onClick = {
+                        menuExpanded = false
+                        scope.launch {
+                            clipboard.setClipEntry(
+                                ClipEntry(ClipData.newPlainText(person.name, person.name))
+                            )
+                            Toast.makeText(
+                                context,
+                                CoreR.string.actor_name_copied,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
                     },
                 )
             }
