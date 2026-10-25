@@ -169,6 +169,9 @@
     <string name="edit_metadata_load_failed">加载元数据失败：%1$s</string>
     <string name="edit_metadata_scraped_title">已更新（未保存）</string>
     <string name="edit_metadata_source_original">原来</string>
+    <string name="edit_metadata_restore_hint">点字段标题可恢复原来的内容</string>
+    <string name="edit_metadata_field_reset">字段已重置</string>
+    <string name="edit_metadata_site_applied">全部字段已应用站点数据</string>
     <string name="scrape">抓取</string>
     <string name="scrape_keyword_title">抓取 nfo</string>
     <string name="scrape_keyword_label">关键词</string>

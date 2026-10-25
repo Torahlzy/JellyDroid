@@ -781,10 +781,15 @@ constructor(
     }
 
     /**
-     * 把抓到的结果备成表单内容：转 [ItemMetadataEdit]、与服务器现值按字段合并。
+     * 把抓到的结果备成表单内容：转 [ItemMetadataEdit]，与服务器现值按字段合并。
      *
-     * 标题兜底：站点连番号和片名都给不出时，优先保留服务器上的现标题，别拿番号占位冲掉它；
-     * 服务器标题也没有（或没加载出来）才用抓取关键词，保证必填的标题不至于卡住确认按钮。
+     * **不变式：抓取回填不允许用空字段替换服务器上当前有内容的内容。**
+     * 站点给值的字段以站点为准整份替换（含标签，不做并集）；站点没给的（空）字段一律保留服务器现值。
+     * 这条约束长期有效，后续抓取 / 元数据相关的改动（新字段、新站点、翻译链路等）都不得破坏它。
+     * 想清掉某个字段在表单里手动删，或逐框点标签恢复原值。
+     *
+     * 标题兜底：站点连番号和片名都给不出时，优先保留服务器上的现标题，别拿抓取关键词占位冲掉它；
+     * 服务器标题也没有（或没加载出来）才用关键词，保证必填的标题不至于卡住确认按钮。
      */
     private fun prepareScrapedSites(
         results: List<SiteMetadataScrapeResult>,
@@ -806,8 +811,7 @@ constructor(
      * 抓取结果与服务器现值按字段合并：站点没给的字段保留服务器上的现值，不照单全收清掉已有信息。
      *
      * [ItemMetadataEdit] 的字段是「留空即清空」的整体替换语义，而各站点的信息覆盖面不一
-     * （如 Jav321 不给演员列表），直接保存会丢掉服务器上已有的内容；
-     * 站点给了值就以站点为准（用户选这个站点就是想要它的内容），没给才回退现值。
+     * （如 Jav321 不给演员列表），直接保存会丢掉服务器上已有的内容。
      * 服务器元数据没加载出来时只能兜住演职员（详情页的人员列表还在），其余字段没有可回退的现值。
      */
     private fun ItemMetadataEdit.mergeWithCurrent(): ItemMetadataEdit {
@@ -817,18 +821,15 @@ constructor(
                     actresses = _state.value.actors.map { it.name },
                     directors = listOfNotNull(_state.value.director?.name),
                 )
-        // 分类要按「分类 + 标签」一起判断：归一后「4K」这类特征值会从分类迁到标签，分类可能整个为空，
-        // 此时若按「列表为空就回退现值」处理，会把服务器上的旧分类又捡回来
-        val scrapedHasGenresOrTags = genres.isNotEmpty() || tags.isNotEmpty()
         return copy(
             name = name.ifBlank { current.name },
             originalTitle = originalTitle.ifBlank { current.originalTitle },
             overview = overview.ifBlank { current.overview },
-            genres = if (scrapedHasGenresOrTags) genres else current.genres,
-            // 标签与服务器现值取并集而不是覆盖：站点本身不提供标签列，抓到的标签只是从分类里
-            // 迁出来的文件特征（`4K`、`内嵌字幕`），覆盖会把用户自己加的标签整批丢掉；
-            // 旧的特征值宁可留着，需要清理由用户在表单里手动删
-            tags = (current.tags + tags).distinct(),
+            // 分类与标签各自独立回退：站点把「4K」这类特征值从分类迁到标签后，分类可能整个为空、
+            // 标签非空——此时分类回退服务器现值，需要清掉旧分类在表单里手动删；
+            // 标签只要站点给了一个就以站点为准整份替换，一个都没给才保留现有标签
+            genres = genres.ifEmpty { current.genres },
+            tags = tags.ifEmpty { current.tags },
             actresses = actresses.ifEmpty { current.actresses },
             directors = directors.ifEmpty { current.directors },
             studios = studios.ifEmpty { current.studios },
