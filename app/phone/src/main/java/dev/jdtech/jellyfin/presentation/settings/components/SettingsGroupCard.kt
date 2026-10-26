@@ -20,6 +20,7 @@ import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.settings.R as SettingsR
 import dev.jdtech.jellyfin.settings.domain.models.Preference
+import dev.jdtech.jellyfin.settings.presentation.models.PreferenceAction
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceAppLanguage
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceCategory
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceFileEdit
@@ -29,6 +30,7 @@ import dev.jdtech.jellyfin.settings.presentation.models.PreferenceLongInput
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceMultiSelect
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceSelect
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceSwitch
+import dev.jdtech.jellyfin.settings.presentation.models.PreferenceTextInput
 import dev.jdtech.jellyfin.settings.presentation.settings.SettingsAction
 
 @Composable
@@ -115,6 +117,20 @@ fun SettingsGroupCard(
                     is PreferenceFileEdit ->
                         SettingsFileEditCard(
                             preference = preference,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    is PreferenceTextInput ->
+                        SettingsTextInputCard(
+                            preference = preference,
+                            onUpdate = { value ->
+                                onAction(SettingsAction.OnUpdate(preference.copy(value = value)))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    is PreferenceAction ->
+                        SettingsActionCard(
+                            preference = preference,
+                            onClick = { preference.onClick(preference) },
                             modifier = Modifier.fillMaxWidth(),
                         )
                 }

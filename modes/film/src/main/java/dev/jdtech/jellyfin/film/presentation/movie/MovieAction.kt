@@ -87,4 +87,7 @@ sealed interface MovieAction {
 
     /** 删除服务器上的条目本身，含视频文件与关联的封面、nfo。 */
     data object DeleteItemWithFiles : MovieAction
+
+    /** 重新加载外网短评（忽略缓存有效期，直接重新抓取）。 */
+    data object ReloadComments : MovieAction
 }

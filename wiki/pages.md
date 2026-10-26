@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-10-25**
+**最后更新：2026-10-26**
 
 ---
 
@@ -213,6 +213,7 @@ else -> WelcomeRoute
 - **职责**：加载影片元数据 / 视频信息 / 演员，演员长按菜单支持获取头像与复制完整演员名，提供播放、预告、标记已看、收藏、下载、跳转演员、点击类型 / 标签跳到对应筛选结果页，以及「更多」菜单（编辑封面 / 编辑 nfo / 删除全部 / 抓取网址），并处理离线模式（离线时类型 / 标签不可点）。信息行的类型 / 标签取值由 `PHONE/presentation/film/components/InfoText.kt` 渲染，点击经 `MovieAction.NavigateToGenre` / `NavigateToTag` → `PHONE/NavigationRoot.kt` 的 `navigateToMetadataFacet` 跳转 `ItemFilterRoute`。
 - **路由**：`MovieRoute(movieId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **进场动画**：列表封面与详情页头部之间是共享元素 morph（key 为 `movie-hero-<movieId>`，经 `PHONE/presentation/utils/SharedTransition.kt` 的 `heroSharedBounds` 建立，两个转场作用域由 `PHONE/NavigationRoot.kt` 的 `SharedTransitionNavHost` / `SharedElementHost` 经 CompositionLocal 下发）；加载态为居中转圈，内容区块等进场转场（morph）结束后才组合并让标题 / 信息行 / 按钮栏 / 简介 / 演员行依次入场（`AppearingSection`），避免转场中途组合整页内容抢帧卡顿；详情页进入为淡入 + 轻微放大、返回反向收缩，转场参数在 `PHONE/NavigationRoot.kt`（全局 token 镜像在 `PHONE/presentation/theme/Motion.kt`）。
+- **评论区（外网短评）**：最下方内容是 `MovieCommentsSection.kt`（`AppearingSection(index = 5)`），只展示用户名 + 发言正文（不带头像），标题行下方可有日期与点赞数。数据来自 `CORE/comment/`：`JavDbCommentSource.kt` 按番号在 JavDB 搜索到影片地址后取 `/v/<id>/reviews/lastest`（站点短评标签返回的 HTML 片段，无需登录与接口签名；**网页端对访客只给最新 3 条**，末尾 `dt.review-item.more` 提示其余需 VIP 或官方 App，响应被包成 JS `innerHTML` 时先解包再解析），`CommentCache.kt` 把结果按影片存成 `cacheDir/comments/<sha1>.json`（有效期与总大小上限来自设置页，超限按最旧优先淘汰），`MovieCommentRepositoryImpl.kt` 负责「缓存优先、过期再抓」。开关与代理来自设置页「网络 → 外网」，代理与编辑 nfo 抓取共用 `AppPreferences.scrapeProxy`，关闭「外网使用代理」时改走直连（`ScraperHttp.getFollowingRedirects(..., useProxy = false)`）。失败只在评论区显示原因与「重试」（`MovieAction.ReloadComments`），不影响详情页其它内容。
 - **Screen**：`PHONE/presentation/film/MovieScreen.kt`；弹窗与小组件都在 `PHONE/presentation/film/components/` 下：
   - `ItemPlayButton.kt`：封面上的悬浮播放按钮。未滚动时浮在封面中央并跟随内容一起滚动，点击直接播放（`MovieAction.Play(startFromBeginning = false)`，与按钮栏的播放一致）；封面滑出超过一半后收起，用弹簧动画飞到顶栏「回到首页」按钮后方（尺寸与收起锚点按 `ItemTopBar` 的按钮对齐）。悬浮层铺满全屏但不消费触摸，只有按钮圆形区域可点，`headerHeightPx` 由 `MovieScreen.kt` 测量封面后传入。
   - `FilePathText.kt`：副标题下方的文件路径，本地优先于服务器、各自去重拼接、可点击展开；服务端路径用 `ic_cloud`、本地已下载用 `ic_folder`。
@@ -310,7 +311,7 @@ else -> WelcomeRoute
 
 ### SettingsScreen — 设置主页
 
-- **职责**：按 `indexes` 参数展示分组偏好项（开关 / 下拉 / 数字输入 / 文件编辑 / 多选），处理嵌套导航与事件。
+- **职责**：按 `indexes` 参数展示分组偏好项（开关 / 下拉 / 数字输入 / 文本输入 / 文件编辑 / 多选），处理嵌套导航与事件。网络分类下除三个超时项外，还有一个「外网」分组（`PreferenceGroup`，`settings_group_external`）：开启外网评论（`AppPreferences.commentsEnabled`）、外网使用代理（`commentsUseProxy`）、代理地址（`PreferenceTextInput`，直接绑定 `AppPreferences.scrapeProxy`，与编辑 nfo 抓取共用）、评论缓存文件大小（`commentCacheSize`，默认 800 MB）、评论缓存有效期（`commentCacheDays`，默认 7 天）。文本输入的卡片与弹窗为 `PHONE/presentation/settings/components/SettingsTextInputCard.kt`、`SettingsTextInputDialog.kt`。同组还有「站点账号」动作行（`PreferenceAction` → `PHONE/presentation/settings/components/SettingsActionCard.kt`），点击打开 `PHONE/presentation/settings/components/JavDbLoginDialog.kt`：站点登录要图形验证码，弹窗先展示验证码图（`GET /rucaptcha/`）、用户填账号密码与 5 位字母后提交 `POST /user_sessions`；实现见 `CORE/scraper/JavDbSessionImpl.kt`，会话 Cookie 由 `ScraperCookieJar` 落盘（`AppPreferences.scraperCookies`）以便重启后仍保持登录，登录 / 退出后清空短评缓存。登录后网页端能看到多少条短评取决于账号（站点对访客只给最新 3 条，其余提示需 VIP 或官方 App）。
 - **路由**：`SettingsRoute(indexes: IntArray)`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/settings/SettingsScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETTINGS/presentation/settings/SettingsViewModel.kt`、`SETTINGS/presentation/settings/SettingsState.kt`、`SETTINGS/presentation/settings/SettingsAction.kt`、`SETTINGS/presentation/settings/SettingsEvent.kt`。

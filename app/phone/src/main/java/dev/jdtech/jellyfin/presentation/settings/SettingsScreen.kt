@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.jdtech.jellyfin.core.R as CoreR
+import dev.jdtech.jellyfin.presentation.settings.components.JavDbLoginDialog
 import dev.jdtech.jellyfin.presentation.settings.components.SettingsGroupCard
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
@@ -43,6 +44,7 @@ import dev.jdtech.jellyfin.settings.R as SettingsR
 import dev.jdtech.jellyfin.settings.presentation.enums.DeviceType
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceCategory
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceGroup
+import dev.jdtech.jellyfin.settings.presentation.settings.JavDbLoginState
 import dev.jdtech.jellyfin.settings.presentation.settings.SettingsAction
 import dev.jdtech.jellyfin.settings.presentation.settings.SettingsEvent
 import dev.jdtech.jellyfin.settings.presentation.settings.SettingsState
@@ -129,6 +131,8 @@ fun SettingsScreen(
                     viewModel.onAction(action)
                     viewModel.loadPreferences(indexes, DeviceType.PHONE)
                 }
+                // 站点登录相关（取验证码 / 提交 / 退出 / 关弹窗）都由 ViewModel 处理
+                else -> viewModel.onAction(action)
             }
         },
     )
@@ -179,6 +183,20 @@ private fun SettingsScreenLayout(
                 )
             }
         }
+    }
+
+    if (state.javdbLogin !is JavDbLoginState.Hidden) {
+        JavDbLoginDialog(
+            state = state.javdbLogin,
+            loggedInAccount = state.javdbLoggedInUser,
+            initialAccount = state.javdbAccount,
+            onRefreshCaptcha = { onAction(SettingsAction.RefreshJavDbCaptcha) },
+            onSubmit = { account, password, captcha ->
+                onAction(SettingsAction.SubmitJavDbLogin(account, password, captcha))
+            },
+            onLogout = { onAction(SettingsAction.JavDbLogout) },
+            onDismiss = { onAction(SettingsAction.CloseJavDbLogin) },
+        )
     }
 }
 

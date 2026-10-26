@@ -11,9 +11,20 @@ import org.jsoup.nodes.Element
  * 本应用两样都没有，只能带浏览器 UA 直连，被拦截时按 [ScraperException.SiteBlocked] 上报，
  * 由上层换下一个站点。
  */
-class JavDbScraper(private val http: ScraperHttp, private val baseUrl: String) {
+class JavDbScraper(
+    private val http: ScraperHttp,
+    private val baseUrl: String,
+    /** 是否走抓取代理；短评抓取可以在设置里关掉代理，元数据抓取保持默认。 */
+    private val useProxy: Boolean = true,
+) {
 
-    suspend fun parse(dvdId: String): ScrapedMovie {
+    /**
+     * 按番号查出影片详情页地址（如 `https://javdb.com/v/ZY5eq`）。
+     *
+     * 短评页挂在同一个影片地址下（`/v/xxx/reviews/lastest`），因此短评抓取也复用这段搜索逻辑，
+     * 不再单独解析一遍搜索结果页。
+     */
+    suspend fun resolveMovieUrl(dvdId: String): String {
         val searchUrl = "$baseUrl/search?q=$dvdId"
         val searchHtml = getHtml(searchUrl)
 
@@ -31,10 +42,12 @@ class JavDbScraper(private val http: ScraperHttp, private val baseUrl: String) {
             throw ScraperException.MovieNotFound("JavDB: '$dvdId' 有多个完全匹配的搜索结果")
         }
         // 解析搜索页时带了 baseUri，absUrl 会把站内相对链接补成绝对地址
-        val movieUrl =
-            matches.first().absUrl("href").takeIf { it.isNotBlank() }
-                ?: throw ScraperException.WebsiteError("JavDB: 搜索结果缺少影片链接")
+        return matches.first().absUrl("href").takeIf { it.isNotBlank() }
+            ?: throw ScraperException.WebsiteError("JavDB: 搜索结果缺少影片链接")
+    }
 
+    suspend fun parse(dvdId: String): ScrapedMovie {
+        val movieUrl = resolveMovieUrl(dvdId)
         val html = getHtml(movieUrl)
         val container =
             html.selectFirst("div.video-detail")
@@ -98,7 +111,7 @@ class JavDbScraper(private val http: ScraperHttp, private val baseUrl: String) {
     }
 
     private suspend fun getHtml(url: String): Document {
-        val response = http.getFollowingRedirects(url, HEADERS)
+        val response = http.getFollowingRedirects(url, HEADERS, useProxy)
         val finalUrl = response.url
         return when (response.code) {
             200 -> {

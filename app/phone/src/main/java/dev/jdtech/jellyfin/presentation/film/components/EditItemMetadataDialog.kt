@@ -1,10 +1,14 @@
 package dev.jdtech.jellyfin.presentation.film.components
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,9 +20,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -33,9 +39,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -57,6 +67,15 @@ private const val METADATA_LIST_SEPARATOR = ", "
 // 上限里给「抓取后的来源选项行」（约 40dp）留了位置，免得那一行把下面按钮行挤出卡片
 private val METADATA_DIALOG_MAX_HEIGHT = 580.dp
 private val METADATA_FORM_MAX_HEIGHT = 360.dp
+
+// 分类 / 标签气泡的紧凑尺寸：M3 芯片固定 32dp 高、水平内边距 8dp、labelLarge(14sp)，
+// 放进表单比正文还抢眼，所以这里自己排一条更小的气泡（12sp 字、13dp 图标、2dp 图文间距）
+private val METADATA_BUBBLE_MIN_HEIGHT = 24.dp
+private val METADATA_BUBBLE_START_PADDING = 6.dp
+private val METADATA_BUBBLE_END_PADDING = 4.dp
+private val METADATA_BUBBLE_ICON_SIZE = 13.dp
+private val METADATA_BUBBLE_ICON_GAP = 2.dp
+private val METADATA_BUBBLE_BORDER_WIDTH = 1.dp
 
 /**
  * 「编辑 nfo」弹窗。
@@ -512,6 +531,13 @@ private data class MetadataForm(
      */
     fun restoreField(field: MetadataField, baseline: MetadataForm): MetadataForm =
         withText(field, baseline.textOf(field))
+
+    /** 取多值字段当前的条目，供气泡样式逐条增删；底层仍按逗号分隔的文本保存。 */
+    fun valuesOf(field: MetadataField): List<String> = textOf(field).toMetadataList()
+
+    /** 按条重写多值字段，重新拼回逗号分隔文本，其余字段保持当前输入。 */
+    fun withValues(field: MetadataField, values: List<String>): MetadataForm =
+        withText(field, values.joinToString(METADATA_LIST_SEPARATOR))
 }
 
 private fun ItemMetadataEdit.toForm(): MetadataForm =
@@ -572,6 +598,23 @@ private fun MetadataFormFields(
     fun restoreAction(field: MetadataField): (() -> Unit)? =
         onRestoreField?.let { restore -> { restore(field) } }
 
+    // 气泡末尾的「添加」先弹输入框，确认后才写回表单；这里记下当前在给哪一框加值
+    var addValueField by remember { mutableStateOf<MetadataField?>(null) }
+
+    addValueField?.let { field ->
+        AddListValueDialog(
+            field = field,
+            onDismiss = { addValueField = null },
+            onConfirm = { text ->
+                val values = form.valuesOf(field)
+                // 输入框里可以一次填多个（逗号分隔）；已经有的条目不重复添加
+                val added = text.toMetadataList().filterNot { it in values }
+                onFormChange(form.withValues(field, values + added))
+                addValueField = null
+            },
+        )
+    }
+
     Column {
         MetadataTextField(
             label = stringResource(CoreR.string.edit_metadata_field_name),
@@ -599,21 +642,28 @@ private fun MetadataFormFields(
             onRestore = restoreAction(MetadataField.OVERVIEW),
             minLines = 3,
         )
-        MetadataTextField(
+        // 分类与标签改成气泡：条目少但常要逐条增删，气泡比一长串逗号分隔文本更好点
+        MetadataChipField(
             label = stringResource(CoreR.string.edit_metadata_field_genres),
-            value = form.genres,
-            onValueChange = { onFormChange(form.copy(genres = it)) },
+            values = form.valuesOf(MetadataField.GENRES),
             isChanged = MetadataField.GENRES in changedFields,
             onRestore = restoreAction(MetadataField.GENRES),
-            supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_list_hint)) },
+            onRemove = { value ->
+                val values = form.valuesOf(MetadataField.GENRES)
+                onFormChange(form.withValues(MetadataField.GENRES, values - value))
+            },
+            onAddClick = { addValueField = MetadataField.GENRES },
         )
-        MetadataTextField(
+        MetadataChipField(
             label = stringResource(CoreR.string.edit_metadata_field_tags),
-            value = form.tags,
-            onValueChange = { onFormChange(form.copy(tags = it)) },
+            values = form.valuesOf(MetadataField.TAGS),
             isChanged = MetadataField.TAGS in changedFields,
             onRestore = restoreAction(MetadataField.TAGS),
-            supportingText = { Text(text = stringResource(CoreR.string.edit_metadata_list_hint)) },
+            onRemove = { value ->
+                val values = form.valuesOf(MetadataField.TAGS)
+                onFormChange(form.withValues(MetadataField.TAGS, values - value))
+            },
+            onAddClick = { addValueField = MetadataField.TAGS },
         )
         MetadataTextField(
             label = stringResource(CoreR.string.edit_metadata_field_actresses),
@@ -751,7 +801,184 @@ private fun MetadataTextField(
     }
 }
 
-@Preview
+/**
+ * 多值字段（分类 / 标签）的气泡样式：每个条目一个气泡，气泡末尾的叉号删掉这一条；
+ * 末尾那个特殊配色的气泡是添加入口，点了弹输入框再加一条。
+ *
+ * [onRestore] 与文本字段一样挂在标签上：抓取结果只采用一部分时，点标签把整框恢复成服务器原值。
+ */
+@Composable
+private fun MetadataChipField(
+    label: String,
+    values: List<String>,
+    isChanged: Boolean,
+    onRemove: (String) -> Unit,
+    onAddClick: () -> Unit,
+    onRestore: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    // 配色规则与 [MetadataTextField] 一致：被抓取换掉的整框标签用警告色
+    val labelColor =
+        if (isChanged) MaterialTheme.warningColor else MaterialTheme.colorScheme.onSurfaceVariant
+    val labelModifier =
+        if (onRestore != null) Modifier.clickable(onClick = onRestore) else Modifier
+    Column(modifier = modifier.fillMaxWidth()) {
+        // 这里没有输入框承载浮动标签，自己画一行；缩进与气泡左边缘大致对齐
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = labelColor,
+            modifier =
+                labelModifier.padding(
+                    start = MaterialTheme.spacings.extraSmall,
+                    bottom = MaterialTheme.spacings.extraSmall,
+                ),
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.extraSmall),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.extraSmall),
+        ) {
+            values.forEach { value ->
+                MetadataBubble(
+                    text = value,
+                    // 气泡整体可点即删除：叉号面积小，只让图标响应会很难点中
+                    onClick = { onRemove(value) },
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    border =
+                        BorderStroke(
+                            METADATA_BUBBLE_BORDER_WIDTH,
+                            MaterialTheme.colorScheme.outlineVariant,
+                        ),
+                    trailingIconPainter = painterResource(CoreR.drawable.ic_x),
+                    trailingIconContentDescription = stringResource(CoreR.string.remove),
+                )
+            }
+            // 添加入口用容器色区分，避免和上面的条目气泡混淆（点它不会删掉任何东西）
+            MetadataBubble(
+                text = stringResource(CoreR.string.add),
+                onClick = onAddClick,
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                leadingIconPainter = painterResource(CoreR.drawable.ic_plus),
+            )
+        }
+        Spacer(Modifier.height(MaterialTheme.spacings.small))
+    }
+}
+
+/**
+ * 表单里的紧凑气泡：比 M3 芯片矮一圈、字小一号，仅用于分类 / 标签这类条目。
+ *
+ * 不用 `InputChip` 是因为芯片的高度、内边距与 labelLarge 字号都写死在组件里，
+ * 放进表单会比正文更抢眼；这里用 Row 自排一条，尺寸由文件顶部的 METADATA_BUBBLE 常量决定。
+ */
+@Composable
+private fun MetadataBubble(
+    text: String,
+    onClick: () -> Unit,
+    containerColor: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier,
+    border: BorderStroke? = null,
+    leadingIconPainter: Painter? = null,
+    trailingIconPainter: Painter? = null,
+    trailingIconContentDescription: String? = null,
+) {
+    val shape = RoundedCornerShape(percent = 50)
+    Row(
+        modifier =
+            modifier
+                .heightIn(min = METADATA_BUBBLE_MIN_HEIGHT)
+                .clip(shape)
+                .background(containerColor)
+                .then(if (border != null) Modifier.border(border, shape) else Modifier)
+                .clickable(onClick = onClick)
+                .padding(
+                    start = METADATA_BUBBLE_START_PADDING,
+                    end = METADATA_BUBBLE_END_PADDING,
+                ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (leadingIconPainter != null) {
+            Icon(
+                painter = leadingIconPainter,
+                contentDescription = null,
+                modifier = Modifier.size(METADATA_BUBBLE_ICON_SIZE),
+            )
+            Spacer(Modifier.width(METADATA_BUBBLE_ICON_GAP))
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = contentColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (trailingIconPainter != null) {
+            Spacer(Modifier.width(METADATA_BUBBLE_ICON_GAP))
+            Icon(
+                painter = trailingIconPainter,
+                contentDescription = trailingIconContentDescription,
+                tint = contentColor,
+                modifier = Modifier.size(METADATA_BUBBLE_ICON_SIZE),
+            )
+        }
+    }
+}
+
+/**
+ * 给多值字段添加条目的输入框，标题与输入框标签按 [field] 取。
+ *
+ * 输入内容与表单里其它多值字段一致，允许一次用逗号填多条；已有条目由调用方去重。
+ */
+@Composable
+private fun AddListValueDialog(
+    field: MetadataField,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by rememberSaveable(field) { mutableStateOf("") }
+    val titleRes =
+        if (field == MetadataField.GENRES) {
+            CoreR.string.edit_metadata_add_genre
+        } else {
+            CoreR.string.edit_metadata_add_tag
+        }
+    val fieldLabelRes =
+        if (field == MetadataField.GENRES) {
+            CoreR.string.edit_metadata_field_genres
+        } else {
+            CoreR.string.edit_metadata_field_tags
+        }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(titleRes)) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(text = stringResource(fieldLabelRes)) },
+                supportingText = {
+                    Text(text = stringResource(CoreR.string.edit_metadata_list_hint))
+                },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) {
+                Text(text = stringResource(CoreR.string.confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(CoreR.string.cancel))
+            }
+        },
+    )
+}
+
 @Composable
 private fun EditItemMetadataDialogPreview() {
     FindroidTheme {
