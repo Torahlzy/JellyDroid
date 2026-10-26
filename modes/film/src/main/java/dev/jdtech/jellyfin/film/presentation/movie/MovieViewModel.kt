@@ -26,6 +26,7 @@ import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.models.pickPlaybackSource
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
+import dev.jdtech.jellyfin.settings.domain.JavDbSession
 import dev.jdtech.jellyfin.settings.domain.models.TranslateSettings
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -58,6 +59,7 @@ constructor(
     private val translator: MetadataTranslator,
     private val tagTranslator: TagTranslator,
     private val commentRepository: MovieCommentRepository,
+    private val javDbSession: JavDbSession,
 ) : ViewModel() {
     // 抓取站点进页面时取一次（运行时配置优先于打包配置），直接放进初始 state，
     // 免得打开「编辑封面」/「编辑 nfo」弹窗时要等一次异步加载、先闪一下「没配站点」的空态；
@@ -350,12 +352,22 @@ constructor(
                 )
                 return@launch
             }
+            // 会话会静默失效（站点对失效会话按游客返回，不报错），加载前先校验；
+            // 失效时 ensureSessionValid 会清掉本地登录状态，界面随之出现「去登录」入口
+            val loggedIn =
+                if (javDbSession.loggedInAccount().isBlank()) {
+                    false
+                } else {
+                    javDbSession.ensureSessionValid()
+                }
             _state.emit(
                 _state.value.copy(
                     commentsEnabled = true,
                     commentKeyword = keyword,
                     isLoadingComments = true,
                     commentsError = null,
+                    // 提示文案与登录入口取决于是否已登录，随每次加载刷新（用户可能中途去设置里登录）
+                    isJavDbLoggedIn = loggedIn,
                 )
             )
             try {

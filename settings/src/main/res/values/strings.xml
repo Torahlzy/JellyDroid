@@ -34,6 +34,7 @@
     <string name="settings_javdb_account">Site account</string>
     <string name="settings_javdb_account_summary">Sign in to the scraping site (JavDB). A signed-in session may return more short reviews.</string>
     <string name="settings_javdb_not_logged_in">Not signed in</string>
+    <string name="settings_javdb_vip_badge" translatable="false">VIP</string>
     <string name="settings_javdb_login_title">Sign in</string>
     <string name="settings_javdb_login_summary">The site asks for a captcha: fill in the account, the password and the 5 letters in the image. The password is not saved.</string>
     <string name="settings_javdb_login_account">Username or email</string>

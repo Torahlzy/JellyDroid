@@ -68,6 +68,8 @@ fun ItemPlayButton(
     scrollState: ScrollState,
     headerHeightPx: Int,
     safePadding: SafePadding,
+    /** 头图是否吸顶（不随页面滚动移出屏幕）：吸顶时展开锚点固定在头图中心。 */
+    isHeaderPinned: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -143,8 +145,11 @@ fun ItemPlayButton(
                                 // 展开锚点：封面中心在屏幕上的当前位置，跟随内容滚动，
                                 // 但不越过收起后的纵坐标，保证按钮始终可见、且过渡时不跳变
                                 val expandedCx = overlayWidthPx / 2f
+                                // 吸顶时头图不动，锚点也不能按滚动量上移，否则按钮会脱离封面漂移
+                                val scrollOffset =
+                                    if (isHeaderPinned) 0f else scrollState.value.toFloat()
                                 val expandedCy =
-                                    (topPx + headerHeightPx / 2f - scrollState.value)
+                                    (topPx + headerHeightPx / 2f - scrollOffset)
                                         .coerceAtLeast(collapsedCyPx.toFloat())
                                 // 收起锚点：顶栏第三个按钮的圆心
                                 val collapsedCx =

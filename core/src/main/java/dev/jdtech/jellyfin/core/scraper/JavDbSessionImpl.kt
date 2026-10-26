@@ -101,16 +101,32 @@ constructor(
                     return@withLock JavDbLoginResult.Failure(e.message ?: "登录请求失败")
                 }
 
-            // 失败时站点会退回登录页并渲染错误提示；成功则跳到站内其它页面
-            if (response.url.contains("/login")) {
+            // 失败时站点有两种形态：渲染完整登录页（带错误文案），或 30 字节的 JS 跳转页
+            // （`window.location.href='/login'`，HTTP 仍是 200，无任何文案）。只比对 URL 会把
+            // 后者漏判成成功（POST 后 URL 仍是 /user_sessions），必须同时看 body
+            val bouncedToLogin =
+                response.url.contains("/login") ||
+                    response.body.contains("window.location.href='/login'")
+            if (bouncedToLogin) {
                 loginToken = null
-                return@withLock JavDbLoginResult.Failure(readLoginError(Jsoup.parse(response.body)))
+                val message =
+                    if (response.body.contains("message-header")) {
+                        readLoginError(Jsoup.parse(response.body))
+                    } else {
+                        "登录失败：账号、密码或验证码不正确"
+                    }
+                return@withLock JavDbLoginResult.Failure(message)
             }
 
-            // 用一个需要登录的页面复核，避免把「被挡在别处的 200」当成成功
+            // 用一个需要登录的页面复核，避免把「被挡在别处的 200」当成成功。
+            // 与上面同理：未登录时该页面是 200 + JS 跳转（仅 30 字节），长度与内容都要看
             val profileUrl = "$baseUrl/users/profile"
             val check = http.getFollowingRedirects(profileUrl, HEADERS)
-            if (check.url.contains("/login")) {
+            val profileInvalid =
+                check.url.contains("/login") ||
+                    check.body.contains("window.location.href='/login'") ||
+                    check.body.length < PROFILE_MIN_LENGTH
+            if (profileInvalid) {
                 loginToken = null
                 return@withLock JavDbLoginResult.Failure("登录未生效，请确认账号密码后重试")
             }
@@ -118,11 +134,41 @@ constructor(
             loginToken = null
             appPreferences.setValue(appPreferences.javdbAccount, accountName)
             appPreferences.setValue(appPreferences.javdbLoggedInUser, accountName)
+            // 登录复核用的 profile 页里带着账号的「用戶類型」，顺手解析出 VIP 状态给设置页账号行显示
+            appPreferences.setValue(appPreferences.javdbVip, parseVip(check.body))
             // 登录前缓存的短评可能只有站点给访客的那几条，作废后下次进详情页会重新抓
             commentCache.clear()
             AppLog.i("JavDB 登录成功：%s", accountName)
             JavDbLoginResult.Success(accountName)
         }
+
+    override suspend fun ensureSessionValid(): Boolean {
+        if (loggedInAccount().isBlank()) return false
+        val baseUrl = requireBaseUrl()
+        val check =
+            try {
+                http.getFollowingRedirects("$baseUrl/users/profile", HEADERS)
+            } catch (e: ScraperException) {
+                // 网络异常不代表会话失效，按仍有效处理，避免偶发失败误清登录态
+                AppLog.w(e, "JavDB 会话校验请求失败，按有效处理")
+                return true
+            }
+        // 站点对未登录访问返回 JS 跳转页或完整登录页（HTTP 都是 200），必须看 body
+        val invalid =
+            check.url.contains("/login") ||
+                check.body.contains("window.location.href='/login'") ||
+                check.body.length < PROFILE_MIN_LENGTH
+        if (!invalid) return true
+
+        // 会话已失效：清掉本地登录痕迹（与登出相同的清理，但不打「已退出」日志）
+        val host = runCatching { URI(baseUrl).host }.getOrNull()
+        host?.let { cookieJar.clearHost(it) }
+        loginToken = null
+        appPreferences.setValue(appPreferences.javdbLoggedInUser, "")
+        appPreferences.setValue(appPreferences.javdbVip, false)
+        AppLog.i("JavDB 会话已失效，已清除登录状态，请重新登录")
+        return false
+    }
 
     override fun logout() {
         val host =
@@ -132,6 +178,7 @@ constructor(
         host?.let { cookieJar.clearHost(it) }
         loginToken = null
         appPreferences.setValue(appPreferences.javdbLoggedInUser, "")
+        appPreferences.setValue(appPreferences.javdbVip, false)
         // 退出后能看到的评论会变少，旧缓存同样作废
         CoroutineScope(Dispatchers.IO).launch { commentCache.clear() }
         AppLog.i("JavDB 已退出登录")
@@ -150,12 +197,30 @@ constructor(
             .firstOrNull { it.isNotEmpty() }
             ?: "登录失败：账号、密码或验证码不正确"
 
+    /**
+     * 从 profile 页解析账号是否 VIP：个人信息的「用戶類型」一栏是
+     * `<span class="label">用戶類型:</span><span class="tag ...">永久VIP</span>` 这样的结构，
+     * VIP 用户的值里带「VIP」字样；非 VIP 该栏可能没有 tag 或不含「VIP」。
+     */
+    private fun parseVip(profileBody: String): Boolean {
+        val label =
+            Jsoup.parse(profileBody)
+                .select("span.label")
+                .firstOrNull { it.text().contains("用戶類型") }
+                ?: return false
+        val value = label.parent()?.selectFirst("span.tag")?.text().orEmpty()
+        return value.contains("VIP", ignoreCase = true)
+    }
+
     private fun requireBaseUrl(): String =
         scraperUrlProvider.baseUrl(ScraperSite.JAVDB)
             ?: throw ScraperException.WebsiteError("JavDB: 没有配置站点网址")
 
     private companion object {
         const val CAPTCHA_PATH = "/rucaptcha/?t="
+
+        /** profile 页真实内容远大于此；小于它基本就是站点的 JS 跳转 / 异常短响应。 */
+        const val PROFILE_MIN_LENGTH = 1000
 
         val HEADERS =
             mapOf(

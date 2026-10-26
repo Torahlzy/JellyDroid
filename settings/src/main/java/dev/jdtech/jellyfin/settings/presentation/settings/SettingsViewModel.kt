@@ -993,6 +993,7 @@ constructor(
                                                 )
                                             }
                                             is PreferenceAction -> {
+                                                val account = javDbSession.loggedInAccount()
                                                 preference.copy(
                                                     enabled =
                                                         preference.enabled &&
@@ -1000,7 +1001,10 @@ constructor(
                                                                 appPreferences.getValue(it)
                                                             },
                                                     // 账号行右侧显示已登录账号，未登录为空串（界面显示「未登录」）
-                                                    valueText = javDbSession.loggedInAccount(),
+                                                    valueText = account,
+                                                    vipBadge =
+                                                        account.isNotEmpty() &&
+                                                            appPreferences.getValue(appPreferences.javdbVip),
                                                 )
                                             }
                                             else -> preference

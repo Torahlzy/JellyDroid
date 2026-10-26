@@ -54,6 +54,8 @@ fun ItemHeader(
     showLogo: Boolean = false,
     fadeToBackground: Boolean = true,
     fitBackdrop: Boolean = false,
+    /** 头图视差速率；0 表示禁用（头图吸顶时框架已固定，图内不能再有相对位移）。 */
+    parallaxRate: Int = 2,
     content: @Composable (BoxScope.() -> Unit) = {},
 ) {
     val context = LocalContext.current
@@ -98,7 +100,7 @@ fun ItemHeader(
                 contentDescription = null,
                 modifier =
                     Modifier.fillMaxSize()
-                        .parallaxLayoutModifier(scrollState = scrollState, rate = 2),
+                        .parallaxLayoutModifier(scrollState = scrollState, rate = parallaxRate),
                 placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceContainer),
                 contentScale = ContentScale.Crop,
                 // 加载成功后按图片实际宽高比调整容器高度，保证图片完整显示

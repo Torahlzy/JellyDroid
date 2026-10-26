@@ -8,6 +8,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -47,6 +51,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.graphics.toColorInt
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -110,6 +115,7 @@ fun MovieScreen(
     navigateHome: () -> Unit,
     navigateToPerson: (personId: UUID, personName: String) -> Unit,
     navigateToMetadataFacet: (facet: MetadataFacet, key: String) -> Unit,
+    navigateToCommentSettings: () -> Unit,
     viewModel: MovieViewModel = hiltViewModel(),
     downloaderViewModel: DownloaderViewModel = hiltViewModel(),
     actorImageScrapeViewModel: ActorImageScrapeViewModel = hiltViewModel(),
@@ -282,6 +288,7 @@ fun MovieScreen(
                 )
             )
         },
+        onLoginClick = navigateToCommentSettings,
         onAction = { action ->
             when (action) {
                 is MovieAction.Play -> {
@@ -532,6 +539,7 @@ private fun MovieScreenLayout(
     state: MovieState,
     downloaderState: DownloaderState,
     onScrapeImageClick: (person: FindroidItemPerson) -> Unit,
+    onLoginClick: () -> Unit,
     onAction: (MovieAction) -> Unit,
     onMoreClick: (() -> Unit)?,
     onDownloaderAction: (DownloaderAction) -> Unit,
@@ -592,26 +600,66 @@ private fun MovieScreenLayout(
         showLoadingSpinner = state.movie == null
     }
 
+    // 头图吸顶仅在短评区块存在时启用：吸顶的视觉终点是「头图固定 + 短评占满下方一屏」，
+    // 没有短评时页面滚到底会只剩头图悬在顶部、下方一片空白，观感不对
+    val isHeaderPinned = state.commentsEnabled
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxWidth().verticalScroll(scrollState)) {
             state.movie?.let { movie ->
                 // 头部：数据到位后立即渲染，承接共享元素落点；
-                // 数据到达前没有落点，morph 自动退化为普通转场
+                // 数据到达前没有落点，morph 自动退化为普通转场。
+                // 吸顶层整体（垫片 + 头图）随滚动反向平移；垫片在共享元素之外，
+                // 否则 morph 会把它当共享内容一起缩放，转场期间顶部会露出色块
+                val emptyClickInteraction = remember { MutableInteractionSource() }
                 Box(
                     modifier =
-                        Modifier.padding(top = safePadding.top)
-                            .heroSharedBounds(key = "movie-hero-$movieId")
+                        Modifier.zIndex(1f)
+                            .clickable(
+                                interactionSource = emptyClickInteraction,
+                                indication = null,
+                            ) {
+                                // 空点击：吸顶后头图盖住下方内容，拦截手势防止点击穿透到被盖住的元素
+                            }
+                            .layout { measurable, constraints ->
+                                val placeable = measurable.measure(constraints)
+                                layout(placeable.width, placeable.height) {
+                                    // 吸顶：放置时反向平移抵消页面滚动。用布局放置而非 graphicsLayer——
+                                    // graphicsLayer 是纯渲染变换，不进入布局坐标：共享元素 morph 的目标
+                                    // 会算到滚上去的旧位置、结束时跳回吸顶位；放置偏移则坐标随动，
+                                    // morph 目标与命中测试（点击拦截区域）都落在吸顶位置。
+                                    // 状态读取放在 placement 阶段，滚动时只重放置、不重新测量
+                                    val y = if (isHeaderPinned) scrollState.value else 0
+                                    placeable.place(0, y)
+                                }
+                            }
                 ) {
-                    ItemHeader(
-                        item = movie,
-                        scrollState = scrollState,
+                    // 状态栏底色垫片：挡住从头图上方透出的滑动内容
+                    Box(
                         modifier =
-                            Modifier.fillMaxWidth().onSizeChanged { headerHeightPx = it.height },
-                        // 标题已移到图片下方，不再需要底部渐隐，避免图片下方出现空白
-                        fadeToBackground = false,
-                        // 按图片实际宽高比自适应高度，完整显示背景图、不裁切左右
-                        fitBackdrop = true,
+                            Modifier.fillMaxWidth()
+                                .height(safePadding.top)
+                                .background(MaterialTheme.colorScheme.background)
                     )
+                    Box(
+                        modifier =
+                            Modifier.padding(top = safePadding.top)
+                                .heroSharedBounds(key = "movie-hero-$movieId")
+                    ) {
+                        ItemHeader(
+                            item = movie,
+                            scrollState = scrollState,
+                            modifier =
+                                Modifier.fillMaxWidth()
+                                    .onSizeChanged { headerHeightPx = it.height },
+                            // 标题已移到图片下方，不再需要底部渐隐，避免图片下方出现空白
+                            fadeToBackground = false,
+                            // 按图片实际宽高比自适应高度，完整显示背景图、不裁切左右
+                            fitBackdrop = true,
+                            // 吸顶时框架已固定，图内视差会让图片漂移露出缺口，须禁用
+                            parallaxRate = if (isHeaderPinned) 0 else 2,
+                        )
+                    }
                 }
             }
             state.movie?.takeIf { contentAppeared }?.let { movie ->
@@ -783,6 +831,8 @@ private fun MovieScreenLayout(
                             isLoading = state.isLoadingComments,
                             error = state.commentsError,
                             onRetry = { onAction(MovieAction.ReloadComments) },
+                            isJavDbLoggedIn = state.isJavDbLoggedIn,
+                            onLoginClick = onLoginClick,
                             contentPadding = PaddingValues(start = paddingStart, end = paddingEnd),
                         )
                     }
@@ -840,6 +890,7 @@ private fun MovieScreenLayout(
                 scrollState = scrollState,
                 headerHeightPx = headerHeightPx,
                 safePadding = safePadding,
+                isHeaderPinned = isHeaderPinned,
                 onClick = { onAction(MovieAction.Play(startFromBeginning = false)) },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -911,6 +962,7 @@ private fun EpisodeScreenLayoutPreview() {
                 ),
             downloaderState = DownloaderState(),
             onScrapeImageClick = {},
+            onLoginClick = {},
             onAction = {},
             onMoreClick = {},
             onDownloaderAction = {},

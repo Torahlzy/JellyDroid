@@ -194,7 +194,8 @@
     <string name="movie_comments_error">加载短评失败：%1$s</string>
     <string name="movie_comments_retry">重试</string>
     <string name="movie_comments_likes">%1$d 人赞</string>
-    <string name="movie_comments_limited">站点仅向未登录访客提供最新几条短评，其余需在官方 App 或 VIP 中查看。</string>
+    <string name="movie_comments_login_hint">未登录或登录已失效，仅显示最新几条短评。</string>
+    <string name="movie_comments_login_action">去登录</string>
     <string name="scrape_urls">抓取网址</string>
     <string name="scrape_urls_title">请输入抓取网址</string>
     <string name="scrape_urls_summary">填写用来抓取信息的网站地址。</string>

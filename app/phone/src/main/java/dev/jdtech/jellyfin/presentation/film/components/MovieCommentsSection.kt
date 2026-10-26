@@ -28,7 +28,8 @@ import dev.jdtech.jellyfin.presentation.theme.spacings
  * 电影详情页底部的评论区（外网短评）。
  *
  * 只展示用户名与发言内容，不加载头像：站点本身也不给头像地址，且评论列表要尽量减少请求。
- * 外层已经是竖向滚动的 Column，因此这里用普通 Column 而不是 LazyColumn，避免同向嵌套滚动。
+ * 评论全量铺开、不做内部滚动，滚动交给外层详情页，避免嵌套滚动的手感割裂；
+ * 短评单页条数有限，全量组合的开销可忽略。
  */
 @Composable
 fun MovieCommentsSection(
@@ -37,18 +38,17 @@ fun MovieCommentsSection(
     isLoading: Boolean,
     error: String?,
     onRetry: () -> Unit,
+    isJavDbLoggedIn: Boolean,
+    onLoginClick: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier.fillMaxWidth().padding(contentPadding),
-    ) {
+    Column(modifier = modifier.fillMaxWidth().padding(contentPadding)) {
         Text(
             text = stringResource(CoreR.string.movie_comments_title),
             style = MaterialTheme.typography.titleMedium,
         )
         Spacer(modifier = Modifier.height(MaterialTheme.spacings.small))
-
         when {
             isLoading ->
                 CircularProgressIndicator(
@@ -85,13 +85,24 @@ fun MovieCommentsSection(
                     }
                     CommentItem(comment = comment)
                 }
-                // 网页端只对未登录 / 非 VIP 访客给最新几条，说明一下免得被当成「评论就这么少」
-                Spacer(modifier = Modifier.height(MaterialTheme.spacings.small))
-                Text(
-                    text = stringResource(CoreR.string.movie_comments_limited),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // 未登录时说明只能看到最新几条并给登录入口；已登录后这条提示不再适用，整体隐藏
+                if (!isJavDbLoggedIn) {
+                    Spacer(modifier = Modifier.height(MaterialTheme.spacings.small))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.small),
+                    ) {
+                        Text(
+                            text = stringResource(CoreR.string.movie_comments_login_hint),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = onLoginClick) {
+                            Text(text = stringResource(CoreR.string.movie_comments_login_action))
+                        }
+                    }
+                }
             }
         }
     }

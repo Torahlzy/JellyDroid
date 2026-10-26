@@ -78,6 +78,7 @@ import dev.jdtech.jellyfin.presentation.settings.SettingsScreen
 import dev.jdtech.jellyfin.presentation.setup.addresses.ServerAddressesScreen
 import dev.jdtech.jellyfin.presentation.setup.addserver.AddServerScreen
 import dev.jdtech.jellyfin.presentation.setup.login.LoginScreen
+import dev.jdtech.jellyfin.settings.R as SettingsR
 import dev.jdtech.jellyfin.presentation.setup.servers.ServersScreen
 import dev.jdtech.jellyfin.presentation.setup.users.UsersScreen
 import dev.jdtech.jellyfin.presentation.setup.welcome.WelcomeScreen
@@ -415,6 +416,14 @@ fun NavigationRoot(
                             // 类型 / 标签没有独立实体 id，直接按值筛选
                             navController.safeNavigate(
                                 ItemFilterRoute(facet = facet, key = key, title = key)
+                            )
+                        },
+                        // 短评「去登录」：站点账号入口在 设置 → 网络 页里
+                        navigateToCommentSettings = {
+                            navController.safeNavigate(
+                                SettingsRoute(
+                                    indexes = intArrayOf(SettingsR.string.settings_category_network)
+                                )
                             )
                         },
                     )

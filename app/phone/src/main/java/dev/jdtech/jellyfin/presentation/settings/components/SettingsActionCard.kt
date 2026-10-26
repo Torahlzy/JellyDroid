@@ -1,5 +1,7 @@
 package dev.jdtech.jellyfin.presentation.settings.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,26 +28,26 @@ fun SettingsActionCard(
     modifier: Modifier = Modifier,
 ) {
     SettingsBaseCard(preference = preference, onClick = onClick, modifier = modifier) {
-        Row(
-            modifier = Modifier.padding(MaterialTheme.spacings.medium),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val iconRes = preference.iconDrawableId
-            if (iconRes != null) {
-                Icon(painter = painterResource(iconRes), contentDescription = null)
-                Spacer(modifier = Modifier.width(MaterialTheme.spacings.default))
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(preference.nameStringResource),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                preference.descriptionStringRes?.let {
-                    Spacer(modifier = Modifier.height(MaterialTheme.spacings.extraSmall))
-                    Text(text = stringResource(it), style = MaterialTheme.typography.bodyMedium)
+        Column(modifier = Modifier.padding(MaterialTheme.spacings.medium)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val iconRes = preference.iconDrawableId
+                if (iconRes != null) {
+                    Icon(painter = painterResource(iconRes), contentDescription = null)
+                    Spacer(modifier = Modifier.width(MaterialTheme.spacings.default))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(preference.nameStringResource),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    preference.descriptionStringRes?.let {
+                        Spacer(modifier = Modifier.height(MaterialTheme.spacings.extraSmall))
+                        Text(text = stringResource(it), style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
-            Spacer(modifier = Modifier.width(MaterialTheme.spacings.small))
+            // 值（如账号邮箱）单开一行：放在右侧同行会把标题列挤到一行只剩几个字
+            Spacer(modifier = Modifier.height(MaterialTheme.spacings.extraSmall))
             if (preference.valueText.isBlank()) {
                 Text(
                     text = stringResource(SettingsR.string.settings_javdb_not_logged_in),
@@ -53,11 +55,29 @@ fun SettingsActionCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                Text(
-                    text = preference.valueText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.small),
+                ) {
+                    Text(
+                        text = preference.valueText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    if (preference.vipBadge) {
+                        Text(
+                            text = stringResource(SettingsR.string.settings_javdb_vip_badge),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier =
+                                Modifier.background(
+                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.shapes.small,
+                                    )
+                                    .padding(horizontal = MaterialTheme.spacings.small / 2),
+                        )
+                    }
+                }
             }
         }
     }
