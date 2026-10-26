@@ -95,6 +95,35 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     // Network - nfo 抓取专用代理（只作用于抓取，不影响 Jellyfin 接口与下载），留空表示直连
     val scrapeProxy = Preference("pref_scrape_proxy", "")
 
+    // Network - 外网评论（影片详情页底部的短评，数据来自 JavDB 的短评页）
+    /** 是否在详情页加载外网短评，关闭后详情页不出现评论区。 */
+    val commentsEnabled = Preference("pref_comments_enabled", true)
+
+    /** 短评请求是否复用 [scrapeProxy]；关掉后即使填了代理也直连。 */
+    val commentsUseProxy = Preference("pref_comments_use_proxy", true)
+
+    /** 短评缓存文件总大小上限（MB），超出后按最后写入时间淘汰最旧的文件。 */
+    val commentCacheSize =
+        Preference("pref_comment_cache_size", Constants.COMMENT_CACHE_DEFAULT_SIZE_MB)
+
+    /** 短评缓存有效期（天），未过期时重复打开影片不再请求站点。 */
+    val commentCacheDays =
+        Preference("pref_comment_cache_days", Constants.COMMENT_CACHE_DEFAULT_DAYS)
+
+    /** 站点登录时用过的账号名（只用于回填输入框，密码不落盘）。 */
+    val javdbAccount = Preference("pref_javdb_account", "")
+
+    /** 已登录的账号名，空串表示未登录；退出登录时清空。 */
+    val javdbLoggedInUser = Preference("pref_javdb_logged_in_user", "")
+
+    /**
+     * 抓取会话 Cookie 的持久化副本（每行 `host\tSet-Cookie 行`）。
+     *
+     * OkHttp 默认只在内存里存 Cookie，进程重启就退出登录，因此把抓取用到的 Cookie 落盘，
+     * 下次启动首个请求前恢复。只存抓取站点自己的 Cookie，不含 Jellyfin 的凭据。
+     */
+    val scraperCookies = Preference("pref_scraper_cookies", "")
+
     /**
      * nfo 抓取站点的自定义网址：按站点 key（见 `:core` 的 `ScraperSite.key`）在「更多」菜单里
      * 运行时配置，优先于打包时的 BuildConfig 本地配置（仅 debug 包带入真实值）；留空表示用打包配置。

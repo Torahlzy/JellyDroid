@@ -1,5 +1,6 @@
 package dev.jdtech.jellyfin.film.presentation.movie
 
+import dev.jdtech.jellyfin.core.comment.MovieComment
 import dev.jdtech.jellyfin.core.scraper.ScraperSite
 import dev.jdtech.jellyfin.core.scraper.SiteImageScrapeResult
 import dev.jdtech.jellyfin.core.scraper.SiteMetadataScrapeResult
@@ -74,6 +75,15 @@ data class MovieState(
     val isScrapingImages: Boolean = false,
     /** 是否正在上传抓取到的封面图片，上传期间禁用各行上传按钮，避免重复点。 */
     val isUploadingImages: Boolean = false,
+    /** 是否开启外网评论（设置 → 网络 → 外网）；关闭时详情页不显示评论区。 */
+    val commentsEnabled: Boolean = false,
+    /** 短评使用过的关键词（通常是识别出的番号），为空表示没识别到、无法抓取。 */
+    val commentKeyword: String = "",
+    /** 外网短评列表，按站点给的顺序展示。 */
+    val comments: List<MovieComment> = emptyList(),
+    val isLoadingComments: Boolean = false,
+    /** 短评加载失败的原因（已转成可直接展示的文案），非空时评论区给出重试入口。 */
+    val commentsError: String? = null,
     val error: Exception? = null,
     /**
      * 可选播放来源：服务器上的多个版本 + 本地已下载。

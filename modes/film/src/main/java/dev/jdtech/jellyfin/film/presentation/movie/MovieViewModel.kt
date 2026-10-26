@@ -3,6 +3,7 @@ package dev.jdtech.jellyfin.film.presentation.movie
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.jdtech.jellyfin.core.comment.MovieCommentRepository
 import dev.jdtech.jellyfin.core.scraper.AvidParser
 import dev.jdtech.jellyfin.core.scraper.ImageScraper
 import dev.jdtech.jellyfin.core.scraper.MetadataScraper
@@ -56,6 +57,7 @@ constructor(
     private val imageScraper: ImageScraper,
     private val translator: MetadataTranslator,
     private val tagTranslator: TagTranslator,
+    private val commentRepository: MovieCommentRepository,
 ) : ViewModel() {
     // 抓取站点进页面时取一次（运行时配置优先于打包配置），直接放进初始 state，
     // 免得打开「编辑封面」/「编辑 nfo」弹窗时要等一次异步加载、先闪一下「没配站点」的空态；
@@ -113,8 +115,9 @@ constructor(
                 val actors = getActors(movie)
                 val director = getDirector(movie)
                 val writers = getWriters(movie)
+                logMetadata(movie, actors)
                 val displayExtraInfo = appPreferences.getValue(appPreferences.displayExtraInfo)
-                _state.emit(
+                val newState =
                     _state.value.copy(
                         movie = movie,
                         videoMetadata = videoMetadata,
@@ -127,7 +130,10 @@ constructor(
                         scrapeProxy = appPreferences.getValue(appPreferences.scrapeProxy),
                         scrapeSiteUrls = loadScrapeSiteUrls(),
                     )
-                )
+                _state.emit(newState)
+                logFilePaths(movie, newState)
+                // 短评要出外网，失败只影响评论区，因此放在详情主体之后单独加载
+                loadComments(newState.defaultScrapeKeyword)
             } catch (e: Exception) {
                 _state.emit(_state.value.copy(error = e))
             }
@@ -155,6 +161,49 @@ constructor(
                 source.remoteFilePath,
                 source.localFilePath,
             )
+        }
+    }
+
+    /**
+     * 打印详情页展示的文件路径：文件名、服务器路径与已下载的本地路径。
+     *
+     * 取值直接来自 [MovieState] 的计算属性，与界面上展示的完全一致；
+     * [logSources] 打的是各来源的原始地址，界面上是去重合并后的结果（多版本时会有多行）。
+     *
+     * 形如：
+     * ```
+     * File paths of XXX (uuid)
+     * FileName: xxx
+     * ServerPath: /media/movies/xxx/xxx.mkv
+     * LocalPath: /storage/emulated/0/xxx.mkv
+     * ```
+     */
+    private fun logFilePaths(movie: FindroidMovie, state: MovieState) {
+        AppLog.d("File paths of %s (%s)", movie.name, movie.id)
+        AppLog.d("FileName: %s", state.fileName)
+        state.remoteFilePath?.lines()?.forEach { AppLog.d("ServerPath: %s", it) }
+        state.localFilePath?.lines()?.forEach { AppLog.d("LocalPath: %s", it) }
+    }
+
+    /**
+     * 打印类型、标签与演员，便于调试元数据抓取 / 回填的结果。
+     *
+     * 形如：
+     * ```
+     * Metadata of XXX (uuid)
+     * Genres: 剧情, 爱情
+     * Tags: 中文字幕, 无码
+     * Actors: 2
+     * Actor[0] name=xxx role=xxx
+     * ```
+     */
+    private fun logMetadata(movie: FindroidMovie, actors: List<FindroidItemPerson>) {
+        AppLog.d("Metadata of %s (%s)", movie.name, movie.id)
+        AppLog.d("Genres: %s", movie.genres.joinToString(separator = ", "))
+        AppLog.d("Tags: %s", movie.tags.joinToString(separator = ", "))
+        AppLog.d("Actors: %d", actors.size)
+        actors.forEachIndexed { index, actor ->
+            AppLog.d("Actor[%d] name=%s role=%s", index, actor.name, actor.role)
         }
     }
 
@@ -262,9 +311,74 @@ constructor(
             is MovieAction.UploadScrapedImages -> {
                 uploadScrapedImages(action.images)
             }
+            is MovieAction.ReloadComments -> {
+                loadComments(_state.value.commentKeyword)
+            }
             else -> Unit
         }
     }
+
+    /**
+     * 加载外网短评。
+     *
+     * 关键词为空（识别不到番号）或用户关了外网评论时不联网，只更新状态让界面显示对应提示；
+     * 缓存命中与否由 [MovieCommentRepository] 判断，因此重复打开同一部影片不会重复请求。
+     */
+    private fun loadComments(keyword: String) {
+        viewModelScope.launch {
+            if (!appPreferences.getValue(appPreferences.commentsEnabled)) {
+                _state.emit(
+                    _state.value.copy(
+                        commentsEnabled = false,
+                        comments = emptyList(),
+                        isLoadingComments = false,
+                        commentsError = null,
+                    )
+                )
+                return@launch
+            }
+            if (keyword.isBlank()) {
+                AppLog.d("未识别到番号，跳过外网短评加载")
+                _state.emit(
+                    _state.value.copy(
+                        commentsEnabled = true,
+                        commentKeyword = keyword,
+                        comments = emptyList(),
+                        isLoadingComments = false,
+                        commentsError = null,
+                    )
+                )
+                return@launch
+            }
+            _state.emit(
+                _state.value.copy(
+                    commentsEnabled = true,
+                    commentKeyword = keyword,
+                    isLoadingComments = true,
+                    commentsError = null,
+                )
+            )
+            try {
+                val comments = commentRepository.getComments(keyword)
+                _state.emit(_state.value.copy(comments = comments, isLoadingComments = false))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.w(e, "加载外网短评失败：%s", keyword)
+                _state.emit(
+                    _state.value.copy(
+                        isLoadingComments = false,
+                        commentsError = e.readableCommentError(),
+                    )
+                )
+            }
+        }
+    }
+
+    /** 短评抓取的异常文案已经是中文，没有消息时补一个类型名，避免评论区空着不解释。 */
+    private fun Throwable.readableCommentError(): String =
+        message?.trim()?.takeIf { it.isNotEmpty() }
+            ?: "网络请求失败（${this::class.simpleName.orEmpty()}）"
 
     /** 加载服务器上的图片列表，供「编辑封面」弹窗以「当前服务器使用」列出。 */
     fun loadItemImages() {

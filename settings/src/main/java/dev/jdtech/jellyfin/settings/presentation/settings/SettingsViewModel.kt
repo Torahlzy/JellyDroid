@@ -9,6 +9,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.jdtech.jellyfin.settings.R
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.settings.presentation.enums.DeviceType
+import dev.jdtech.jellyfin.settings.presentation.models.PreferenceAction
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceAppLanguage
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceCategory
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceFileEdit
@@ -18,7 +19,12 @@ import dev.jdtech.jellyfin.settings.presentation.models.PreferenceLongInput
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceMultiSelect
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceSelect
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceSwitch
+import dev.jdtech.jellyfin.settings.presentation.models.PreferenceTextInput
+import dev.jdtech.jellyfin.settings.domain.JavDbLoginResult
+import dev.jdtech.jellyfin.settings.domain.JavDbSession
+import dev.jdtech.jellyfin.logging.AppLog
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,13 +32,21 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 @HiltViewModel
-class SettingsViewModel @Inject constructor(private val appPreferences: AppPreferences) :
-    ViewModel() {
+class SettingsViewModel
+@Inject
+constructor(
+    private val appPreferences: AppPreferences,
+    private val javDbSession: JavDbSession,
+) : ViewModel() {
     private val _state = MutableStateFlow(SettingsState())
     val state = _state.asStateFlow()
 
     private val eventsChannel = Channel<SettingsEvent>()
     val events = eventsChannel.receiveAsFlow()
+
+    /** 上一次加载用的参数：登录 / 退出登录后据此原地刷新账号行。 */
+    private var lastIndexes: IntArray = intArrayOf()
+    private var lastDeviceType: DeviceType = DeviceType.PHONE
 
     private val topLevelPreferences =
         listOf(
@@ -732,7 +746,78 @@ class SettingsViewModel @Inject constructor(private val appPreferences: AppPrefe
                                                     suffixRes = R.string.ms,
                                                 ),
                                             )
-                                    )
+                                    ),
+                                    // 外网评论：短评来自站点抓取，因此代理与「编辑 nfo」共用同一个偏好
+                                    PreferenceGroup(
+                                        nameStringResource = R.string.settings_group_external,
+                                        preferences =
+                                            listOf(
+                                                PreferenceSwitch(
+                                                    nameStringResource =
+                                                        R.string.settings_comments_enabled,
+                                                    descriptionStringRes =
+                                                        R.string.settings_comments_enabled_summary,
+                                                    backendPreference =
+                                                        appPreferences.commentsEnabled,
+                                                ),
+                                                PreferenceSwitch(
+                                                    nameStringResource =
+                                                        R.string.settings_comments_use_proxy,
+                                                    descriptionStringRes =
+                                                        R.string.settings_comments_use_proxy_summary,
+                                                    dependencies =
+                                                        listOf(appPreferences.commentsEnabled),
+                                                    backendPreference =
+                                                        appPreferences.commentsUseProxy,
+                                                ),
+                                                PreferenceTextInput(
+                                                    nameStringResource =
+                                                        R.string.settings_comments_proxy,
+                                                    descriptionStringRes =
+                                                        R.string.settings_comments_proxy_summary,
+                                                    dependencies =
+                                                        listOf(appPreferences.commentsUseProxy),
+                                                    backendPreference =
+                                                        appPreferences.scrapeProxy,
+                                                ),
+                                                // 站点账号：登录后短评请求会带上会话，站点才可能给出更多条
+                                                PreferenceAction(
+                                                    nameStringResource =
+                                                        R.string.settings_javdb_account,
+                                                    descriptionStringRes =
+                                                        R.string.settings_javdb_account_summary,
+                                                    dependencies =
+                                                        listOf(appPreferences.commentsEnabled),
+                                                    onClick = {
+                                                        viewModelScope.launch {
+                                                            openJavDbLogin()
+                                                        }
+                                                    },
+                                                ),
+                                                PreferenceIntInput(
+                                                    nameStringResource =
+                                                        R.string.settings_comments_cache_size,
+                                                    descriptionStringRes =
+                                                        R.string.settings_comments_cache_size_summary,
+                                                    dependencies =
+                                                        listOf(appPreferences.commentsEnabled),
+                                                    backendPreference =
+                                                        appPreferences.commentCacheSize,
+                                                    suffixRes = R.string.mb,
+                                                ),
+                                                PreferenceIntInput(
+                                                    nameStringResource =
+                                                        R.string.settings_comments_cache_days,
+                                                    descriptionStringRes =
+                                                        R.string.settings_comments_cache_days_summary,
+                                                    dependencies =
+                                                        listOf(appPreferences.commentsEnabled),
+                                                    backendPreference =
+                                                        appPreferences.commentCacheDays,
+                                                    suffixRes = R.string.days,
+                                                ),
+                                            )
+                                    ),
                                 ),
                         )
                     )
@@ -798,6 +883,8 @@ class SettingsViewModel @Inject constructor(private val appPreferences: AppPrefe
         )
 
     fun loadPreferences(indexes: IntArray = intArrayOf(), deviceType: DeviceType) {
+        lastIndexes = indexes
+        lastDeviceType = deviceType
         viewModelScope.launch {
             var preferences = topLevelPreferences
 
@@ -892,6 +979,30 @@ class SettingsViewModel @Inject constructor(private val appPreferences: AppPrefe
                                                         ),
                                                 )
                                             }
+                                            is PreferenceTextInput -> {
+                                                preference.copy(
+                                                    enabled =
+                                                        preference.enabled &&
+                                                            preference.dependencies.all {
+                                                                appPreferences.getValue(it)
+                                                            },
+                                                    value =
+                                                        appPreferences.getValue(
+                                                            preference.backendPreference
+                                                        ),
+                                                )
+                                            }
+                                            is PreferenceAction -> {
+                                                preference.copy(
+                                                    enabled =
+                                                        preference.enabled &&
+                                                            preference.dependencies.all {
+                                                                appPreferences.getValue(it)
+                                                            },
+                                                    // 账号行右侧显示已登录账号，未登录为空串（界面显示「未登录」）
+                                                    valueText = javDbSession.loggedInAccount(),
+                                                )
+                                            }
                                             else -> preference
                                         }
                                     }
@@ -899,7 +1010,13 @@ class SettingsViewModel @Inject constructor(private val appPreferences: AppPrefe
                     }
                     .filter { it.preferences.isNotEmpty() }
 
-            _state.emit(_state.value.copy(preferenceGroups = preferences))
+            _state.emit(
+                _state.value.copy(
+                    preferenceGroups = preferences,
+                    javdbAccount = appPreferences.getValue(appPreferences.javdbAccount),
+                    javdbLoggedInUser = javDbSession.loggedInAccount(),
+                )
+            )
         }
     }
 
@@ -932,9 +1049,104 @@ class SettingsViewModel @Inject constructor(private val appPreferences: AppPrefe
                             action.preference.backendPreference,
                             action.preference.value,
                         )
+                    is PreferenceTextInput ->
+                        // 代理留空表示直连，因此保存时只去空白，不校验格式
+                        appPreferences.setValue(
+                            action.preference.backendPreference,
+                            action.preference.value.trim(),
+                        )
+                    // 动作型偏好没有要落库的值，点击行为在模型自带的 onClick 里
+                    is PreferenceAction -> Unit
                 }
             }
+            is SettingsAction.OpenJavDbLogin -> viewModelScope.launch { openJavDbLogin() }
+            is SettingsAction.RefreshJavDbCaptcha -> viewModelScope.launch { openJavDbLogin() }
+            is SettingsAction.SubmitJavDbLogin ->
+                viewModelScope.launch {
+                    submitJavDbLogin(
+                        account = action.account,
+                        password = action.password,
+                        captcha = action.captcha,
+                    )
+                }
+            is SettingsAction.JavDbLogout ->
+                viewModelScope.launch {
+                    javDbSession.logout()
+                    loadPreferences(lastIndexes, lastDeviceType)
+                }
+            is SettingsAction.CloseJavDbLogin ->
+                viewModelScope.launch {
+                    _state.emit(_state.value.copy(javdbLogin = JavDbLoginState.Hidden))
+                }
             else -> Unit
+        }
+    }
+
+    /** 打开登录弹窗：先取登录页 token 与一张验证码，拿到图片再让弹窗显示输入框。 */
+    private suspend fun openJavDbLogin() {
+        _state.emit(_state.value.copy(javdbLogin = JavDbLoginState.Loading))
+        val image =
+            try {
+                javDbSession.loadCaptcha()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.w(e, "获取 JavDB 登录验证码失败")
+                _state.emit(
+                    _state.value.copy(
+                        javdbLogin =
+                            JavDbLoginState.Input(
+                                captchaImage = null,
+                                error = e.message ?: "获取验证码失败",
+                            )
+                    )
+                )
+                return
+            }
+        _state.emit(_state.value.copy(javdbLogin = JavDbLoginState.Input(captchaImage = image)))
+    }
+
+    /**
+     * 提交登录。
+     *
+     * 验证码是一次性的：失败后自动换一张，避免用户拿旧图反复试；成功后关弹窗并刷新账号行。
+     * 整个提交包在 try 里：login 内部只转网络异常，其它意外异常也不能崩掉协程，一律转成弹窗提示。
+     */
+    private suspend fun submitJavDbLogin(account: String, password: String, captcha: String) {
+        val current = _state.value.javdbLogin
+        if (current is JavDbLoginState.Input) {
+            _state.emit(
+                _state.value.copy(
+                    javdbLogin = current.copy(isSubmitting = true, error = null)
+                )
+            )
+        }
+        val result =
+            try {
+                javDbSession.login(account, password, captcha)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.w(e, "JavDB 登录提交失败")
+                JavDbLoginResult.Failure(e.message ?: "登录失败，请稍后重试")
+            }
+        when (result) {
+            is JavDbLoginResult.Success -> {
+                _state.emit(_state.value.copy(javdbLogin = JavDbLoginState.Hidden))
+                loadPreferences(lastIndexes, lastDeviceType)
+            }
+            is JavDbLoginResult.Failure -> {
+                val image = runCatching { javDbSession.loadCaptcha() }.getOrNull()
+                _state.emit(
+                    _state.value.copy(
+                        javdbLogin =
+                            JavDbLoginState.Input(
+                                captchaImage = image,
+                                error = result.message,
+                            )
+                    )
+                )
+            }
         }
     }
 }

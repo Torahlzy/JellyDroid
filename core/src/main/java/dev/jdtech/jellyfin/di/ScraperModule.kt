@@ -9,11 +9,13 @@ import dev.jdtech.jellyfin.core.scraper.ActorImageScraper
 import dev.jdtech.jellyfin.core.scraper.ActorImageScraperImpl
 import dev.jdtech.jellyfin.core.scraper.ImageScraper
 import dev.jdtech.jellyfin.core.scraper.ImageScraperImpl
+import dev.jdtech.jellyfin.core.scraper.JavDbSessionImpl
 import dev.jdtech.jellyfin.core.scraper.MetadataScraper
 import dev.jdtech.jellyfin.core.scraper.MetadataScraperImpl
 import dev.jdtech.jellyfin.core.scraper.ScraperCookieJar
 import dev.jdtech.jellyfin.core.scraper.ScraperUrlProvider
 import dev.jdtech.jellyfin.core.scraper.ScraperUrlProviderImpl
+import dev.jdtech.jellyfin.settings.domain.JavDbSession
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 import okhttp3.OkHttpClient
@@ -43,6 +45,10 @@ abstract class ScraperModule {
     @Binds
     @Singleton
     abstract fun bindScraperUrlProvider(impl: ScraperUrlProviderImpl): ScraperUrlProvider
+
+    @Binds
+    @Singleton
+    abstract fun bindJavDbSession(impl: JavDbSessionImpl): JavDbSession
 
     companion object {
         /** 抓取是前台交互，超时给短一些，站点无响应时尽快切到下一个。 */
@@ -79,13 +85,13 @@ abstract class ScraperModule {
         @Provides
         @Singleton
         @ScraperOkHttpClient
-        fun provideScraperOkHttpClient(): OkHttpClient =
+        fun provideScraperOkHttpClient(cookieJar: ScraperCookieJar): OkHttpClient =
             OkHttpClient.Builder()
                 // 由抓取器自行决定是否跟随重定向
                 .followRedirects(false)
                 .followSslRedirects(false)
                 // 站点常用 Cookie 标记正常访客，而 OkHttp 默认一个都不存（重定向链里也会丢）
-                .cookieJar(ScraperCookieJar())
+                .cookieJar(cookieJar)
                 .addInterceptor { chain ->
                     val request = chain.request()
                     val builder = request.newBuilder().header("User-Agent", USER_AGENT)

@@ -595,11 +595,6 @@ fun NavigationRoot(
                 selectedRoute = currentTab?.route?.let { it::class.qualifiedName },
                 floating = isFloatingNavigationBar,
                 onItemClick = { item ->
-                    // 再次点击已选中的「媒体库」标签，直接展开搜索
-                    if (item.route is MediaRoute && currentTab?.route is MediaRoute) {
-                        searchExpanded = true
-                    }
-
                     navController.navigate(item.route) {
                         popUpTo(navController.graph.startDestinationId) { saveState = true }
                         launchSingleTop = true

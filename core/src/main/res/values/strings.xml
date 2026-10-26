@@ -172,6 +172,8 @@
     <string name="edit_metadata_restore_hint">Tap a field label to restore its original value</string>
     <string name="edit_metadata_field_reset">Field restored to its original value</string>
     <string name="edit_metadata_site_applied">Applied all fields from this site</string>
+    <string name="edit_metadata_add_genre">Add genre</string>
+    <string name="edit_metadata_add_tag">Add tag</string>
     <string name="scrape">Scrape</string>
     <string name="scrape_keyword_title">Scrape nfo</string>
     <string name="scrape_keyword_label">Keyword</string>
@@ -186,6 +188,13 @@
     <string name="scrape_proxy_summary">Only used when scraping nfo / cover images / actor avatars, e.g. http://127.0.0.1:7890 or socks5://127.0.0.1:1080. Leave empty to connect directly.</string>
     <string name="scrape_proxy_entry">Proxy: %1$s</string>
     <string name="scrape_proxy_unset">Not set</string>
+    <string name="movie_comments_title">Short reviews</string>
+    <string name="movie_comments_empty">No short reviews yet</string>
+    <string name="movie_comments_no_keyword">Cannot identify the movie number, short reviews are unavailable</string>
+    <string name="movie_comments_error">Failed to load short reviews: %1$s</string>
+    <string name="movie_comments_retry">Retry</string>
+    <string name="movie_comments_likes">%1$d likes</string>
+    <string name="movie_comments_limited">The site only exposes the latest few reviews to visitors, the rest require the official app or VIP.</string>
     <string name="scrape_urls">Scraping site URLs</string>
     <string name="scrape_urls_title">Enter scraping site URLs</string>
     <string name="scrape_urls_summary">Fill in the site address used for scraping.</string>

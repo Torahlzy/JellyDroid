@@ -172,6 +172,8 @@
     <string name="edit_metadata_restore_hint">点字段标题可恢复原来的内容</string>
     <string name="edit_metadata_field_reset">字段已重置</string>
     <string name="edit_metadata_site_applied">全部字段已应用站点数据</string>
+    <string name="edit_metadata_add_genre">添加类型</string>
+    <string name="edit_metadata_add_tag">添加标签</string>
     <string name="scrape">抓取</string>
     <string name="scrape_keyword_title">抓取 nfo</string>
     <string name="scrape_keyword_label">关键词</string>
@@ -186,6 +188,13 @@
     <string name="scrape_proxy_summary">只用于抓取 nfo / 封面 / 演员头像时，形如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080，留空表示直连。</string>
     <string name="scrape_proxy_entry">代理：%1$s</string>
     <string name="scrape_proxy_unset">未设置</string>
+    <string name="movie_comments_title">短评</string>
+    <string name="movie_comments_empty">暂无短评</string>
+    <string name="movie_comments_no_keyword">未识别到番号，无法加载短评</string>
+    <string name="movie_comments_error">加载短评失败：%1$s</string>
+    <string name="movie_comments_retry">重试</string>
+    <string name="movie_comments_likes">%1$d 人赞</string>
+    <string name="movie_comments_limited">站点仅向未登录访客提供最新几条短评，其余需在官方 App 或 VIP 中查看。</string>
     <string name="scrape_urls">抓取网址</string>
     <string name="scrape_urls_title">请输入抓取网址</string>
     <string name="scrape_urls_summary">填写用来抓取信息的网站地址。</string>

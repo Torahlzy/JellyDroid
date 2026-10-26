@@ -80,6 +80,7 @@ import dev.jdtech.jellyfin.presentation.film.components.ItemHeader
 import dev.jdtech.jellyfin.presentation.film.components.ItemPlayButton
 import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
 import dev.jdtech.jellyfin.presentation.film.components.MoreMenuDialog
+import dev.jdtech.jellyfin.presentation.film.components.MovieCommentsSection
 import dev.jdtech.jellyfin.presentation.film.components.OverviewText
 import dev.jdtech.jellyfin.presentation.film.components.PlaybackSourceDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScrapeActorImageDialog
@@ -770,6 +771,19 @@ private fun MovieScreenLayout(
                             onScrapeImageClick =
                                 if (isOfflineMode) null
                                 else { person -> onScrapeImageClick(person) },
+                        )
+                    }
+                }
+                // 外网短评：依次入场的第 6 组，关闭「开启外网评论」后不显示这个区块
+                AppearingSection(index = 5, visible = entranceStarted) {
+                    if (state.commentsEnabled) {
+                        MovieCommentsSection(
+                            comments = state.comments,
+                            keyword = state.commentKeyword,
+                            isLoading = state.isLoadingComments,
+                            error = state.commentsError,
+                            onRetry = { onAction(MovieAction.ReloadComments) },
+                            contentPadding = PaddingValues(start = paddingStart, end = paddingEnd),
                         )
                     }
                 }

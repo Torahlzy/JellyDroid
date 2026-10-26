@@ -46,8 +46,17 @@ constructor(
     @Volatile private var cachedProxyAddress: String? = null
     @Volatile private var cachedProxy: Proxy? = null
 
-    suspend fun get(url: String, headers: Map<String, String> = emptyMap()): ScraperResponse =
-        execute(Request.Builder().url(url).get().withHeaders(headers).build())
+    /**
+     * GET 一个页面。
+     *
+     * [useProxy] 为 false 时忽略代理设置直连：外网短评允许单独关掉代理（见设置里的「外网使用代理」）。
+     */
+    suspend fun get(
+        url: String,
+        headers: Map<String, String> = emptyMap(),
+        useProxy: Boolean = true,
+    ): ScraperResponse =
+        execute(Request.Builder().url(url).get().withHeaders(headers).build(), useProxy)
 
     suspend fun post(
         url: String,
@@ -92,13 +101,14 @@ constructor(
     suspend fun getFollowingRedirects(
         url: String,
         headers: Map<String, String> = emptyMap(),
+        useProxy: Boolean = true,
     ): ScraperResponse {
         var currentUrl = url
-        var response = get(currentUrl, headers)
+        var response = get(currentUrl, headers, useProxy)
         var hops = 0
         while (response.isRedirect && hops < MAX_REDIRECTS) {
             currentUrl = resolveUrl(currentUrl, response.location) ?: break
-            response = get(currentUrl, headers)
+            response = get(currentUrl, headers, useProxy)
             hops++
         }
         return response
@@ -143,7 +153,8 @@ constructor(
      * 因此改完代理设置后不会误用之前直连或旧代理留下的连接（派生出的客户端与单例共用连接池、
      * 线程池，开销可以忽略）。
      */
-    private fun clientWithProxy(): OkHttpClient {
+    private fun clientWithProxy(useProxy: Boolean = true): OkHttpClient {
+        if (!useProxy) return client
         val proxy = proxyFor(appPreferences.getValue(appPreferences.scrapeProxy))
         if (proxy == null) return client
         return client.newBuilder().proxy(proxy).build()
@@ -164,10 +175,10 @@ constructor(
         return proxy
     }
 
-    private suspend fun execute(request: Request): ScraperResponse =
+    private suspend fun execute(request: Request, useProxy: Boolean = true): ScraperResponse =
         withContext(Dispatchers.IO) {
             try {
-                clientWithProxy().newCall(request).execute().use { response ->
+                clientWithProxy(useProxy).newCall(request).execute().use { response ->
                     ScraperResponse(
                         code = response.code,
                         url = response.request.url.toString(),
