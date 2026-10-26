@@ -1,12 +1,14 @@
 package dev.jdtech.jellyfin.core.comment
 
 import dev.jdtech.jellyfin.core.scraper.JavDbScraper
+import dev.jdtech.jellyfin.core.scraper.ScraperCookieJar
 import dev.jdtech.jellyfin.core.scraper.ScraperException
 import dev.jdtech.jellyfin.core.scraper.ScraperHttp
 import dev.jdtech.jellyfin.core.scraper.ScraperSite
 import dev.jdtech.jellyfin.core.scraper.ScraperUrlProvider
 import dev.jdtech.jellyfin.logging.AppLog
 import javax.inject.Inject
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -26,20 +28,23 @@ import org.jsoup.nodes.TextNode
  *   dt.review-item.more                      ← 「更多短評可成為VIP 或至官方App中查看」
  * ```
  *
- * 注意站点对未登录 / 非 VIP 的网页端**只给最新 3 条**（`?page=` 会被忽略，其余条目要 VIP
- * 或官方 App 才可见），因此这里拿到多少展示多少；[MovieComment] 的说明里不隐含「全量」语义。
+ * 注意该接口**固定只给最新 3 条**（实测登录与否条数不变，`?page=` 被忽略；末尾的
+ * `dt.review-item.more` 是「更多短評可成為VIP 或至官方App中查看」的提示），因此这里拿到多少展示多少；
+ * [MovieComment] 的说明里不隐含「全量」语义。
  */
 class JavDbCommentSource
 @Inject
 constructor(
     private val http: ScraperHttp,
     private val scraperUrlProvider: ScraperUrlProvider,
+    private val cookieJar: ScraperCookieJar,
 ) : MovieCommentSource {
 
     override suspend fun load(keyword: String, useProxy: Boolean): List<MovieComment> {
         val baseUrl =
             scraperUrlProvider.baseUrl(ScraperSite.JAVDB)
                 ?: throw ScraperException.WebsiteError("JavDB: 没有配置站点网址")
+        logSessionCookie(baseUrl)
         // 短评页挂在影片详情页地址下，番号 → 地址的搜索逻辑复用元数据抓取那一套
         val movieUrl = JavDbScraper(http, baseUrl, useProxy).resolveMovieUrl(keyword)
         val reviewsUrl = movieUrl.trimEnd('/') + REVIEWS_PATH
@@ -48,13 +53,34 @@ constructor(
         if (response.code !in 200..299) {
             throw ScraperException.WebsiteError("JavDB: 短评页返回 ${response.code}")
         }
-        if (response.url.contains("/login")) {
-            throw ScraperException.SitePermissionDenied("JavDB: 需要登录才能查看短评")
+        // 站点对未登录 / 会话失效的访问可能退到登录页（URL 跳转或 200 + JS 跳转页两种形态）
+        val bouncedToLogin =
+            response.url.contains("/login") ||
+                response.body.contains("window.location.href='/login'")
+        if (bouncedToLogin) {
+            throw ScraperException.SitePermissionDenied("JavDB: 需要登录才能查看短评（会话可能已失效）")
         }
 
         val comments = parse(Jsoup.parse(normalizeBody(response.body), reviewsUrl))
         AppLog.d("JavDB 短评 '%s'：%d 条", keyword, comments.size)
         return comments
+    }
+
+    /**
+     * 诊断日志：报告本次短评请求是否携带登录会话 Cookie。
+     *
+     * 短评接口对非 VIP 账号无论登录与否都只给最新 3 条，从条数看不出登录态，
+     * 因此直接检查 Cookie 罐里有没有该站点的会话 Cookie（Rails 会话名形如 `_jdb_session`）。
+     */
+    private fun logSessionCookie(baseUrl: String) {
+        val cookies =
+            baseUrl.toHttpUrlOrNull()?.let { cookieJar.loadForRequest(it) }.orEmpty()
+        val hasSession = cookies.any { it.name.contains("session", ignoreCase = true) }
+        AppLog.d(
+            "JavDB 短评请求：%s会话 Cookie（站点 Cookie 共 %d 条）",
+            if (hasSession) "已携带" else "未携带",
+            cookies.size,
+        )
     }
 
     /**

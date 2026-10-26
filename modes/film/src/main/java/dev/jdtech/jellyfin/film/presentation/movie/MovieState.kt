@@ -84,6 +84,8 @@ data class MovieState(
     val isLoadingComments: Boolean = false,
     /** 短评加载失败的原因（已转成可直接展示的文案），非空时评论区给出重试入口。 */
     val commentsError: String? = null,
+    /** 是否已登录站点账号（JavDB）：未登录时评论区提示只能看到最新几条，并提供登录入口。 */
+    val isJavDbLoggedIn: Boolean = false,
     val error: Exception? = null,
     /**
      * 可选播放来源：服务器上的多个版本 + 本地已下载。

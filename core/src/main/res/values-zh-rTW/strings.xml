@@ -193,7 +193,8 @@
     <string name="movie_comments_error">載入短評失敗：%1$s</string>
     <string name="movie_comments_retry">重試</string>
     <string name="movie_comments_likes">%1$d 人讚</string>
-    <string name="movie_comments_limited">站點僅向未登入訪客提供最新幾條短評，其餘需在官方 App 或 VIP 中查看。</string>
+    <string name="movie_comments_login_hint">未登入或登入已失效，僅顯示最新幾條短評。</string>
+    <string name="movie_comments_login_action">去登入</string>
     <string name="scrape_urls">抓取網址</string>
     <string name="scrape_urls_title">請輸入抓取網址</string>
     <string name="scrape_urls_summary">填寫用來抓取資訊的網站位址。</string>

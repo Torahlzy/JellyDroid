@@ -116,6 +116,9 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     /** 已登录的账号名，空串表示未登录；退出登录时清空。 */
     val javdbLoggedInUser = Preference("pref_javdb_logged_in_user", "")
 
+    /** 登录会话是否为 VIP（登录时从 profile 页的「用戶類型」解析），用于账号行显示徽标。 */
+    val javdbVip = Preference("pref_javdb_vip", false)
+
     /**
      * 抓取会话 Cookie 的持久化副本（每行 `host\tSet-Cookie 行`）。
      *

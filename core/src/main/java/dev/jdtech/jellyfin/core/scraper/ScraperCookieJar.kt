@@ -83,7 +83,9 @@ constructor(private val appPreferences: AppPreferences) : CookieJar {
                 val separator = line.indexOf('\t')
                 if (separator <= 0) return@forEach
                 val host = line.substring(0, separator)
-                val url = host.toHttpUrlOrNull() ?: return@forEach
+                // host 是裸主机名（HttpUrl.host 不带 scheme），而 HttpUrl 必须带 scheme 才能解析，
+                // 直接 toHttpUrlOrNull() 恒为 null、会把落盘的 Cookie 全部丢掉，需补上 scheme
+                val url = "https://$host".toHttpUrlOrNull() ?: return@forEach
                 val cookie = Cookie.parse(url, line.substring(separator + 1)) ?: return@forEach
                 if (cookie.expiresAt <= now) return@forEach
                 val stored = cookiesByHost.getOrPut(host) { mutableListOf() }

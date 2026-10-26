@@ -19,5 +19,7 @@ data class PreferenceAction(
     override val supportedDeviceTypes: List<DeviceType> = listOf(DeviceType.PHONE, DeviceType.TV),
     /** 当前状态文案（如已登录的账号名），空串表示未登录。 */
     val valueText: String = "",
+    /** 是否在状态文案旁显示 VIP 徽标（账号行用，登录时按站点返回的用户类型判定）。 */
+    val vipBadge: Boolean = false,
     val onClick: (PreferenceAction) -> Unit = {},
 ) : Preference

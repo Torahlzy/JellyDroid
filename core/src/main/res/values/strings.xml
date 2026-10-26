@@ -194,7 +194,8 @@
     <string name="movie_comments_error">Failed to load short reviews: %1$s</string>
     <string name="movie_comments_retry">Retry</string>
     <string name="movie_comments_likes">%1$d likes</string>
-    <string name="movie_comments_limited">The site only exposes the latest few reviews to visitors, the rest require the official app or VIP.</string>
+    <string name="movie_comments_login_hint">Not signed in or the session has expired, so only the latest few reviews are shown.</string>
+    <string name="movie_comments_login_action">Sign in</string>
     <string name="scrape_urls">Scraping site URLs</string>
     <string name="scrape_urls_title">Enter scraping site URLs</string>
     <string name="scrape_urls_summary">Fill in the site address used for scraping.</string>
