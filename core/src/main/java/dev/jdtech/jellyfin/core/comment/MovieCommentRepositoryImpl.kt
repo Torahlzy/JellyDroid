@@ -19,14 +19,15 @@ constructor(
     private val appPreferences: AppPreferences,
 ) : MovieCommentRepository {
 
+    override suspend fun hasFreshCache(keyword: String): Boolean = readFreshCache(keyword) != null
+
     override suspend fun getComments(keyword: String): List<MovieComment> {
         val trimmed = keyword.trim()
         if (trimmed.isEmpty()) {
             throw IllegalArgumentException("短评关键词为空")
         }
 
-        val validMillis = appPreferences.getValue(appPreferences.commentCacheDays).daysToMillis()
-        cache.read(trimmed, validMillis)?.let { cached ->
+        readFreshCache(trimmed)?.let { cached ->
             AppLog.d("短评命中缓存：%s（%d 条）", trimmed, cached.size)
             return cached
         }
@@ -36,6 +37,14 @@ constructor(
         val maxBytes = appPreferences.getValue(appPreferences.commentCacheSize).megabytesToBytes()
         cache.write(trimmed, comments, maxBytes)
         return comments
+    }
+
+    /** 读取关键词对应的新鲜缓存，未命中或已过期返回 null；关键词归一化与有效期计算只在此处维护。 */
+    private suspend fun readFreshCache(keyword: String): List<MovieComment>? {
+        val trimmed = keyword.trim()
+        if (trimmed.isEmpty()) return null
+        val validMillis = appPreferences.getValue(appPreferences.commentCacheDays).daysToMillis()
+        return cache.read(trimmed, validMillis)
     }
 
     private fun Int.daysToMillis(): Long = this.coerceAtLeast(0).toLong() * MILLIS_PER_DAY

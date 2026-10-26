@@ -12,4 +12,12 @@ interface MovieCommentRepository {
      * 失败时抛 `ScraperException` 或网络异常，由上层转成界面上的错误提示。
      */
     suspend fun getComments(keyword: String): List<MovieComment>
+
+    /**
+     * 判断 [keyword] 的短评缓存是否在有效期内，只查磁盘、不产生任何网络请求。
+     *
+     * 上层用它决定「确定要联网抓取」才需要先做的准备工作（如校验站点登录会话），
+     * 缓存新鲜时直接展示，不做多余的网络往返。
+     */
+    suspend fun hasFreshCache(keyword: String): Boolean
 }

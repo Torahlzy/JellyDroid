@@ -352,11 +352,14 @@ constructor(
                 )
                 return@launch
             }
-            // 会话会静默失效（站点对失效会话按游客返回，不报错），加载前先校验；
+            // 会话会静默失效（站点对失效会话按游客返回，不报错），但校验要联网；
+            // 缓存新鲜时直接用缓存、不校验（登录态按本地记录显示），只有确定要联网抓取才先校验，
             // 失效时 ensureSessionValid 会清掉本地登录状态，界面随之出现「去登录」入口
             val loggedIn =
                 if (javDbSession.loggedInAccount().isBlank()) {
                     false
+                } else if (commentRepository.hasFreshCache(keyword)) {
+                    true
                 } else {
                     javDbSession.ensureSessionValid()
                 }
