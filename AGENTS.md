@@ -25,7 +25,7 @@
 
 ### 2. 分层与依赖方向
 
-依赖只能向下：`:app:phone`（及 `:app:tv`）→ `:modes:film` / `:setup` / `:player:local` → `:core` → `:data` / `:player:core` / `:settings` → `:logging`。下层不得反向依赖上层。
+依赖只能向下，下层不得反向依赖上层。主要项目依赖（未列传递依赖）：`:app:*` 可依赖业务与基础模块；`:modes:film` / `:setup` → `:core` / `:data` / `:settings`；`:core` → `:data` / `:player:core` / `:settings`；`:player:local` → `:data` / `:player:core` / `:settings`（不依赖 `:core`）；`:data` → `:settings`；上述模块及 `:player:core` / `:settings` 可依赖最底层的 `:logging`。新增依赖前以各模块 `build.gradle.kts` 为准。
 
 | 层 | 放什么 | 不放什么 |
 |---|---|---|
@@ -119,7 +119,7 @@
 
 ### 1. 基础技术架构标准
 
-- 统一使用 Jetpack Compose 的 `androidx.compose.material3` 官方库，**禁止引入 Material 2 或 View 系统的代码**。
+- 新增或改造 Compose 界面时统一使用 `androidx.compose.material3`，**禁止引入 Material 2**；不要为普通页面新起 View 系统实现，现有播放器等 View 代码不属于改造目标。
 - 动效实现优先使用 Compose 官方标准 API（`SharedTransitionLayout`、`AnimatedVisibility`、`AnimatedContent`、`PredictiveBackHandler` 等），不手写等效实现。
 
 ### 2. M3 物理弹簧动效（Spring Motion）
@@ -216,14 +216,8 @@ README 面向产品宣发，保持清晰易懂；Git 核对基线统一记录在
 ### 当前核对基线
 
 - **上游分叉点**：`ba610679`。
-- **已完整核对到的提交**：`91890d900938c4f7a74267fc85d6ccbff31dd272`（简称 `91890d90`，2026-10-25，`docs: 重写 README 为产品介绍结构，突出番号抓取、翻译与演员资料整理`）。
-- **核对日期与范围**：2026-10-25，沿用原 README 对分叉点至 `8c305c07` 的历史核对记录，完整检查 `8c305c07..91890d90` 的全部 10 个提交及其文件变化，并核对暂存区、工作区和未跟踪文件。此前产品文案重写未完整核对增量，本次已补齐；核对时暂存区与未跟踪文件均无新增改动。
-- **本次 README 补齐内容**：抓取网址运行时配置及发布版需自行配置站点的说明；「我喜欢」页排序、封面切换与共享偏好；电影详情共享元素转场与内容淡入；底部标签即时切换、返回手势画面稳定及筛选列表滚动位置保持。收藏请求取消与失败回滚归入稳定性改进，构建仓库调整和商店元数据不作为新增产品功能宣传。
-
-### 已纳入 README 的未提交功能
-
-- **复制完整演员名**：长按电影详情页演员条目或人物列表中的演员卡片，可复制完整姓名。涉及 `app/phone/src/main/java/dev/jdtech/jellyfin/presentation/film/PersonListScreen.kt`、`app/phone/src/main/java/dev/jdtech/jellyfin/presentation/film/components/PersonItem.kt`、`core/src/main/res/values/strings.xml`、`core/src/main/res/values-zh-rCN/strings.xml`、`core/src/main/res/values-zh-rTW/strings.xml` 与 `wiki/pages.md`。本次已核对工作区实现并写入 README，尚无对应提交；后续提交后再核对并纳入新基线。
-- 本次 README 与本节维护记录的修改同样尚未提交，不代表上述基线之后已有新的已提交版本。
+- **已完整核对到的提交**：`91890d900938c4f7a74267fc85d6ccbff31dd272`（简称 `91890d90`，2026-10-25）。
+- **待核对范围**：2026-10-27 审核时，`91890d90..60e5702c` 共 10 个提交尚未完整核对进 README；其中「复制完整演员名」已由 `129b826f` 提交，不再属于未提交功能。下次更新 README 必须从此范围开始，不得直接把基线推进到 HEAD。
 
 ### 后续更新方法
 
@@ -259,7 +253,7 @@ README 面向产品宣发，保持清晰易懂；Git 核对基线统一记录在
 
 ```bash
 ./gradlew :app:phone:compileLibreDebugKotlin  # 只编译 Kotlin（查编译错误用，比 assemble 快）
-./gradlew :core:compileDebugKotlin            # 只编译某个库模块（模块无 flavor 时无 Libre 段）
+./gradlew :core:compileLibreDebugKotlin       # 只编译某个带 Libre flavor 的库模块
 ./gradlew :app:phone:assembleLibreDebug    # 手机版 debug
 ./gradlew :app:phone:assembleLibreRelease  # 手机版 release
 ./gradlew :app:phone:bundleLibreRelease    # Android App Bundle
@@ -287,7 +281,7 @@ README 面向产品宣发，保持清晰易懂；Git 核对基线统一记录在
 | `:player:local` | ExoPlayer / mpv 播放后端、`PlaylistManager` |
 | `:logging` | 统一日志入口（`AppLog`、`TorahDebugTree`），不依赖任何项目模块 |
 
-所有模块均使用 Hilt 进行依赖注入。
+应用及主要业务模块通过 Hilt 装配依赖；`:logging` 等纯基础模块不使用 Hilt。
 
 ### 架构模式
 
@@ -295,11 +289,11 @@ README 面向产品宣发，保持清晰易懂；Git 核对基线统一记录在
 
 ### 数据与 API
 
-- 项目使用 **org.jellyfin.sdk:jellyfin-core**（非手写 HTTP）。参见 [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md) 和 [doc/jellyfinapi/Jellyfin_API.md](doc/jellyfinapi/Jellyfin_API.md)。
+- Jellyfin 数据访问使用 **org.jellyfin.sdk:jellyfin-core**，具体封装以 `:data` 的 `JellyfinApi` 与 Repository 实现为准；抓取、翻译等其它 HTTP 客户端不属于这一限制。
 - `JellyfinApi`（单例，位于 `:data`）封装 SDK 的 `createApi()`，暴露各子 API（`itemsApi`、`userLibraryApi`、`showsApi` 等）。
 - `JellyfinRepository` 接口定义所有数据操作；`JellyfinRepositoryImpl`（联网，调 SDK）与 `JellyfinRepositoryOfflineImpl`（离线，只读 Room）两个实现，由 `RepositoryModule` 依据 `AppPreferences.offlineMode` 切换。
 - `ItemsPagingSource` 封装 `getItems()`，实现 Paging 3 的偏移分页（随机排序在客户端实现）。
-- 单一数据库 `ServerDatabase`（Room，版本 8）：`Server` / `ServerAddress` / `User` 存连接信息，`Findroid*Dto` 存已下载媒体、媒体源、用户数据、Trickplay 与分段。
+- 单一 Room 数据库 `ServerDatabase`（版本与迁移以源码为准）：`Server` / `ServerAddress` / `User` 存连接信息，`Findroid*Dto` 存已下载媒体、媒体源、用户数据、Trickplay 与分段。
 
 ### 媒体项类型层次
 
