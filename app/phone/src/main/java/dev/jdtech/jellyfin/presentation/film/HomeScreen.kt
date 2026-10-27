@@ -1,5 +1,6 @@
 package dev.jdtech.jellyfin.presentation.film
 
+import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
@@ -45,27 +47,37 @@ import dev.jdtech.jellyfin.presentation.film.components.HomeView
 import dev.jdtech.jellyfin.presentation.film.components.ServerSelectionBottomSheet
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
+import dev.jdtech.jellyfin.presentation.utils.LocalSharedTransitionScope
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun HomeScreen(
     onLibraryClick: (library: FindroidCollection) -> Unit,
     onSearchClick: () -> Unit,
     onDownloadsClick: () -> Unit,
     onManageServers: () -> Unit,
-    onItemClick: (item: FindroidItem) -> Unit,
+    onItemClick: (item: FindroidItem, heroKey: String?) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val sharedTransitionScope = LocalSharedTransitionScope.current
 
-    LaunchedEffect(true) { viewModel.loadData() }
+    LaunchedEffect(Unit) {
+        // 转场途中刷新继续观看会让新插入的卡片抢占详情头图的共享元素终点
+        if (sharedTransitionScope?.isTransitionActive == true) {
+            snapshotFlow { sharedTransitionScope.isTransitionActive }.first { isActive -> !isActive }
+        }
+        viewModel.loadData()
+    }
 
     HomeScreenLayout(
         state = state,
         onAction = { action ->
             when (action) {
-                is HomeAction.OnItemClick -> onItemClick(action.item)
+                is HomeAction.OnItemClick -> onItemClick(action.item, action.heroKey)
                 is HomeAction.OnLibraryClick -> onLibraryClick(action.library)
                 is HomeAction.OnSearchClick -> onSearchClick()
                 is HomeAction.OnDownloadsClick -> onDownloadsClick()

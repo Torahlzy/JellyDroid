@@ -48,6 +48,8 @@ fun HomeSection(
                     direction = Direction.HORIZONTAL,
                     aspectRatio = aspectRatio,
                     onClick = { onAction(HomeAction.OnItemClick(item)) },
+                    // 保持卡片为 item 根节点，避免额外的动画布局干扰共享元素转场
+                    modifier = Modifier.animateItem(),
                 )
             }
         }
