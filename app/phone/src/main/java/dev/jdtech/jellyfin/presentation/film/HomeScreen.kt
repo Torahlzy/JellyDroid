@@ -133,6 +133,7 @@ private fun HomeScreenLayout(state: HomeState, onAction: (HomeAction) -> Unit) {
                             modifier = Modifier.animateItem(),
                             // 继续观看封面沿用首页 banner 的宽高比
                             aspectRatio = BANNER_ASPECT_RATIO,
+                            heroKeyPrefix = "movie-hero-resume",
                         )
                     }
                 }
@@ -143,6 +144,7 @@ private fun HomeScreenLayout(state: HomeState, onAction: (HomeAction) -> Unit) {
                             itemsPadding = itemsPadding,
                             onAction = onAction,
                             modifier = Modifier.animateItem(),
+                            heroKeyPrefix = "movie-hero-nextup",
                         )
                     }
                 }

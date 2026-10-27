@@ -69,10 +69,13 @@ fun HomeView(
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.default),
         ) {
             items(view.view.items, key = { it.id }) { item ->
+                // 最新添加可能与继续观看出现同一部电影，key 需带上媒体库维度
+                val heroKey = "movie-hero-latest-${view.view.id}-${item.id}"
                 ItemCard(
                     item = item,
                     direction = Direction.VERTICAL,
-                    onClick = { onAction(HomeAction.OnItemClick(item)) },
+                    onClick = { onAction(HomeAction.OnItemClick(item, heroKey = heroKey)) },
+                    heroKey = heroKey,
                 )
             }
         }
