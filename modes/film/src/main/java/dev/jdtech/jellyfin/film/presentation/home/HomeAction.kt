@@ -4,7 +4,7 @@ import dev.jdtech.jellyfin.models.FindroidCollection
 import dev.jdtech.jellyfin.models.FindroidItem
 
 sealed interface HomeAction {
-    data class OnItemClick(val item: FindroidItem) : HomeAction
+    data class OnItemClick(val item: FindroidItem, val heroKey: String? = null) : HomeAction
 
     data class OnLibraryClick(val library: FindroidCollection) : HomeAction
 

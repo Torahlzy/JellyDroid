@@ -115,6 +115,7 @@ import org.jellyfin.sdk.model.api.BaseItemKind
 @Composable
 fun MovieScreen(
     movieId: UUID,
+    heroKey: String = "movie-hero-$movieId",
     navigateBack: () -> Unit,
     navigateHome: () -> Unit,
     navigateToPerson: (personId: UUID, personName: String) -> Unit,
@@ -281,6 +282,7 @@ fun MovieScreen(
 
     MovieScreenLayout(
         movieId = movieId,
+        heroKey = heroKey,
         state = state,
         downloaderState = downloaderState,
         onScrapeImageClick = { person ->
@@ -541,6 +543,7 @@ private enum class MoreMenuDialogState {
 private fun MovieScreenLayout(
     movieId: UUID,
     state: MovieState,
+    heroKey: String = "movie-hero-$movieId",
     downloaderState: DownloaderState,
     onScrapeImageClick: (person: FindroidItemPerson) -> Unit,
     onLoginClick: () -> Unit,
@@ -690,7 +693,7 @@ private fun MovieScreenLayout(
                         Box(
                             modifier =
                                 Modifier.padding(top = safePadding.top)
-                                    .heroSharedBounds(key = "movie-hero-$movieId")
+                                    .heroSharedBounds(key = heroKey)
                                     // 头图缩小走布局（上报缩放后尺寸 + 图层缩放内容），且放在
                                     // heroSharedBounds 内侧：共享元素 morph 取的是布局边界，
                                     // 这样返回动画从当前缩小后的尺寸起飞，不会从最大尺寸跳变。

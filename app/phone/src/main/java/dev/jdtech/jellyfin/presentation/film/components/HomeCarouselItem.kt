@@ -31,9 +31,12 @@ import dev.jdtech.jellyfin.models.FindroidMovie
 import dev.jdtech.jellyfin.models.FindroidShow
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
+import dev.jdtech.jellyfin.presentation.utils.heroSharedBounds
 
 @Composable
 fun HomeCarouselItem(item: FindroidItem, onAction: (HomeAction) -> Unit, height: Dp) {
+    // Banner 与普通卡片可能展示同一部电影，key 必须带来源，否则返回时会互相抢占
+    val heroKey = (item as? FindroidMovie)?.let { "movie-hero-banner-${it.id}" }
     val colorStops =
         arrayOf(
             0.0f to Color.Black.copy(alpha = 0.1f),
@@ -45,14 +48,20 @@ fun HomeCarouselItem(item: FindroidItem, onAction: (HomeAction) -> Unit, height:
         modifier =
             Modifier.height(height)
                 .clip(MaterialTheme.shapes.large)
-                .clickable { onAction(HomeAction.OnItemClick(item)) }
+                .clickable { onAction(HomeAction.OnItemClick(item, heroKey = heroKey)) }
     ) {
         AsyncImage(
             model = item.images.backdrop,
             placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceContainer),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth(),
+            // 与电影详情页头部共用来源 key，避免命中继续观看里的同影片卡片
+            modifier =
+                if (heroKey != null) {
+                    Modifier.fillMaxWidth().heroSharedBounds(key = heroKey)
+                } else {
+                    Modifier.fillMaxWidth()
+                },
         )
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawRect(brush = Brush.verticalGradient(colorStops = colorStops))

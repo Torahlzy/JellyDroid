@@ -118,7 +118,7 @@ data class LibraryRoute(
 
 @Serializable data object FavoritesRoute
 
-@Serializable data class MovieRoute(val movieId: String)
+@Serializable data class MovieRoute(val movieId: String, val heroKey: String? = null)
 
 @Serializable data class ShowRoute(val showId: String)
 
@@ -325,8 +325,12 @@ fun NavigationRoot(
                         },
                         onDownloadsClick = { navController.safeNavigate(DownloadsRoute) },
                         onManageServers = { navController.safeNavigate(ServersRoute) },
-                        onItemClick = { item ->
-                            navigateToItem(navController = navController, item = item)
+                        onItemClick = { item, heroKey ->
+                            navigateToItem(
+                                navController = navController,
+                                item = item,
+                                movieHeroKey = heroKey,
+                            )
                         },
                     )
                 }
@@ -401,6 +405,7 @@ fun NavigationRoot(
                 SharedElementHost(this) {
                     MovieScreen(
                         movieId = UUID.fromString(route.movieId),
+                        heroKey = route.heroKey ?: "movie-hero-${route.movieId}",
                         navigateBack = { navController.safePopBackStack() },
                         navigateHome = { navigateHome(navController) },
                         navigateToPerson = { personId, personName ->
@@ -622,13 +627,20 @@ private fun navigateHome(navController: NavHostController) {
     }
 }
 
-private fun navigateToItem(navController: NavHostController, item: FindroidItem) {
+private fun navigateToItem(
+    navController: NavHostController,
+    item: FindroidItem,
+    movieHeroKey: String? = null,
+) {
     when (item) {
         is FindroidBoxSet ->
             navController.safeNavigate(
                 CollectionRoute(collectionId = item.id.toString(), collectionName = item.name)
             )
-        is FindroidMovie -> navController.safeNavigate(MovieRoute(movieId = item.id.toString()))
+        is FindroidMovie ->
+            navController.safeNavigate(
+                MovieRoute(movieId = item.id.toString(), heroKey = movieHeroKey)
+            )
         is FindroidShow -> navController.safeNavigate(ShowRoute(showId = item.id.toString()))
         is FindroidSeason -> navController.safeNavigate(SeasonRoute(seasonId = item.id.toString()))
         is FindroidEpisode ->
