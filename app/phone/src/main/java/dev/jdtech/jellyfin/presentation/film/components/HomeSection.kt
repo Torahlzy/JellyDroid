@@ -28,6 +28,8 @@ fun HomeSection(
     modifier: Modifier = Modifier,
     // 可选宽高比覆盖，透传给卡片封面
     aspectRatio: Float? = null,
+    // 分区专属的共享元素 key 前缀；为空时沿用卡片的默认 key
+    heroKeyPrefix: String? = null,
 ) {
     Column(modifier = modifier) {
         Box(modifier = Modifier.fillMaxWidth().height(42.dp).padding(itemsPadding)) {
@@ -43,11 +45,13 @@ fun HomeSection(
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.default),
         ) {
             items(section.items, key = { it.id }) { item ->
+                val heroKey = heroKeyPrefix?.let { "$it-${item.id}" }
                 ItemCard(
                     item = item,
                     direction = Direction.HORIZONTAL,
                     aspectRatio = aspectRatio,
-                    onClick = { onAction(HomeAction.OnItemClick(item)) },
+                    onClick = { onAction(HomeAction.OnItemClick(item, heroKey = heroKey)) },
+                    heroKey = heroKey,
                     // 保持卡片为 item 根节点，避免额外的动画布局干扰共享元素转场
                     modifier = Modifier.animateItem(),
                 )

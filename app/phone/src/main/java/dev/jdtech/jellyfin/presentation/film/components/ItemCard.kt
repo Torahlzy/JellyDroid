@@ -46,6 +46,8 @@ fun ItemCard(
     @DrawableRes placeholderIconRes: Int? = null,
     // 网格布局中宽度由单元格决定时置 true：卡片铺满可用宽度，进度条同步按实际宽度计算
     isWidthAdaptive: Boolean = false,
+    // 共享元素来源 key；同一电影在首页多个分区出现时必须由调用方传入不同值
+    heroKey: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val width =
@@ -78,7 +80,9 @@ fun ItemCard(
                         // 电影封面与电影详情页头部建立共享元素 morph；其他类型暂无对应落点
                         modifier =
                             if (item is FindroidMovie) {
-                                Modifier.heroSharedBounds(key = "movie-hero-${item.id}")
+                                Modifier.heroSharedBounds(
+                                    key = heroKey ?: "movie-hero-${item.id}"
+                                )
                             } else {
                                 Modifier
                             },
