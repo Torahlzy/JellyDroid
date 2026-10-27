@@ -71,7 +71,7 @@ Jellydroid 是基于 [Findroid](https://github.com/jarnedemeulemeester/findroid)
 Jellydroid 是 Findroid 的个人分支，当前主要维护 Android 手机端，并针对平板与折叠屏改善使用体验。
 
 - [Findroid 上游项目](https://github.com/jarnedemeulemeester/findroid)：了解原项目、截图与社区。
-- [开发文档](doc/DEVELOPMENT.md)：查看项目开发说明。
+- [发版文档](wiki/release.md)：查看版本号升级、构建签名与 GitHub 发布步骤。
 - [页面与功能索引](wiki/pages.md)：查找本分支的页面实现与功能入口。
 
 ## 开源许可

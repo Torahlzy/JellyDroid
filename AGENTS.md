@@ -242,6 +242,7 @@ README 面向产品宣发，保持清晰易懂；Git 核对基线统一记录在
 | 文档 | 内容 |
 |---|---|
 | [wiki/pages.md](wiki/pages.md) | 手机端（`:app:phone`）主要页面的路由、Screen、ViewModel / State / Action 路径与职责 |
+| [wiki/release.md](wiki/release.md) | 发版步骤：版本号升级、签名准备、构建校验、标签约定与 GitHub Release 发布 |
 
 **使用方式**：需要定位某个页面或功能时，先查 `wiki/pages.md` 的「页面总览」表，再按表中路径读取源码，避免全库盲目搜索。
 
