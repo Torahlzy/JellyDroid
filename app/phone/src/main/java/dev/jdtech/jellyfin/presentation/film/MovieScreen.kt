@@ -41,16 +41,19 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import androidx.core.graphics.toColorInt
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -102,6 +105,7 @@ import dev.jdtech.jellyfin.presentation.utils.heroSharedBounds
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
 import dev.jdtech.jellyfin.utils.ObserveAsEvents
 import java.util.UUID
+import kotlin.math.roundToInt
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -546,6 +550,7 @@ private fun MovieScreenLayout(
 ) {
     val isOfflineMode = LocalOfflineMode.current
     val safePadding = rememberSafePadding()
+    val density = LocalDensity.current
 
     val paddingStart = safePadding.start + MaterialTheme.spacings.default
     val paddingEnd = safePadding.end + MaterialTheme.spacings.default
@@ -555,6 +560,8 @@ private fun MovieScreenLayout(
 
     // 封面高度（不含状态栏 padding），驱动悬浮播放按钮的展开 / 收起与飞行位置
     var headerHeightPx by remember { mutableIntStateOf(0) }
+    // 屏幕高度：判断头图是否超过半屏，并作为上滑缩小的终点
+    var screenHeightPx by remember { mutableIntStateOf(0) }
 
     val navScope = LocalNavAnimatedVisibilityScope.current
 
@@ -604,7 +611,7 @@ private fun MovieScreenLayout(
     // 没有短评时页面滚到底会只剩头图悬在顶部、下方一片空白，观感不对
     val isHeaderPinned = state.commentsEnabled
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().onSizeChanged { screenHeightPx = it.height }) {
         Column(modifier = Modifier.fillMaxWidth().verticalScroll(scrollState)) {
             state.movie?.let { movie ->
                 // 头部：数据到位后立即渲染，承接共享元素落点；
@@ -615,12 +622,6 @@ private fun MovieScreenLayout(
                 Box(
                     modifier =
                         Modifier.zIndex(1f)
-                            .clickable(
-                                interactionSource = emptyClickInteraction,
-                                indication = null,
-                            ) {
-                                // 空点击：吸顶后头图盖住下方内容，拦截手势防止点击穿透到被盖住的元素
-                            }
                             .layout { measurable, constraints ->
                                 val placeable = measurable.measure(constraints)
                                 layout(placeable.width, placeable.height) {
@@ -634,31 +635,107 @@ private fun MovieScreenLayout(
                                 }
                             }
                 ) {
-                    // 状态栏底色垫片：挡住从头图上方透出的滑动内容
+                    // 未缩放高度占位：头图缩小是布局级的，面板会随之变矮；
+                    // 占位保持吸顶层总高不变，避免滚动范围在滚动中变化引发跳动
+                    Spacer(
+                        modifier =
+                            Modifier.height(
+                                with(density) { safePadding.top + headerHeightPx.toDp() }
+                            )
+                    )
+                    // 全宽遮罩带：高度随头图缩放同步收缩，盖住缩小头图左右两侧透出的滚动内容；
+                    // 同时拦截带内点击，避免穿透到被遮住的元素。带高在测量阶段读取滚动状态，
+                    // 滚动时只重测量这个空盒子，不触发重组
                     Box(
                         modifier =
                             Modifier.fillMaxWidth()
-                                .height(safePadding.top)
+                                .layout { measurable, constraints ->
+                                    val scale =
+                                        headerScaleForScroll(
+                                            scrollPx = scrollState.value,
+                                            headerHeightPx = headerHeightPx,
+                                            screenHeightPx = screenHeightPx,
+                                        )
+                                    val bandHeight =
+                                        (safePadding.top.toPx() + headerHeightPx * scale)
+                                            .roundToInt()
+                                    val placeable =
+                                        measurable.measure(
+                                            constraints.copy(
+                                                minHeight = bandHeight,
+                                                maxHeight = bandHeight,
+                                            )
+                                        )
+                                    layout(placeable.width, placeable.height) {
+                                        placeable.place(0, 0)
+                                    }
+                                }
                                 .background(MaterialTheme.colorScheme.background)
+                                .clickable(
+                                    interactionSource = emptyClickInteraction,
+                                    indication = null,
+                                ) {
+                                    // 空点击：吸顶后头图与遮罩盖住下方内容，拦截手势防止点击穿透
+                                }
                     )
-                    Box(
-                        modifier =
-                            Modifier.padding(top = safePadding.top)
-                                .heroSharedBounds(key = "movie-hero-$movieId")
-                    ) {
-                        ItemHeader(
-                            item = movie,
-                            scrollState = scrollState,
+                    // 面板（状态栏垫片 + 头图）：头图缩小由下方 layout 完成，面板负责把缩小后的头图水平居中
+                    Box(contentAlignment = Alignment.TopCenter) {
+                        // 状态栏底色垫片：挡住从头图上方透出的滑动内容
+                        Box(
                             modifier =
                                 Modifier.fillMaxWidth()
-                                    .onSizeChanged { headerHeightPx = it.height },
-                            // 标题已移到图片下方，不再需要底部渐隐，避免图片下方出现空白
-                            fadeToBackground = false,
-                            // 按图片实际宽高比自适应高度，完整显示背景图、不裁切左右
-                            fitBackdrop = true,
-                            // 吸顶时框架已固定，图内视差会让图片漂移露出缺口，须禁用
-                            parallaxRate = if (isHeaderPinned) 0 else 2,
+                                    .height(safePadding.top)
+                                    .background(MaterialTheme.colorScheme.background)
                         )
+                        Box(
+                            modifier =
+                                Modifier.padding(top = safePadding.top)
+                                    .heroSharedBounds(key = "movie-hero-$movieId")
+                                    // 头图缩小走布局（上报缩放后尺寸 + 图层缩放内容），且放在
+                                    // heroSharedBounds 内侧：共享元素 morph 取的是布局边界，
+                                    // 这样返回动画从当前缩小后的尺寸起飞，不会从最大尺寸跳变。
+                                    // 滚动状态在测量阶段读取，滚动时只重测量头图、不触发重组
+                                    .layout { measurable, constraints ->
+                                        val scale =
+                                            headerScaleForScroll(
+                                                scrollPx = scrollState.value,
+                                                headerHeightPx = headerHeightPx,
+                                                screenHeightPx = screenHeightPx,
+                                            )
+                                        val placeable = measurable.measure(constraints)
+                                        if (scale == 1f) {
+                                            layout(placeable.width, placeable.height) {
+                                                placeable.place(0, 0)
+                                            }
+                                        } else {
+                                            layout(
+                                                (placeable.width * scale).roundToInt(),
+                                                (placeable.height * scale).roundToInt(),
+                                            ) {
+                                                placeable.placeWithLayer(0, 0) {
+                                                    scaleX = scale
+                                                    scaleY = scale
+                                                    // 原点左上：内容恰好填满上报的缩放后尺寸
+                                                    transformOrigin = TransformOrigin(0f, 0f)
+                                                }
+                                            }
+                                        }
+                                    }
+                        ) {
+                            ItemHeader(
+                                item = movie,
+                                scrollState = scrollState,
+                                modifier =
+                                    Modifier.fillMaxWidth()
+                                        .onSizeChanged { headerHeightPx = it.height },
+                                // 标题已移到图片下方，不再需要底部渐隐，避免图片下方出现空白
+                                fadeToBackground = false,
+                                // 按图片实际宽高比自适应高度，完整显示背景图、不裁切左右
+                                fitBackdrop = true,
+                                // 吸顶时框架已固定，图内视差会让图片漂移露出缺口，须禁用
+                                parallaxRate = if (isHeaderPinned) 0 else 2,
+                            )
+                        }
                     }
                 }
             }
@@ -908,6 +985,29 @@ private const val ENTRANCE_HEAD_START_MILLIS = 100
 
 // 加载转圈的延迟出现阈值：数据在此之前到达就完全不显示 loading
 private const val LOADING_SPINNER_DELAY_MILLIS = 400
+
+// 头图允许占用的最大屏幕高度比例：横屏 / 平板上宽幅头图会铺满整屏，上滑时缩小到该比例为止
+private const val HEADER_MAX_HEIGHT_FRACTION_OF_SCREEN = 2f / 5f
+
+/**
+ * 头图随上滑的等比缩放比例。
+ *
+ * 头图高度不超过 [HEADER_MAX_HEIGHT_FRACTION_OF_SCREEN] 屏时恒为 1（竖屏手机基本落在这里，行为不变）；
+ * 超过时（横屏 / 平板上宽幅头图会占满整屏），从 1 线性缩小到
+ * 「限高 / 头图高」，正好在滚过头图与限高的差值距离时缩到限高并停住。
+ */
+private fun headerScaleForScroll(
+    scrollPx: Int,
+    headerHeightPx: Int,
+    screenHeightPx: Int,
+): Float {
+    if (headerHeightPx <= 0 || screenHeightPx <= 0) return 1f
+    val maxHeaderHeight = screenHeightPx * HEADER_MAX_HEIGHT_FRACTION_OF_SCREEN
+    if (headerHeightPx <= maxHeaderHeight) return 1f
+    val shrinkScrollDistance = headerHeightPx - maxHeaderHeight
+    val progress = (scrollPx / shrinkScrollDistance).coerceIn(0f, 1f)
+    return lerp(1f, maxHeaderHeight / headerHeightPx, progress)
+}
 
 /**
  * 详情页内容区块的依次入场：淡入 + 轻微上移。
