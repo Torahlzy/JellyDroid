@@ -48,11 +48,12 @@ dependencyResolutionManagement {
             ?.takeIf { it.isNotEmpty() }
 
     repositories {
+        // 只用 google() 与 mavenCentral()：F-Droid 只接受来自受信任 Maven 仓库
+        // （Maven Central / Google Maven / Sonatype / JitPack 等）的依赖，
+        // JetBrains Space 的 dev 仓库不在白名单内，且当前所有依赖的正式版都能在 Central 解析。
         localMavenMirror?.let { mirrorUrl -> maven { url = uri(mirrorUrl) } }
         google()
         mavenCentral()
-        maven { url = uri("https://maven.pkg.jetbrains.space/kotlin/p/kotlin/dev/") }
-        maven { url = uri("https://maven.pkg.jetbrains.space/public/kotlinx-coroutines/maven") }
     }
 }
 
