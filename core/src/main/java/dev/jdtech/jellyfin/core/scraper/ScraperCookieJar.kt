@@ -52,6 +52,19 @@ constructor(private val appPreferences: AppPreferences) : CookieJar {
         }
     }
 
+    /**
+     * 把 WebView 里取到的整段 Cookie（`k1=v1; k2=v2` 形式）并入某地址对应站点的存储。
+     *
+     * 用于过 Cloudflare 盾：在内置网页里通过人机验证后，站点下发的 cf_clearance 存在
+     * 系统 WebView 的 CookieManager 里，这里把它搬进抓取用的 Cookie 罐，之后的 OkHttp
+     * 请求就能带着它直连站点（幂等，重复同步没有副作用）。
+     */
+    fun importCookies(url: String, cookieHeader: String) {
+        val httpUrl = url.toHttpUrlOrNull() ?: return
+        val cookies = cookieHeader.split(';').mapNotNull { Cookie.parse(httpUrl, it.trim()) }
+        if (cookies.isNotEmpty()) saveFromResponse(httpUrl, cookies)
+    }
+
     /** 清掉某个站点的全部 Cookie（退出登录用），内存与落盘同时清。 */
     fun clearHost(host: String) {
         restoreIfNeeded()

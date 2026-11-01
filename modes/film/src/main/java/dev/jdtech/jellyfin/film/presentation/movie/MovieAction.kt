@@ -90,4 +90,13 @@ sealed interface MovieAction {
 
     /** 重新加载外网短评（忽略缓存有效期，直接重新抓取）。 */
     data object ReloadComments : MovieAction
+
+    /**
+     * 以 [keyword]（通常是番号）为关键词到字幕站搜索并下载字幕，挑与视频时长最贴合的那份，
+     * 下载后上传到服务器。
+     */
+    data class DownloadSubtitle(val keyword: String) : MovieAction
+
+    /** 用户中途取消了字幕下载。 */
+    data object CancelSubtitleDownload : MovieAction
 }

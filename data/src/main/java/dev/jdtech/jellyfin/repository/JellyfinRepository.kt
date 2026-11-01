@@ -172,6 +172,20 @@ interface JellyfinRepository {
      */
     suspend fun setItemImage(itemId: UUID, imageType: ImageType, imageBytes: ByteArray)
 
+    /**
+     * 把 [subtitleBytes] 作为外部字幕上传到条目 [itemId]，服务端会存成视频同目录下的字幕文件。
+     *
+     * [language] 必须是 3 字母的 ISO 639-2 代码（如 `chi` / `eng`）：服务端收到 `zh-CN` 这类
+     * 2 字母代码时不报错，但媒体流里的语言会存成空值，播放器里既看不到语言、也无法按语言自动选中。
+     * [format] 是字幕格式（`srt` / `vtt`），决定落盘扩展名。同语言的旧字幕会被直接覆盖。
+     */
+    suspend fun uploadSubtitle(
+        itemId: UUID,
+        subtitleBytes: ByteArray,
+        language: String,
+        format: String,
+    )
+
     /** 读取条目在服务器上可编辑的 nfo 元数据，用于编辑弹窗回填。 */
     suspend fun getItemMetadata(itemId: UUID): ItemMetadataEdit
 

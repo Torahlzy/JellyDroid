@@ -41,6 +41,7 @@ class ScraperHttp
 constructor(
     @ScraperOkHttpClient private val client: OkHttpClient,
     private val appPreferences: AppPreferences,
+    private val scraperUrlProvider: ScraperUrlProvider,
 ) {
     /** 上次解析代理用的地址与结果，见 [proxyFor]；地址未变时直接复用。 */
     @Volatile private var cachedProxyAddress: String? = null
@@ -115,34 +116,44 @@ constructor(
     }
 
     /**
-     * 下载二进制内容（抓取封面用）。
+     * 下载二进制内容（抓取封面 / 字幕用）。
      *
      * 与取 HTML 不同，这里必须跟随重定向：图片地址常被站点 302 到 CDN，
-     * 不跟随就会把跳转响应体（空或一段提示 HTML）当成图片返回。
+     * 不跟随就会把跳转响应体（空或一段提示 HTML）当成图片返回。[what] 只用于拼失败原因。
      */
-    suspend fun getBytes(url: String, headers: Map<String, String> = emptyMap()): ByteArray =
+    suspend fun getBytes(
+        url: String,
+        headers: Map<String, String> = emptyMap(),
+        what: String = "图片",
+    ): ByteArray =
         withContext(Dispatchers.IO) {
             try {
+                // 与取 HTML 同样套 UA 覆盖：JavDB 的登录验证码图片也归 Cloudflare 管，
+                // cf_clearance 绑定过盾 WebView 的 UA，用默认桌面 UA 取图会被 403
+                val request =
+                    withUserAgentOverride(
+                        Request.Builder().url(url).get().withHeaders(headers).build()
+                    )
                 clientWithProxy()
                     .newBuilder()
                     .followRedirects(true)
                     .followSslRedirects(true)
                     .build()
-                    .newCall(Request.Builder().url(url).get().withHeaders(headers).build())
+                    .newCall(request)
                     .execute()
                     .use { response ->
                         if (!response.isSuccessful) {
                             // 服务端明确回了非 2xx，没有更底层的异常可作 cause
                             throw ScraperException.NetworkError(
-                                "下载图片失败：$url（${response.code}）",
+                                "下载${what}失败：$url（${response.code}）",
                                 null,
                             )
                         }
                         response.body?.bytes()?.takeIf { it.isNotEmpty() }
-                            ?: throw ScraperException.NetworkError("下载图片为空：$url", null)
+                            ?: throw ScraperException.NetworkError("下载到的${what}为空：$url", null)
                     }
             } catch (e: IOException) {
-                throw ScraperException.NetworkError("下载图片失败：$url", e)
+                throw ScraperException.NetworkError("下载${what}失败：$url", e)
             }
         }
 
@@ -178,7 +189,8 @@ constructor(
     private suspend fun execute(request: Request, useProxy: Boolean = true): ScraperResponse =
         withContext(Dispatchers.IO) {
             try {
-                clientWithProxy(useProxy).newCall(request).execute().use { response ->
+                val finalRequest = withUserAgentOverride(request)
+                clientWithProxy(useProxy).newCall(finalRequest).execute().use { response ->
                     ScraperResponse(
                         code = response.code,
                         url = response.request.url.toString(),
@@ -190,6 +202,27 @@ constructor(
                 throw ScraperException.NetworkError("请求失败：${request.url}", e)
             }
         }
+
+    /**
+     * JavDB 过盾后要复用 WebView 的 UA：Cloudflare 发的 cf_clearance 与 UA 绑定，
+     * 请求 UA 与过盾时不一致 Cookie 就会被无视，照样 403。
+     *
+     * 只对 JavDB 的请求生效——JavBus / jav321 依赖默认的桌面 UA（jav321 会把手机 UA
+     * 302 到它的广告域名）。请求里已显式带 UA 时不覆盖，尊重调用方。
+     */
+    private fun withUserAgentOverride(request: Request): Request {
+        if (request.header("User-Agent") != null) return request
+        val saved = appPreferences.getValue(appPreferences.javdbWebViewUserAgent)
+        if (saved.isBlank()) return request
+        val javdbHost =
+            scraperUrlProvider.baseUrl(ScraperSite.JAVDB)
+                ?.let { runCatching { URI(it).host }.getOrNull() }
+                ?: return request
+        val requestHost = runCatching { URI(request.url.toString()).host }.getOrNull()
+            ?: return request
+        if (!requestHost.equals(javdbHost, ignoreCase = true)) return request
+        return request.newBuilder().header("User-Agent", saved).build()
+    }
 
     private fun Request.Builder.withHeaders(headers: Map<String, String>): Request.Builder =
         apply { headers.forEach { (name, value) -> header(name, value) } }

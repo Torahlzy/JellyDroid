@@ -125,6 +125,7 @@
     <string name="more_menu_title">More actions</string>
     <string name="edit_item_images">Edit cover images</string>
     <string name="edit_item_metadata">Edit nfo</string>
+    <string name="download_subtitle">Download subtitle</string>
     <string name="delete_movie">Delete movie</string>
     <string name="delete_item_with_files">Delete all (incl. video file)</string>
     <string name="delete_all_message">The video file and its cover images / nfo will be deleted from the server. This cannot be undone.</string>
@@ -189,6 +190,16 @@
     <string name="scrape_proxy_summary">Only used when scraping nfo / cover images / actor avatars, e.g. http://127.0.0.1:7890 or socks5://127.0.0.1:1080. Leave empty to connect directly.</string>
     <string name="scrape_proxy_entry">Proxy: %1$s</string>
     <string name="scrape_proxy_unset">Not set</string>
+    <string name="subtitle_searching">Searching subtitles…</string>
+    <string name="subtitle_reading_candidate">Checking candidate %1$d/%2$d…</string>
+    <string name="subtitle_trying_candidate">Trying candidate %1$d/%2$d (%3$s)</string>
+    <string name="subtitle_uploading">Uploading subtitle to the server…</string>
+    <string name="subtitle_uploaded">Subtitle uploaded (%1$s)</string>
+    <string name="subtitle_not_found">No Simplified Chinese / Traditional Chinese / English subtitle found</string>
+    <string name="subtitle_download_failed">Subtitle download failed: %1$s</string>
+    <string name="subtitle_language_simplified">Simplified Chinese</string>
+    <string name="subtitle_language_traditional">Traditional Chinese</string>
+    <string name="subtitle_language_english">English</string>
     <string name="movie_comments_title">Short reviews</string>
     <string name="movie_comments_empty">No short reviews yet</string>
     <string name="movie_comments_no_keyword">Cannot identify the movie number, short reviews are unavailable</string>
@@ -197,6 +208,10 @@
     <string name="movie_comments_likes">%1$d likes</string>
     <string name="movie_comments_login_hint">Not signed in or the session has expired, so only the latest few reviews are shown.</string>
     <string name="movie_comments_login_action">Sign in</string>
+    <string name="movie_comments_unblock_action">Open webpage to pass the check</string>
+    <string name="javdb_unblock_title">Pass Cloudflare check</string>
+    <string name="javdb_unblock_done">Done</string>
+    <string name="javdb_unblock_no_url">No JavDB address configured. Fill it in under More actions → Scraping site URLs.</string>
     <string name="scrape_urls">Scraping site URLs</string>
     <string name="scrape_urls_title">Enter scraping site URLs</string>
     <string name="scrape_urls_summary">Fill in the site address used for scraping.</string>

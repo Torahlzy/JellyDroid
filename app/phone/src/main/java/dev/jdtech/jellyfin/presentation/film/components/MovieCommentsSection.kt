@@ -40,6 +40,8 @@ fun MovieCommentsSection(
     onRetry: () -> Unit,
     isJavDbLoggedIn: Boolean,
     onLoginClick: () -> Unit,
+    isSiteBlocked: Boolean,
+    onUnblockClick: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -63,6 +65,13 @@ fun MovieCommentsSection(
                 )
                 TextButton(onClick = onRetry) {
                     Text(text = stringResource(CoreR.string.movie_comments_retry))
+                }
+                // 被站点拦截（Cloudflare）时给一个手动过盾入口：在内置网页里通过人机验证，
+                // 之后抓取请求带上过盾的 Cookie 与 UA 即可恢复正常
+                if (isSiteBlocked) {
+                    TextButton(onClick = onUnblockClick) {
+                        Text(text = stringResource(CoreR.string.movie_comments_unblock_action))
+                    }
                 }
             }
             // 识别不到番号时不联网，直接告诉用户为什么这里是空的

@@ -72,6 +72,7 @@ import dev.jdtech.jellyfin.presentation.film.NamedItemListScreen
 import dev.jdtech.jellyfin.presentation.film.PersonListScreen
 import dev.jdtech.jellyfin.presentation.film.SeasonScreen
 import dev.jdtech.jellyfin.presentation.film.ShowScreen
+import dev.jdtech.jellyfin.presentation.javdb.JavDbUnblockScreen
 import dev.jdtech.jellyfin.presentation.settings.AboutScreen
 import dev.jdtech.jellyfin.presentation.settings.SettingsFileEditScreen
 import dev.jdtech.jellyfin.presentation.settings.SettingsScreen
@@ -141,6 +142,9 @@ data class ItemFilterRoute(val facet: MetadataFacet, val key: String, val title:
 @Serializable data class SettingsRoute(val indexes: IntArray)
 
 @Serializable data class SettingsFileEditRoute(val filePath: String)
+
+/** JavDB 被 Cloudflare 拦截时的过盾页：内置 WebView 手动通过人机验证，Cookie/UA 自动同步回抓取。 */
+@Serializable data object JavDbUnblockRoute
 
 @Serializable data object AboutRoute
 
@@ -431,6 +435,8 @@ fun NavigationRoot(
                                 )
                             )
                         },
+                        // 短评被站点拦截时进内置网页手动过 Cloudflare 盾
+                        navigateToUnblock = { navController.safeNavigate(JavDbUnblockRoute) },
                     )
                 }
             }
@@ -592,6 +598,9 @@ fun NavigationRoot(
                     filePath = route.filePath,
                     navigateBack = { navController.safePopBackStack() },
                 )
+            }
+            composable<JavDbUnblockRoute> {
+                JavDbUnblockScreen(navigateBack = { navController.safePopBackStack() })
             }
             composable<AboutRoute> {
                 AboutScreen(navigateBack = { navController.safePopBackStack() })

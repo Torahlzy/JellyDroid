@@ -95,7 +95,9 @@ import dev.jdtech.jellyfin.presentation.film.components.ScrapeActorImageDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScrapeKeywordDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScrapeProgressDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScraperUrlsDialog
+import dev.jdtech.jellyfin.presentation.film.components.SubtitleDownloadDialog
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
+import dev.jdtech.jellyfin.presentation.film.components.labelRes
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.Motion
 import dev.jdtech.jellyfin.presentation.theme.spacings
@@ -121,6 +123,7 @@ fun MovieScreen(
     navigateToPerson: (personId: UUID, personName: String) -> Unit,
     navigateToMetadataFacet: (facet: MetadataFacet, key: String) -> Unit,
     navigateToCommentSettings: () -> Unit,
+    navigateToUnblock: () -> Unit,
     viewModel: MovieViewModel = hiltViewModel(),
     downloaderViewModel: DownloaderViewModel = hiltViewModel(),
     actorImageScrapeViewModel: ActorImageScrapeViewModel = hiltViewModel(),
@@ -260,6 +263,28 @@ fun MovieScreen(
                 showFailureToast(CoreR.string.item_images_upload_failed, event.error)
             is MovieEvent.ItemDeleteFailed ->
                 showFailureToast(CoreR.string.delete_item_failed, event.error)
+            is MovieEvent.SubtitleUploaded -> {
+                Toast.makeText(
+                        context,
+                        context.getString(
+                            CoreR.string.subtitle_uploaded,
+                            context.getString(event.language.labelRes()),
+                        ),
+                        Toast.LENGTH_SHORT,
+                    )
+                    .show()
+                // 字幕已落到服务器，弹窗使命结束
+                moreDialog = null
+            }
+            is MovieEvent.SubtitleNotFound ->
+                Toast.makeText(
+                        context,
+                        context.getString(CoreR.string.subtitle_not_found),
+                        Toast.LENGTH_LONG,
+                    )
+                    .show()
+            is MovieEvent.SubtitleDownloadFailed ->
+                showFailureToast(CoreR.string.subtitle_download_failed, event.error)
         }
     }
 
@@ -295,6 +320,7 @@ fun MovieScreen(
             )
         },
         onLoginClick = navigateToCommentSettings,
+        onUnblockClick = navigateToUnblock,
         onAction = { action ->
             when (action) {
                 is MovieAction.Play -> {
@@ -338,6 +364,7 @@ fun MovieScreen(
             MoreMenuDialog(
                 onEditImagesClick = { moreDialog = MoreMenuDialogState.EDIT_IMAGES },
                 onEditMetadataClick = { moreDialog = MoreMenuDialogState.EDIT_METADATA },
+                onDownloadSubtitleClick = { moreDialog = MoreMenuDialogState.SUBTITLE_DOWNLOAD },
                 onDeleteItemClick = { moreDialog = MoreMenuDialogState.DELETE_ALL },
                 onScrapeUrlsClick = { moreDialog = MoreMenuDialogState.SCRAPER_URLS },
                 onDismiss = { moreDialog = null },
@@ -424,6 +451,24 @@ fun MovieScreen(
                     viewModel.onAction(MovieAction.SaveScrapeUrls(urls = urls))
                 },
                 onDismiss = { moreDialog = null },
+            )
+        MoreMenuDialogState.SUBTITLE_DOWNLOAD ->
+            SubtitleDownloadDialog(
+                defaultKeyword = state.defaultScrapeKeyword,
+                proxy = state.scrapeProxy,
+                stage = state.subtitleDownloadStage,
+                onProxyChange = { address ->
+                    viewModel.onAction(MovieAction.UpdateScrapeProxy(address = address))
+                },
+                onConfirm = { keyword ->
+                    // 弹窗保持打开：下完直接上传，进度就地显示，成功后由事件关掉
+                    viewModel.onAction(MovieAction.DownloadSubtitle(keyword = keyword))
+                },
+                onCancel = { viewModel.onAction(MovieAction.CancelSubtitleDownload) },
+                onDismiss = {
+                    moreDialog = null
+                    viewModel.onAction(MovieAction.CancelSubtitleDownload)
+                },
             )
         null -> Unit
     }
@@ -537,6 +582,9 @@ private enum class MoreMenuDialogState {
 
     /** 各抓取站点自定义网址的输入弹窗。 */
     SCRAPER_URLS,
+
+    /** 下载字幕的关键词输入与进度弹窗（同一弹窗的两个阶段）。 */
+    SUBTITLE_DOWNLOAD,
 }
 
 @Composable
@@ -547,6 +595,7 @@ private fun MovieScreenLayout(
     downloaderState: DownloaderState,
     onScrapeImageClick: (person: FindroidItemPerson) -> Unit,
     onLoginClick: () -> Unit,
+    onUnblockClick: () -> Unit,
     onAction: (MovieAction) -> Unit,
     onMoreClick: (() -> Unit)?,
     onDownloaderAction: (DownloaderAction) -> Unit,
@@ -913,6 +962,8 @@ private fun MovieScreenLayout(
                             onRetry = { onAction(MovieAction.ReloadComments) },
                             isJavDbLoggedIn = state.isJavDbLoggedIn,
                             onLoginClick = onLoginClick,
+                            isSiteBlocked = state.isCommentsSiteBlocked,
+                            onUnblockClick = onUnblockClick,
                             contentPadding = PaddingValues(start = paddingStart, end = paddingEnd),
                         )
                     }
@@ -1066,6 +1117,7 @@ private fun EpisodeScreenLayoutPreview() {
             downloaderState = DownloaderState(),
             onScrapeImageClick = {},
             onLoginClick = {},
+            onUnblockClick = {},
             onAction = {},
             onMoreClick = {},
             onDownloaderAction = {},

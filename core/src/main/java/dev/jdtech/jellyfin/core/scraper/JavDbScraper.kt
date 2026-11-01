@@ -7,9 +7,10 @@ import org.jsoup.nodes.Element
 /**
  * JavDB 抓取器，移植自 JavSP 的 `javsp/web/javdb.py`。
  *
- * JavDB 用 CloudFlare 挡爬虫，JavSP 靠 cloudscraper + 浏览器 Cookies 绕过；
- * 本应用两样都没有，只能带浏览器 UA 直连，被拦截时按 [ScraperException.SiteBlocked] 上报，
- * 由上层换下一个站点。
+ * JavDB 用 CloudFlare 挡爬虫，JavSP 靠 cloudscraper + 浏览器 Cookies 绕过；本应用没有
+ * cloudscraper，被拦截时按 [ScraperException.SiteBlocked] 上报，由上层换下一个站点。
+ * 用户也可以在内置网页里手动通过人机验证，之后请求会带上 WebView 的 UA 与
+ * cf_clearance Cookie（见 ScraperHttp.withUserAgentOverride 与 ScraperCookieJar.importCookies）。
  */
 class JavDbScraper(
     private val http: ScraperHttp,

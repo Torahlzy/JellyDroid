@@ -9,10 +9,13 @@ import dev.jdtech.jellyfin.core.scraper.ImageScraper
 import dev.jdtech.jellyfin.core.scraper.MetadataScraper
 import dev.jdtech.jellyfin.core.scraper.MetadataTagNormalizer
 import dev.jdtech.jellyfin.core.scraper.ScrapedImage
+import dev.jdtech.jellyfin.core.scraper.ScraperException
 import dev.jdtech.jellyfin.core.scraper.ScraperSite
 import dev.jdtech.jellyfin.core.scraper.SiteImageScrapeResult
 import dev.jdtech.jellyfin.core.scraper.SiteMetadataScrapeResult
 import dev.jdtech.jellyfin.core.scraper.toItemMetadataEdit
+import dev.jdtech.jellyfin.core.subtitle.SubtitleDownloadStage
+import dev.jdtech.jellyfin.core.subtitle.SubtitleDownloader
 import dev.jdtech.jellyfin.core.translator.MetadataTranslator
 import dev.jdtech.jellyfin.core.translator.TagTranslator
 import dev.jdtech.jellyfin.film.domain.VideoMetadataParser
@@ -60,6 +63,7 @@ constructor(
     private val tagTranslator: TagTranslator,
     private val commentRepository: MovieCommentRepository,
     private val javDbSession: JavDbSession,
+    private val subtitleDownloader: SubtitleDownloader,
 ) : ViewModel() {
     // 抓取站点进页面时取一次（运行时配置优先于打包配置），直接放进初始 state，
     // 免得打开「编辑封面」/「编辑 nfo」弹窗时要等一次异步加载、先闪一下「没配站点」的空态；
@@ -88,6 +92,9 @@ constructor(
 
     /** 正在跑的图片抓取任务，用户取消时直接 cancel 掉。 */
     private var imageScrapeJob: Job? = null
+
+    /** 正在跑的字幕下载任务（含上传），用户取消时直接 cancel 掉。 */
+    private var subtitleDownloadJob: Job? = null
 
     /**
      * 本轮抓取里分类 / 标签翻译的连续失败次数，达到上限后本批不再请求引擎（归一照常执行）。
@@ -316,8 +323,73 @@ constructor(
             is MovieAction.ReloadComments -> {
                 loadComments(_state.value.commentKeyword)
             }
+            is MovieAction.DownloadSubtitle -> {
+                downloadSubtitle(action.keyword)
+            }
+            is MovieAction.CancelSubtitleDownload -> {
+                subtitleDownloadJob?.cancel()
+                subtitleDownloadJob = null
+            }
             else -> Unit
         }
+    }
+
+    /**
+     * 下载字幕并上传到服务器。
+     *
+     * 挑选规则（比时长、优先繁简）在 [SubtitleDownloader] 里，这里只负责状态与上传：
+     * 视频时长取条目的运行时长，服务端没给时传 0，由下载器跳过时长比较、直接用第一个候选。
+     * 找不到可用字幕时弹窗保持打开（阶段回到 null），用户可以改关键词重试。
+     */
+    private fun downloadSubtitle(keyword: String) {
+        if (keyword.isBlank() || subtitleDownloadJob?.isActive == true) return
+        subtitleDownloadJob =
+            viewModelScope.launch {
+                _state.emit(
+                    _state.value.copy(subtitleDownloadStage = SubtitleDownloadStage.Searching)
+                )
+                try {
+                    val videoDurationMs =
+                        _state.value.movie?.runtimeTicks?.div(TICKS_PER_MILLISECOND) ?: 0L
+                    val downloaded =
+                        subtitleDownloader.download(keyword, videoDurationMs) { stage ->
+                            _state.emit(_state.value.copy(subtitleDownloadStage = stage))
+                        }
+                    if (downloaded == null) {
+                        eventsChannel.send(MovieEvent.SubtitleNotFound)
+                        return@launch
+                    }
+                    _state.emit(
+                        _state.value.copy(subtitleDownloadStage = SubtitleDownloadStage.Uploading)
+                    )
+                    repository.uploadSubtitle(
+                        itemId = movieId,
+                        subtitleBytes = downloaded.bytes,
+                        language = downloaded.subtitle.language.jellyfinLanguage,
+                        format = downloaded.subtitle.format,
+                    )
+                    AppLog.d(
+                        "字幕已上传：%s（%s，%d 字节），与视频时长差 %s ms",
+                        downloaded.subtitle.language,
+                        downloaded.subtitle.format,
+                        downloaded.bytes.size,
+                        downloaded.durationDiffMs,
+                    )
+                    eventsChannel.send(
+                        MovieEvent.SubtitleUploaded(downloaded.subtitle.language)
+                    )
+                    // 重新拉一次条目，让播放源里带上刚上传的字幕轨
+                    loadMovie(movieId)
+                } catch (e: CancellationException) {
+                    AppLog.d("字幕下载已取消：%s", keyword)
+                    throw e
+                } catch (e: Exception) {
+                    AppLog.e(e, "下载 / 上传字幕失败：%s", movieId)
+                    eventsChannel.send(MovieEvent.SubtitleDownloadFailed(e))
+                } finally {
+                    _state.emit(_state.value.copy(subtitleDownloadStage = null))
+                }
+            }
     }
 
     /**
@@ -369,6 +441,7 @@ constructor(
                     commentKeyword = keyword,
                     isLoadingComments = true,
                     commentsError = null,
+                    isCommentsSiteBlocked = false,
                     // 提示文案与登录入口取决于是否已登录，随每次加载刷新（用户可能中途去设置里登录）
                     isJavDbLoggedIn = loggedIn,
                 )
@@ -384,6 +457,8 @@ constructor(
                     _state.value.copy(
                         isLoadingComments = false,
                         commentsError = e.readableCommentError(),
+                        // 被 Cloudflare 拦截时额外提供「打开网页过盾」入口，其他失败没有对应动作
+                        isCommentsSiteBlocked = e is ScraperException.SiteBlocked,
                     )
                 )
             }
@@ -1046,5 +1121,8 @@ constructor(
 
         /** 分类 / 标签翻译连续失败多少次后停用：继续试只会把时间耗在超时上。 */
         const val MAX_TAG_TRANSLATE_FAILURES = 3
+
+        /** Jellyfin 的时间单位是 100ns，1 毫秒 = 10000 ticks。 */
+        const val TICKS_PER_MILLISECOND = 10_000L
     }
 }
