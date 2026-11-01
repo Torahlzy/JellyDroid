@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -43,7 +42,6 @@ fun HomeHeader(
     onErrorClick: () -> Unit,
     onRetryClick: () -> Unit,
     onSearchClick: () -> Unit,
-    onDownloadClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isOfflineMode = LocalOfflineMode.current
@@ -100,7 +98,8 @@ fun HomeHeader(
                 }
             }
 
-            AnimatedVisibility(visible = isLoading || isError, enter = fadeIn(), exit = fadeOut()) {
+            // 加载过程不再显示 loading 圈，只有出错后才出现重试按钮
+            AnimatedVisibility(visible = isError, enter = fadeIn(), exit = fadeOut()) {
                 Surface(
                     onClick = onRetryClick,
                     modifier = Modifier.fillMaxHeight().aspectRatio(1f),
@@ -109,20 +108,11 @@ fun HomeHeader(
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 ) {
                     Box {
-                        when {
-                            isError -> {
-                                Icon(
-                                    painter = painterResource(CoreR.drawable.ic_rotate_ccw),
-                                    contentDescription = null,
-                                    modifier = Modifier.align(Alignment.Center),
-                                )
-                            }
-                            isLoading -> {
-                                Box(modifier = Modifier.size(32.dp).align(Alignment.Center)) {
-                                    CircularProgressIndicator()
-                                }
-                            }
-                        }
+                        Icon(
+                            painter = painterResource(CoreR.drawable.ic_rotate_ccw),
+                            contentDescription = null,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
                     }
                 }
             }
@@ -146,24 +136,6 @@ fun HomeHeader(
                     }
                 }
             }
-
-            Surface(
-                onClick = onDownloadClick,
-                modifier = Modifier.fillMaxHeight().aspectRatio(1f),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        painter = painterResource(CoreR.drawable.ic_download),
-                        contentDescription = null,
-                    )
-                }
-            }
         }
     }
 }
@@ -172,6 +144,7 @@ fun HomeHeader(
 @Preview(showBackground = true)
 private fun HomeHeaderLoadingPreview() {
     FindroidTheme {
+        // 加载中：重试按钮隐藏，搜索入口禁用
         HomeHeader(
             serverName = "Jellyfin",
             isLoading = true,
@@ -180,7 +153,6 @@ private fun HomeHeaderLoadingPreview() {
             onErrorClick = {},
             onRetryClick = {},
             onSearchClick = {},
-            onDownloadClick = {},
         )
     }
 }
@@ -197,7 +169,6 @@ private fun HomeHeaderErrorPreview() {
             onErrorClick = {},
             onRetryClick = {},
             onSearchClick = {},
-            onDownloadClick = {},
         )
     }
 }

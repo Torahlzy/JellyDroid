@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-10-27**
+**最后更新：2026-11-02**
 
 ---
 
@@ -124,7 +124,7 @@ Select-String -Path wiki/pages.md -Pattern '\.kt:\d+' -AllMatches
 | 引导 | 登录 | `LoginRoute` | `PHONE/presentation/setup/login/LoginScreen.kt` | `SETUP/presentation/login/LoginViewModel.kt` |
 | 播放 | 视频播放 | 无（Activity，非 NavHost 路由） | `PHONE/PlayerActivity.kt` | `PLAYER/presentation/PlayerViewModel.kt` |
 
-**底部导航标签**（`PHONE/NavigationRoot.kt`）：首页 `HomeRoute`、媒体 `MediaRoute`、设置 `SettingsRoute`。离线模式下（`LocalOfflineMode == true`）隐藏「媒体」标签（`PHONE/NavigationRoot.kt`）。下载页入口在首页右上角的下载按钮（`HomeHeader.kt`）。
+**底部导航标签**（`PHONE/NavigationRoot.kt`）：首页 `HomeRoute`、媒体 `MediaRoute`、设置 `SettingsRoute`。离线模式下（`LocalOfflineMode == true`）隐藏「媒体」标签（`PHONE/NavigationRoot.kt`）。下载页入口在媒体页的「已下载」入口（`PHONE/presentation/film/components/MediaEntryCard.kt`，与「我喜欢」并排平分一行宽度）。
 
 **启动路由**（`PHONE/NavigationRoot.kt`）：
 
@@ -141,23 +141,23 @@ else -> WelcomeRoute
 
 ### HomeScreen — 首页
 
-- **职责**：聚合首页。顶部为 `HomeHeader`（服务器名、搜索、下载入口、重试）；下方按 section 渲染推荐轮播、继续观看、接下来、各媒体库最新。
+- **职责**：聚合首页。顶部为 `HomeHeader`（服务器名、搜索、重试）；下方按 section 渲染推荐轮播、继续观看、接下来、各媒体库最新。
 - **路由**：`HomeRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/HomeScreen.kt`；section 组装在 `HomeScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/home/HomeViewModel.kt`、`FILM/presentation/home/HomeState.kt`、`FILM/presentation/home/HomeAction.kt`。
 - **State 字段**：`server`、`suggestionsSection`、`resumeSection`、`nextUpSection`、`views`、`isLoading`、`error`。
-- **主要方法 / Action**：`loadData(refreshSuggestions)`；`OnItemClick`（可带共享元素来源 `heroKey`）、`OnLibraryClick`、`OnRetryClick`、`OnRefresh`、`OnSearchClick`、`OnDownloadsClick`、`OnManageServers`。
+- **主要方法 / Action**：`loadData(refreshSuggestions)`；`OnItemClick`（可带共享元素来源 `heroKey`）、`OnLibraryClick`、`OnRetryClick`、`OnRefresh`、`OnSearchClick`、`OnManageServers`。
 - **数据来源**：`getSuggestions()`、`getResumeItems()`、`getNextUp()`、`getUserViews()` + `getLatestMedia(view.id)`（`HomeViewModel.kt`）；每个 section 分别受 `AppPreferences` 的 `homeSuggestions` / `homeContinueWatching` / `homeNextUp` / `homeLatest` 开关控制，为空则不渲染。banner（推荐轮播）只在首次进入与下拉刷新 / 切换服务器（`OnRefresh`）时拉取，从详情页返回首页不重新请求，避免轮播被重建；返回首页若共享元素转场仍在执行，等转场结束后再刷新其它分区，继续观看条目的增删与排序变化使用 LazyRow 条目动画。
 - **入口**：启动路由 / 底部「首页」标签 / 各详情页的 `navigateHome`。
 
 ### MediaScreen — 媒体库总览
 
-- **职责**：展示全部媒体库网格；顶部内嵌搜索栏（`FilmSearchBar`），网格末尾依次是「我喜欢」入口与浏览入口区块。媒体库卡片为横图（`BANNER_ASPECT_RATIO`），列数固定为手机 2 列、折叠屏展开（宽度 ≥ 600dp）4 列——横图卡片列数翻倍时宽度与高度都减半；合集库（`CollectionType.BoxSets`）服务器上不提供封面，卡片改用通用图标 `CoreR.drawable.ic_collection` 占位。
+- **职责**：展示全部媒体库网格；顶部内嵌搜索栏（`FilmSearchBar`），网格末尾依次是「我喜欢」与「已下载」入口（两卡并排、各占一半行宽，组件为 `MediaEntryCard`）与浏览入口区块。媒体库卡片为横图（`BANNER_ASPECT_RATIO`），列数固定为手机 2 列、折叠屏展开（宽度 ≥ 600dp）4 列——横图卡片列数翻倍时宽度与高度都减半；合集库（`CollectionType.BoxSets`）服务器上不提供封面，卡片改用通用图标 `CoreR.drawable.ic_collection` 占位。
 - **路由**：`MediaRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/MediaScreen.kt`；搜索栏挂载于 `MediaScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/media/MediaViewModel.kt`、`FILM/presentation/media/MediaState.kt`、`FILM/presentation/media/MediaAction.kt`。
 - **State 字段**：`libraries`、`isLoading`、`error`。
-- **主要方法 / Action**：`loadData()`；`OnItemClick`、`OnFavoritesClick`、`OnRetryClick`。
+- **主要方法 / Action**：`loadData()`；`OnItemClick`、`OnFavoritesClick`、`OnDownloadsClick`、`OnRetryClick`。
 - **入口**：底部「媒体」标签；首页搜索按钮会切到此页并置 `searchExpanded = true`（`PHONE/NavigationRoot.kt`）。
 - **浏览入口**：网格末尾追加 `PHONE/presentation/film/components/MediaBrowseSection.kt`——按 nfo 已入库的维度（类别 / 标签 / 分级 / 年份 / 演员 / 导演 / 编剧 / 制片公司，枚举为 `data/src/main/java/dev/jdtech/jellyfin/models/MetadataFacet.kt`）列出入口，固定每行两个、随列表一起滚动，点击进入 `MetadataBrowseRoute`。
 
@@ -170,7 +170,7 @@ else -> WelcomeRoute
 - **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action，VM 无 `onAction`）。
 - **State 字段**：`sections`、`isLoading`、`error`。
 - **主要方法**：`loadItems()`（内部调用 `repository.getDownloads()`）。
-- **入口**：首页右上角的下载按钮（`PHONE/presentation/film/components/HomeHeader.kt`）。
+- **入口**：媒体页的「已下载」入口（`PHONE/presentation/film/components/MediaEntryCard.kt`，与「我喜欢」并排平分一行宽度）。
 
 ### LibraryScreen — 媒体库详情
 

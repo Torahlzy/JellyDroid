@@ -323,7 +323,6 @@ fun NavigationRoot(
                                 restoreState = true
                             }
                         },
-                        onDownloadsClick = { navController.safeNavigate(DownloadsRoute) },
                         onManageServers = { navController.safeNavigate(ServersRoute) },
                         onItemClick = { item, heroKey ->
                             navigateToItem(
@@ -342,6 +341,7 @@ fun NavigationRoot(
                             navigateToItem(navController = navController, item = item)
                         },
                         onFavoritesClick = { navController.safeNavigate(FavoritesRoute) },
+                        onDownloadsClick = { navController.safeNavigate(DownloadsRoute) },
                         onFacetClick = { facet ->
                             navController.safeNavigate(MetadataBrowseRoute(facet))
                         },

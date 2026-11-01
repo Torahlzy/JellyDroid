@@ -1,3 +1,5 @@
+**简体中文** | [English](README_EN.md)
+
 # Jellydroid
 
 **让你的 Jellyfin 片库更好逛、更好看，也更好整理。**

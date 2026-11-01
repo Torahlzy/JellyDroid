@@ -187,11 +187,11 @@ Compare-Object $en $zh | Where-Object { $_.SideIndicator -eq '<=' } | ForEach-Ob
 
 ## 日志规范
 
-所有日志走统一包装类，tag 自动带 `torah` 前缀，logcat 中搜索 `torah` 即可过滤出本应用全部日志。
+所有日志走统一包装类，tag 自动带 `torahLog` 前缀，logcat 中搜索 `torahLog` 即可过滤出本应用全部日志。
 
 - **统一入口**：`dev.jdtech.jellyfin.logging.AppLog`（位于 `:logging` 模块）。**新增或修改代码时，打印日志一律用 `AppLog`**，禁止直接写 `Timber.x()`、`android.util.Log.x()`、`println()`。
 - **为什么单独建 `:logging` 模块**：各模块之间都是 `implementation`（不传递）依赖，`:data`、`:player:local` 这类模块访问不到 `:core` 里的类（且 `:core` 依赖 `:data`，反向依赖会成环）。只有不依赖任何项目模块的最底层模块才能被所有模块使用。
-- **tag 机制**：tag 由 `TorahDebugTree` 统一添加——Timber 默认取调用方类名，Tree 在其前加 `torah/`，最终形如 `torah/MovieViewModel`。业务代码**不要手写 tag、不要自己拼 `torah` 前缀**；确需归类时用 `AppLog.tag("MPV").d(...)`。
+- **tag 机制**：tag 由 `TorahDebugTree` 统一添加——Timber 默认取调用方类名，Tree 在其前加 `torahLog/`，最终形如 `torahLog/MovieViewModel`。业务代码**不要手写 tag、不要自己拼 `torahLog` 前缀**；确需归类时用 `AppLog.tag("MPV").d(...)`。
 - **API 用法**：
   ```kotlin
   AppLog.d("Stream url: $streamUrl") // 也支持占位符：AppLog.d("Stream url: %s", url)
