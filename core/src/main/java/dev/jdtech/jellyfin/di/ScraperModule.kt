@@ -15,6 +15,10 @@ import dev.jdtech.jellyfin.core.scraper.MetadataScraperImpl
 import dev.jdtech.jellyfin.core.scraper.ScraperCookieJar
 import dev.jdtech.jellyfin.core.scraper.ScraperUrlProvider
 import dev.jdtech.jellyfin.core.scraper.ScraperUrlProviderImpl
+import dev.jdtech.jellyfin.core.subtitle.SubtitleDownloader
+import dev.jdtech.jellyfin.core.subtitle.SubtitleDownloaderImpl
+import dev.jdtech.jellyfin.core.subtitle.SubtitleScraper
+import dev.jdtech.jellyfin.core.subtitle.SubtitlecatScraper
 import dev.jdtech.jellyfin.settings.domain.JavDbSession
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
@@ -49,6 +53,14 @@ abstract class ScraperModule {
     @Binds
     @Singleton
     abstract fun bindJavDbSession(impl: JavDbSessionImpl): JavDbSession
+
+    @Binds
+    @Singleton
+    abstract fun bindSubtitleScraper(impl: SubtitlecatScraper): SubtitleScraper
+
+    @Binds
+    @Singleton
+    abstract fun bindSubtitleDownloader(impl: SubtitleDownloaderImpl): SubtitleDownloader
 
     companion object {
         /** 抓取是前台交互，超时给短一些，站点无响应时尽快切到下一个。 */
@@ -94,7 +106,12 @@ abstract class ScraperModule {
                 .cookieJar(cookieJar)
                 .addInterceptor { chain ->
                     val request = chain.request()
-                    val builder = request.newBuilder().header("User-Agent", USER_AGENT)
+                    // UA 默认补桌面 UA，但请求里已带 UA（JavDB 过盾后要复用 WebView 的 UA，见
+                    // ScraperHttp.withUserAgentOverride）时不覆盖，否则 cf_clearance 会因 UA 不一致失效
+                    val builder = request.newBuilder()
+                    if (request.header("User-Agent") == null) {
+                        builder.header("User-Agent", USER_AGENT)
+                    }
                     BROWSER_HEADERS.forEach { (name, value) ->
                         if (request.header(name) == null) builder.header(name, value)
                     }

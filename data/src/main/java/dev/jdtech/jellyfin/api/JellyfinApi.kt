@@ -22,6 +22,7 @@ import org.jellyfin.sdk.api.client.extensions.playStateApi
 import org.jellyfin.sdk.api.client.extensions.quickConnectApi
 import org.jellyfin.sdk.api.client.extensions.sessionApi
 import org.jellyfin.sdk.api.client.extensions.studiosApi
+import org.jellyfin.sdk.api.client.extensions.subtitleApi
 import org.jellyfin.sdk.api.client.extensions.suggestionsApi
 import org.jellyfin.sdk.api.client.extensions.systemApi
 import org.jellyfin.sdk.api.client.extensions.trickplayApi
@@ -87,6 +88,7 @@ class JellyfinApi(
     val sessionApi = api.sessionApi
     val showsApi = api.tvShowsApi
     val studiosApi = api.studiosApi
+    val subtitleApi = api.subtitleApi
     val suggestionsApi = api.suggestionsApi
     val systemApi = api.systemApi
     val trickplayApi = api.trickplayApi

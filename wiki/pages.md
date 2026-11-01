@@ -36,6 +36,7 @@
 - [维护与更新机制](#维护与更新机制)
 - [页面总览](#页面总览)
 - [影视页面（film）](#影视页面film)
+- [JavDB 过盾页面（javdb）](#javdb-过盾页面javdb)
 - [设置页面（settings）](#设置页面settings)
 - [引导页面（setup）](#引导页面setup)
 - [播放页面（player）](#播放页面player)
@@ -116,6 +117,7 @@ Select-String -Path wiki/pages.md -Pattern '\.kt:\d+' -AllMatches
 | 设置 | 设置 | `SettingsRoute` | `PHONE/presentation/settings/SettingsScreen.kt` | `SETTINGS/presentation/settings/SettingsViewModel.kt` |
 | 设置 | 文件编辑 | `SettingsFileEditRoute` | `PHONE/presentation/settings/SettingsFileEditScreen.kt` | `SETTINGS/presentation/settings/SettingsFileEditViewModel.kt` |
 | 设置 | 关于 | `AboutRoute` | `PHONE/presentation/settings/AboutScreen.kt` | 无 |
+| 工具 | JavDB 过盾 | `JavDbUnblockRoute` | `PHONE/presentation/javdb/JavDbUnblockScreen.kt` | `PHONE/presentation/javdb/JavDbUnblockViewModel.kt` |
 | 引导 | 欢迎 | `WelcomeRoute` | `PHONE/presentation/setup/welcome/WelcomeScreen.kt` | 无 |
 | 引导 | 服务器列表 | `ServersRoute` | `PHONE/presentation/setup/servers/ServersScreen.kt` | `SETUP/presentation/servers/ServersViewModel.kt` |
 | 引导 | 添加服务器 | `AddServerRoute` | `PHONE/presentation/setup/addserver/AddServerScreen.kt` | `SETUP/presentation/addserver/AddServerViewModel.kt` |
@@ -210,15 +212,15 @@ else -> WelcomeRoute
 
 ### MovieScreen — 电影详情
 
-- **职责**：加载影片元数据 / 视频信息 / 演员，演员长按菜单支持获取头像与复制完整演员名，提供播放、预告、标记已看、收藏、下载、跳转演员、点击类型 / 标签跳到对应筛选结果页，以及「更多」菜单（编辑封面 / 编辑 nfo / 删除全部 / 抓取网址），并处理离线模式（离线时类型 / 标签不可点）。信息行的类型 / 标签取值由 `PHONE/presentation/film/components/InfoText.kt` 渲染，点击经 `MovieAction.NavigateToGenre` / `NavigateToTag` → `PHONE/NavigationRoot.kt` 的 `navigateToMetadataFacet` 跳转 `ItemFilterRoute`。
+- **职责**：加载影片元数据 / 视频信息 / 演员，演员长按菜单支持获取头像与复制完整演员名，提供播放、预告、标记已看、收藏、下载、跳转演员、点击类型 / 标签跳到对应筛选结果页，以及「更多」菜单（编辑封面 / 编辑 nfo / 下载字幕 / 删除全部 / 抓取网址），并处理离线模式（离线时类型 / 标签不可点）。信息行的类型 / 标签取值由 `PHONE/presentation/film/components/InfoText.kt` 渲染，点击经 `MovieAction.NavigateToGenre` / `NavigateToTag` → `PHONE/NavigationRoot.kt` 的 `navigateToMetadataFacet` 跳转 `ItemFilterRoute`。
 - **路由**：`MovieRoute(movieId, heroKey?)`，定义并注册于 `PHONE/NavigationRoot.kt`；`heroKey` 记录点击来源，普通列表为空时使用默认卡片 key。
 - **进场动画**：列表封面与详情页头部之间是共享元素 morph（普通卡片 key 为 `movie-hero-<movieId>`，首页 Banner / 继续观看 / 接下来 / 最新添加分别使用带来源的 key，避免同一电影同时出现在多个分区时互相抢占；经 `PHONE/presentation/utils/SharedTransition.kt` 的 `heroSharedBounds` 建立，两个转场作用域由 `PHONE/NavigationRoot.kt` 的 `SharedTransitionNavHost` / `SharedElementHost` 经 CompositionLocal 下发）；加载态为居中转圈，内容区块等进场转场（morph）结束后才组合并让标题 / 信息行 / 按钮栏 / 简介 / 演员行依次入场（`AppearingSection`），避免转场中途组合整页内容抢帧卡顿；详情页进入为淡入 + 轻微放大、返回反向收缩，转场参数在 `PHONE/NavigationRoot.kt`（全局 token 镜像在 `PHONE/presentation/theme/Motion.kt`）。
-- **评论区（外网短评）**：最下方为 `MovieCommentsSection.kt`，支持加载、失败重试、JavDB 登录态提示。数据访问与磁盘缓存位于 `CORE/comment/`；开关、代理和缓存策略来自设置页「网络 → 外网」。访客可见条数受站点账号权益限制，评论失败不影响详情页其它内容。
+- **评论区（外网短评）**：最下方为 `MovieCommentsSection.kt`，支持加载、失败重试、JavDB 登录态提示。数据访问与磁盘缓存位于 `CORE/comment/`；开关、代理和缓存策略来自设置页「网络 → 外网」。访客可见条数受站点账号权益限制，评论失败不影响详情页其它内容。失败原因是被站点拦截（Cloudflare，`ScraperException.SiteBlocked`，State 字段 `isCommentsSiteBlocked`）时额外提供「打开网页过盾」按钮，经 `NavigationRoot.kt` 的 `navigateToUnblock` 跳转 `JavDbUnblockRoute`。
 - **Screen**：`PHONE/presentation/film/MovieScreen.kt`；弹窗与小组件都在 `PHONE/presentation/film/components/` 下：
   - `ItemPlayButton.kt`：封面上的悬浮播放按钮。未滚动时浮在封面中央并跟随内容一起滚动，点击直接播放（`MovieAction.Play(startFromBeginning = false)`，与按钮栏的播放一致）；封面滑出超过一半后收起，用弹簧动画飞到顶栏「回到首页」按钮后方（尺寸与收起锚点按 `ItemTopBar` 的按钮对齐）。悬浮层铺满全屏但不消费触摸，只有按钮圆形区域可点，`headerHeightPx` 由 `MovieScreen.kt` 测量封面后传入。
   - `FilePathText.kt`：副标题下方的文件路径，本地优先于服务器、各自去重拼接、可点击展开；服务端路径用 `ic_cloud`、本地已下载用 `ic_folder`。
   - `PlaybackSourceDialog.kt`：条目有多个来源（被识别成多个版本）时点播放先选版本，选中索引经 Intent extra `mediaSourceIndex` 交给播放器。
-  - `MoreMenuDialog.kt`（离线模式不显示）提供「编辑封面」「编辑 nfo」两个入口；「删除全部」不放进菜单列表，而是用错误色置于标题行右上角（低频破坏性操作统一放右上角），点击后由 `DeleteItemWithFilesDialog.kt` 再确认（连服务器视频文件一起删，确认按钮为错误色，提示中「视频文件」用错误色强调）。按钮行左下角是「抓取网址」配置入口（打开 `ScraperUrlsDialog.kt`）。弹窗切换由 `MovieScreen.kt` 内的私有枚举 `MoreMenuDialogState` 控制（`rememberSaveable` 保存，旋转不丢），表单数据在弹窗打开时加载，结果以 Toast 提示，「删除全部」成功后返回上一页。
+  - `MoreMenuDialog.kt`（离线模式不显示）提供「编辑封面」「编辑 nfo」「下载字幕」三个入口；「删除全部」不放进菜单列表，而是用错误色置于标题行右上角（低频破坏性操作统一放右上角），点击后由 `DeleteItemWithFilesDialog.kt` 再确认（连服务器视频文件一起删，确认按钮为错误色，提示中「视频文件」用错误色强调）。按钮行左下角是「抓取网址」配置入口（打开 `ScraperUrlsDialog.kt`）。弹窗切换由 `MovieScreen.kt` 内的私有枚举 `MoreMenuDialogState` 控制（`rememberSaveable` 保存，旋转不丢），表单数据在弹窗打开时加载，结果以 Toast 提示，「删除全部」成功后返回上一页。
   - `ScraperUrlsDialog.kt`：「抓取网址」弹窗，每个抓取站点一个输入框，站点 key（`ScraperSite.key`：javdb / javbus / jav321）作为标签与存储 key，保存进 `AppPreferences.scrapeSiteUrl(key)` 并经 `MovieAction.SaveScrapeUrls` 落库；带防呆提示——填了内容的网址 host 不含对应站点 key（可能贴错站点）时显示「可能不匹配」，但**不阻止保存**；保存时自动补全 scheme（没写 http / https 的按 https 处理）。留空表示清除该站点的自定义网址（回退到打包配置；release / staging 的打包配置为空，站点即被跳过）。各站点的实际取址逻辑在 `CORE/scraper/ScraperUrlProvider.kt` + `ScraperUrlProviderImpl.kt`（运行时配置优先于打包配置），文字 / 封面 / 头像抓取共用。
   - `EditItemImagesDialog.kt`：封面编辑弹窗。上面用缩略图网格列出服务器上「当前服务器使用」的图片（带类型名与同类序号，点击任意一张可全屏查看），服务器上没有任何图片时该区块留空；右上角「清理」二次确认后删光服务器上的图片；左下角「抓取」按番号抓横图 / 竖图，右下角「关闭」（关闭会中断进行中的抓取并丢掉已抓到的图片）。抓取结果不另开弹窗，直接列在同一片网格里：配了地址的站点逐行展示，失败的给出原因（单站失败不影响其它站点），成功的列出抓到的横图 / 竖图（可全屏查看）并在行末给一个「上传」按钮（上传前先删服务器上同类型的旧图，再写入新图），另外在单张图片的全屏查看界面底部也有「上传」，只传当前查看的这一张，方便横图 / 竖图分开传；没有站点配置地址时给出提示并禁用「抓取」。
   - `ImageThumbnail.kt`：可全屏查看的图片缩略图（点击打开 `ImageViewerDialog.kt`）与图片类型文案，供「当前服务器使用」与抓取结果共用；可选地把「单张上传」入口透传给全屏查看界面。
@@ -227,10 +229,11 @@ else -> WelcomeRoute
   - `ScrapeActorImageDialog.kt`：「获取头像」弹窗，与人物列表页共用 `ActorImageScrapeViewModel`；演员长按菜单另有「复制演员名」。抓取支持并发搜索、逐站点展示结果、代理设置与取消，上传头像写入 Person 条目并覆盖原头像，需要服务器管理员权限。具体站点规则见 `CORE/scraper/ActorImageScraperImpl.kt`，站点不匹配或占位图不得上传。
   - `TranslateSettingsDialog.kt`：读写本机 OpenAI 兼容接口设置，可选翻译标题、简介、分类 / 标签及抓取后自动翻译；「翻译现有内容」只处理当前表单。实现位于 `CORE/translator/`：标题 / 简介由模型翻译，分类 / 标签优先使用内置词典与缓存、模型兜底；部分失败保留已成功的译文与原文，不覆盖用户未确认的服务器数据。
   - `ScrapeKeywordDialog.kt` / `ScrapeProgressDialog.kt`：nfo 抓取关键词与进度入口，预填识别出的番号，支持代理、逐站点结果和取消；取消后仍保留已成功结果。封面抓取不走此进度弹窗。
+  - `SubtitleDownloadDialog.kt`：「下载字幕」弹窗，一个弹窗两个阶段（关键词 + 代理入口 / 下载进度 + 取消），关键词与代理分别复用 `defaultScrapeKeyword` / `scrapeProxy`。实现位于 `CORE/subtitle/`：搜索 subtitlecat 前 5 个候选并读完每页可用语言，**先按简体 > 繁体 > 英文定语言**（有简体就绝不退到繁体），再在该语言内按「字幕最后时间点与视频时长之差」挑最贴合的一份（容差为时长的 2%，限 1~3 分钟，因为片尾长时间无台词时字幕最后时间点会早于视频结束），下载后经 `JellyfinRepository.uploadSubtitle` 上传服务器；临时文件落在 `cacheDir/subtitle_temp`，每次使用前清理 3 天前的文件。
   - 抓取实现集中在 `CORE/scraper/`，文字、封面与头像抓取共用站点解析和 HTTP 基础设施。站点地址优先取运行时配置，未配置则回退打包配置；封面按真实比例归类横图 / 竖图。Cookie、UA 和具体站点兼容规则以该目录源码为准，不在页面索引重复维护。
 - **ViewModel / State / Action / Event**：`FILM/presentation/movie/MovieViewModel.kt`、`FILM/presentation/movie/MovieState.kt`、`FILM/presentation/movie/MovieAction.kt`、`FILM/presentation/movie/MovieEvent.kt`；另使用 `CORE/presentation/downloader/DownloaderViewModel.kt` 与共享的 `FILM/presentation/actorimage/ActorImageScrapeViewModel.kt`（State / Action / Event 同层：`ActorImageScrapeState.kt` / `ActorImageScrapeAction.kt` / `ActorImageScrapeEvent.kt`，与人物列表页共用同一个 ViewModel（各页面一份实例），编排「获取头像」弹窗的抓取 / 上传 / 代理；人物 Id + 名字 + 是否已有头像由界面传入，上传成功后各自负责刷新自己的列表；抓取整体异常（非单站失败）时会给尚无结果的站点补一条失败原因，避免这些行一直停在转圈状态）。
-- **State 分组**：影片 / 播放源与演职员；封面和 nfo 的加载、编辑与错误；元数据 / 图片抓取的站点、结果、来源选择、代理与翻译；评论开关、关键词、列表、加载 / 错误及 JavDB 登录态；派生本地 / 远程路径与文件名。完整字段以 `MovieState.kt` 为准。
-- **主要方法 / Action**：加载影片 / 图片 / nfo；播放、标记、导航、元数据与图片抓取 / 上传 / 删除、翻译、抓取网址及 `ReloadComments`。成功 / 失败通过 `MovieEvent` 反馈，包括 `MetadataUpdated`、`MetadataUnchanged`、`MetadataTranslateFailed` 等；完整集合以 `MovieAction.kt` / `MovieEvent.kt` 为准。
+- **State 分组**：影片 / 播放源与演职员；封面和 nfo 的加载、编辑与错误；元数据 / 图片抓取的站点、结果、来源选择、代理与翻译；评论开关、关键词、列表、加载 / 错误及 JavDB 登录态；字幕下载阶段（`subtitleDownloadStage`）；派生本地 / 远程路径与文件名。完整字段以 `MovieState.kt` 为准。
+- **主要方法 / Action**：加载影片 / 图片 / nfo；播放、标记、导航、元数据与图片抓取 / 上传 / 删除、翻译、抓取网址、`ReloadComments`、字幕下载与上传（`DownloadSubtitle` / `CancelSubtitleDownload`）。成功 / 失败通过 `MovieEvent` 反馈，包括 `MetadataUpdated`、`MetadataUnchanged`、`MetadataTranslateFailed`、`SubtitleUploaded`、`SubtitleNotFound` 等；完整集合以 `MovieAction.kt` / `MovieEvent.kt` 为准。
 - **入口**：任意列表页点击 `FindroidMovie` 条目（`PHONE/NavigationRoot.kt`），如首页、媒体库、下载、收藏、合集、剧集 / 季 / 人物作品列表页。
 
 ### ShowScreen — 剧集详情
@@ -304,6 +307,28 @@ else -> WelcomeRoute
 - **主要方法 / Action**：`loadItems(facet, key)`、`onAction()`；`OnItemClick`、`OnBackClick`、`ChangeSorting`、`ChangeCoverMode`。
 - **筛选参数**：类别、制片公司、人物按实体 id 过滤，标签、分级、年份按文本值过滤；类别额外兼容按名称过滤（从电影详情页点击类型跳过来时 key 是名称而不是 id，`ItemFilterViewModel.toFilterArgs` 里 key 不是合法 UUID 时退回按名称过滤，对应 `getItems` / `getItemsPaging` 的 `genres` 参数）；范围固定为 `MOVIE` + `SERIES`、递归、全库。
 - **入口**：三个浏览列表页与人物列表页点击具体值 / 某人；电影 / 剧集 / 分集详情页点击演员（`PHONE/NavigationRoot.kt` 中 `navigateToPerson` 的处理）；电影详情页点击类型 / 标签（`PHONE/NavigationRoot.kt` 中 `navigateToMetadataFacet` 的处理）。
+
+---
+
+## JavDB 过盾页面（javdb）
+
+### JavDbUnblockScreen — JavDB 过盾
+
+- **职责**：JavDB 抓取被 Cloudflare 拦截（`ScraperException.SiteBlocked`）时，在内置 WebView 里打开站点首页，由用户手动完成人机验证。WebView 按设置里的抓取代理（`AppPreferences.scrapeProxy`）经 `androidx.webkit` 的 `ProxyController` 配置同样的出口（与抓取请求对齐 IP，cf_clearance 才对抓取有效）；页面每次加载完成时把 WebView 的 Cookie（含 cf_clearance）经 `CORE/scraper/ScraperCookieJar.importCookies` 搬进抓取 Cookie 罐、并把 WebView 的 UA 存进 `AppPreferences.javdbWebViewUserAgent`（后续 JavDB 抓取请求复用同一 UA，见 `CORE/scraper/ScraperHttp.kt` 的 `withUserAgentOverride`）。网页内可后退时返回键先退网页；右上角「完成」返回上一页，之后在详情页点「重试」重新加载短评。
+- **路由**：`JavDbUnblockRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/javdb/JavDbUnblockScreen.kt`（WebView 经 `AndroidView` 承载，无 State / Action 文件）。
+- **ViewModel**：`PHONE/presentation/javdb/JavDbUnblockViewModel.kt`，暴露 `startUrl`、`proxyAddress` 与 `onPageFinished(url, cookieHeader, userAgent)`。
+- **入口**：电影详情页评论区加载失败且被站点拦截时的「打开网页过盾」按钮（`PHONE/presentation/film/components/MovieCommentsSection.kt`）。
+
+#### 方案备忘：网页版登录（未实现）
+
+现有登录走 `CORE/scraper/JavDbSessionImpl.kt` 的图形验证码流程（取登录页 token → 取 rucaptcha 验证码图 → POST 提交），三步都经过 Cloudflare，依赖过盾拿到的 `cf_clearance` 与 UA 覆盖（`CORE/scraper/ScraperHttp.kt` 的 `withUserAgentOverride`）。**如果下次登录仍然失败**（验证码取图或提交被 403，或验证码频繁识别不过），考虑改为在过盾页的 WebView 里直接登录，思路：
+
+1. 用户在 `JavDbUnblockScreen` 的 WebView 里完成站点登录（站点自己的人机验证在页面里处理，不依赖 App 内的图形验证码流程）。
+2. 「完成」时按当前登录态分流：
+   - **App 未登录**：把 WebView 的会话 Cookie（`_jdb_session` 等）也导入 `ScraperCookieJar`，再请求一次 profile 页解析账号名 / VIP 回填 `AppPreferences`（`javdbLoggedInUser` / `javdbVip`，解析逻辑可复用 `JavDbSessionImpl` 现成的实现），让设置页与评论区的登录态立即生效；
+   - **App 已登录**：维持现状，只导入 Cloudflare 的 Cookie（`cf` / `__cf` 前缀，规则已实现于 `JavDbUnblockViewModel.onPageFinished`），避免 WebView 的匿名会话顶掉已登录会话——之前全量导入导致「会话失效被清光」的教训即源于此。
+3. 改动范围集中在 `JavDbUnblockViewModel` 与 `JavDbSession`（`:settings` 接口加一个「从现有会话 Cookie 校验并回填账号状态」的方法 + `:core` 实现），约百行；前置的 UA 覆盖与 Cookie 同步机制均已就绪。
 
 ---
 

@@ -125,6 +125,7 @@
     <string name="more_menu_title">更多操作</string>
     <string name="edit_item_images">编辑封面</string>
     <string name="edit_item_metadata">编辑 nfo</string>
+    <string name="download_subtitle">下载字幕</string>
     <string name="delete_movie">删除电影</string>
     <string name="delete_item_with_files">删除全部（含视频文件）</string>
     <string name="delete_all_message">将从服务器删除该视频文件及关联的封面 / nfo 文件，操作不可撤销。</string>
@@ -189,6 +190,16 @@
     <string name="scrape_proxy_summary">只用于抓取 nfo / 封面 / 演员头像时，形如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080，留空表示直连。</string>
     <string name="scrape_proxy_entry">代理：%1$s</string>
     <string name="scrape_proxy_unset">未设置</string>
+    <string name="subtitle_searching">正在搜索字幕…</string>
+    <string name="subtitle_reading_candidate">正在读取第 %1$d/%2$d 个候选…</string>
+    <string name="subtitle_trying_candidate">正在尝试第 %1$d/%2$d 个候选（%3$s）</string>
+    <string name="subtitle_uploading">正在上传字幕到服务器…</string>
+    <string name="subtitle_uploaded">字幕已上传（%1$s）</string>
+    <string name="subtitle_not_found">没有找到简体 / 繁体 / 英文字幕</string>
+    <string name="subtitle_download_failed">下载字幕失败：%1$s</string>
+    <string name="subtitle_language_simplified">简体中文</string>
+    <string name="subtitle_language_traditional">繁体中文</string>
+    <string name="subtitle_language_english">英文</string>
     <string name="movie_comments_title">短评</string>
     <string name="movie_comments_empty">暂无短评</string>
     <string name="movie_comments_no_keyword">未识别到番号，无法加载短评</string>
@@ -197,6 +208,10 @@
     <string name="movie_comments_likes">%1$d 人赞</string>
     <string name="movie_comments_login_hint">未登录或登录已失效，仅显示最新几条短评。</string>
     <string name="movie_comments_login_action">去登录</string>
+    <string name="movie_comments_unblock_action">打开网页过盾</string>
+    <string name="javdb_unblock_title">通过 Cloudflare 验证</string>
+    <string name="javdb_unblock_done">完成</string>
+    <string name="javdb_unblock_no_url">未配置 JavDB 网址，请先在「更多操作」的「抓取网址」里填写。</string>
     <string name="scrape_urls">抓取网址</string>
     <string name="scrape_urls_title">请输入抓取网址</string>
     <string name="scrape_urls_summary">填写用来抓取信息的网站地址。</string>

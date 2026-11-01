@@ -4,6 +4,7 @@ import dev.jdtech.jellyfin.core.comment.MovieComment
 import dev.jdtech.jellyfin.core.scraper.ScraperSite
 import dev.jdtech.jellyfin.core.scraper.SiteImageScrapeResult
 import dev.jdtech.jellyfin.core.scraper.SiteMetadataScrapeResult
+import dev.jdtech.jellyfin.core.subtitle.SubtitleDownloadStage
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.models.FindroidMovie
@@ -75,6 +76,12 @@ data class MovieState(
     val isScrapingImages: Boolean = false,
     /** 是否正在上传抓取到的封面图片，上传期间禁用各行上传按钮，避免重复点。 */
     val isUploadingImages: Boolean = false,
+    /**
+     * 下载字幕的当前阶段；null 表示没有进行中的下载（弹窗此时显示关键词输入框）。
+     *
+     * 关键词与抓取共用 [defaultScrapeKeyword]，代理也共用 [scrapeProxy]。
+     */
+    val subtitleDownloadStage: SubtitleDownloadStage? = null,
     /** 是否开启外网评论（设置 → 网络 → 外网）；关闭时详情页不显示评论区。 */
     val commentsEnabled: Boolean = false,
     /** 短评使用过的关键词（通常是识别出的番号），为空表示没识别到、无法抓取。 */
@@ -84,6 +91,8 @@ data class MovieState(
     val isLoadingComments: Boolean = false,
     /** 短评加载失败的原因（已转成可直接展示的文案），非空时评论区给出重试入口。 */
     val commentsError: String? = null,
+    /** 短评失败是否因为被站点拦截（Cloudflare）：是时评论区额外提供「打开网页过盾」入口。 */
+    val isCommentsSiteBlocked: Boolean = false,
     /** 是否已登录站点账号（JavDB）：未登录时评论区提示只能看到最新几条，并提供登录入口。 */
     val isJavDbLoggedIn: Boolean = false,
     val error: Exception? = null,

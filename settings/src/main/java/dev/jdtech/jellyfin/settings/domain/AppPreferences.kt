@@ -120,6 +120,12 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     val javdbVip = Preference("pref_javdb_vip", false)
 
     /**
+     * 过盾 WebView 记录的 UA：Cloudflare 发的 cf_clearance 与 UA 绑定，之后 OkHttp 请求 JavDB
+     * 必须带上同一个 UA 才会被放行；空串表示尚未过过盾。
+     */
+    val javdbWebViewUserAgent = Preference("pref_javdb_webview_user_agent", "")
+
+    /**
      * 抓取会话 Cookie 的持久化副本（每行 `host\tSet-Cookie 行`）。
      *
      * OkHttp 默认只在内存里存 Cookie，进程重启就退出登录，因此把抓取用到的 Cookie 落盘，

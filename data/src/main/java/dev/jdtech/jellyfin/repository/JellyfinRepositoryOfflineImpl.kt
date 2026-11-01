@@ -346,6 +346,16 @@ class JellyfinRepositoryOfflineImpl(
         throw Exception("Setting item images is not available in offline mode")
     }
 
+    // 离线时连不上服务器，字幕无处可传
+    override suspend fun uploadSubtitle(
+        itemId: UUID,
+        subtitleBytes: ByteArray,
+        language: String,
+        format: String,
+    ) {
+        throw Exception("Uploading subtitles is not available in offline mode")
+    }
+
     // 离线时读的是本地库，服务器上的 nfo 本就不存在，返回空表单与「无内容可编辑」的界面语义一致
     override suspend fun getItemMetadata(itemId: UUID): ItemMetadataEdit = ItemMetadataEdit()
 

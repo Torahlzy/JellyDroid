@@ -74,6 +74,7 @@ import org.jellyfin.sdk.model.api.RepeatMode
 import org.jellyfin.sdk.model.api.SortOrder as ItemSortOrder
 import org.jellyfin.sdk.model.api.SubtitleDeliveryMethod
 import org.jellyfin.sdk.model.api.SubtitleProfile
+import org.jellyfin.sdk.model.api.UploadSubtitleDto
 import org.jellyfin.sdk.model.api.UserConfiguration
 import org.jellyfin.sdk.model.toFileInfo
 
@@ -875,6 +876,27 @@ class JellyfinRepositoryImpl(
                 imageType,
                 base64.toByteArray(Charsets.US_ASCII).toFileInfo(JPEG_MEDIA_TYPE),
             )
+        }
+    }
+
+    override suspend fun uploadSubtitle(
+        itemId: UUID,
+        subtitleBytes: ByteArray,
+        language: String,
+        format: String,
+    ) {
+        withContext(Dispatchers.IO) {
+            // 只认 JSON + Base64（实测 10.10.7）：把字幕原文直接放进 JSON 会回来 500，
+            // 发 multipart / urlencoded 则被当成表单解析而回 415，别改成「更直观」的写法。
+            val dto =
+                UploadSubtitleDto(
+                    language = language,
+                    format = format,
+                    isForced = false,
+                    isHearingImpaired = false,
+                    data = Base64.encodeToString(subtitleBytes, Base64.NO_WRAP),
+                )
+            jellyfinApi.subtitleApi.uploadSubtitle(itemId, dto)
         }
     }
 

@@ -151,6 +151,7 @@ dependencies {
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.paging)
     implementation(libs.androidx.paging.compose)
+    implementation(libs.androidx.webkit)
     implementation(libs.androidx.window)
     implementation(libs.androidx.work)
     implementation(libs.coil.compose)

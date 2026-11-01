@@ -1,5 +1,7 @@
 package dev.jdtech.jellyfin.film.presentation.movie
 
+import dev.jdtech.jellyfin.core.subtitle.SubtitleLanguage
+
 /** 电影详情页的一次性事件，用于向界面反馈那些无法从状态推断的结果。 */
 sealed interface MovieEvent {
     /** 封面图片删除完成。 */
@@ -35,4 +37,13 @@ sealed interface MovieEvent {
      * 失败的那部分内容保留原文；分类 / 标签里已由词典或缓存命中的译文仍会填上。
      */
     data class MetadataTranslateFailed(val error: Exception) : MovieEvent
+
+    /** 字幕已下载并上传到服务器，[language] 为实际采用的那份语言。 */
+    data class SubtitleUploaded(val language: SubtitleLanguage) : MovieEvent
+
+    /** 字幕站上没有可用的简体 / 繁体 / 英文字幕。 */
+    data object SubtitleNotFound : MovieEvent
+
+    /** 字幕下载或上传失败，[error] 用于向用户展示失败原因。 */
+    data class SubtitleDownloadFailed(val error: Exception) : MovieEvent
 }
