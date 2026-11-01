@@ -7,5 +7,7 @@ sealed interface MediaAction {
 
     data object OnFavoritesClick : MediaAction
 
+    data object OnDownloadsClick : MediaAction
+
     data object OnRetryClick : MediaAction
 }

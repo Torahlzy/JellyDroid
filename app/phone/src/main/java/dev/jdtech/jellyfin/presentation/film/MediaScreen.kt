@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -21,6 +22,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -42,10 +45,10 @@ import dev.jdtech.jellyfin.presentation.components.ErrorDialog
 import dev.jdtech.jellyfin.presentation.film.components.BANNER_ASPECT_RATIO
 import dev.jdtech.jellyfin.presentation.film.components.Direction
 import dev.jdtech.jellyfin.presentation.film.components.ErrorCard
-import dev.jdtech.jellyfin.presentation.film.components.FavoritesCard
 import dev.jdtech.jellyfin.presentation.film.components.FilmSearchBar
 import dev.jdtech.jellyfin.presentation.film.components.ItemCard
 import dev.jdtech.jellyfin.presentation.film.components.MediaBrowseSection
+import dev.jdtech.jellyfin.presentation.film.components.MediaEntryCard
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
@@ -59,6 +62,7 @@ private const val EXPANDED_LIBRARY_COLUMNS = 4
 fun MediaScreen(
     onItemClick: (FindroidItem) -> Unit,
     onFavoritesClick: () -> Unit,
+    onDownloadsClick: () -> Unit,
     onFacetClick: (MetadataFacet) -> Unit,
     searchExpanded: Boolean,
     onSearchExpand: (Boolean) -> Unit,
@@ -80,6 +84,7 @@ fun MediaScreen(
             when (action) {
                 is MediaAction.OnItemClick -> onItemClick(action.item)
                 is MediaAction.OnFavoritesClick -> onFavoritesClick()
+                is MediaAction.OnDownloadsClick -> onDownloadsClick()
                 else -> Unit
             }
             viewModel.onAction(action)
@@ -165,9 +170,24 @@ private fun MediaScreenLayout(
                     placeholderIconRes = library.placeholderIconRes(),
                 )
             }
-            // 「我喜欢」与浏览入口都排在媒体库列表之后，各自独占整行（折叠屏展开也不会被分列）
+            // 「我喜欢」与「已下载」平分一行宽度，浏览入口独占整行（折叠屏展开也不会被分列）
             item(span = { GridItemSpan(maxLineSpan) }) {
-                FavoritesCard(onClick = { onAction(MediaAction.OnFavoritesClick) })
+                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.default)) {
+                    MediaEntryCard(
+                        iconRes = CoreR.drawable.ic_heart_filled,
+                        text = stringResource(CoreR.string.title_favorite),
+                        // 与详情页里「已收藏」状态保持同一套视觉：实心红心
+                        iconTint = Color.Red,
+                        onClick = { onAction(MediaAction.OnFavoritesClick) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    MediaEntryCard(
+                        iconRes = CoreR.drawable.ic_download,
+                        text = stringResource(CoreR.string.title_downloaded),
+                        onClick = { onAction(MediaAction.OnDownloadsClick) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 MediaBrowseSection(onFacetClick = onFacetClick)

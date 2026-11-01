@@ -6,6 +6,7 @@
     <string name="cancel">取消</string>
     <string name="title_media">我的媒体</string>
     <string name="title_favorite">我喜欢</string>
+    <string name="title_downloaded">已下载</string>
     <string name="view_all">查看所有</string>
     <string name="error_loading_data">加载数据错误</string>
     <string name="retry">重试</string>

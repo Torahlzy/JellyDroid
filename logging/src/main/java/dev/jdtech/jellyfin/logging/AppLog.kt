@@ -19,7 +19,7 @@ import timber.log.Timber
  */
 object AppLog {
     /** 所有日志 tag 的统一前缀，即 logcat 过滤关键字 */
-    const val TAG_PREFIX = "torah"
+    const val TAG_PREFIX = "torahLog"
 
     /**
      * 需要临时指定 tag 时使用，例如把 mpv 相关日志归到同一个 tag 下。

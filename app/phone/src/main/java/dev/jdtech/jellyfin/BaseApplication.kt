@@ -10,6 +10,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import coil3.EventListener
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -18,16 +19,20 @@ import coil3.disk.DiskCache
 import coil3.network.cachecontrol.CacheControlCacheStrategy
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.CachePolicy
+import coil3.request.ErrorResult
+import coil3.request.ImageRequest
 import coil3.request.crossfade
 import coil3.svg.SvgDecoder
 import com.google.android.material.color.DynamicColors
 import dagger.hilt.android.HiltAndroidApp
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.logging.TorahDebugTree
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.work.MpvCleanupWorker
 import dev.jdtech.jellyfin.work.SyncWorker
 import javax.inject.Inject
 import kotlin.time.ExperimentalTime
+import okhttp3.OkHttpClient
 import okio.Path.Companion.toOkioPath
 import timber.log.Timber
 
@@ -74,9 +79,32 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
 
     @OptIn(ExperimentalCoilApi::class, ExperimentalTime::class)
     override fun newImageLoader(context: PlatformContext): ImageLoader {
+        // 图片加载专用 OkHttp：非正常响应时打印状态码与 URL，配合 eventListener 定位加载失败原因
+        val imageHttpClient =
+            OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val response = chain.proceed(chain.request())
+                    // 只报 4xx/5xx：3xx 是重定向的中间响应（含 304 缓存再验证），OkHttp/Coil 会自动处理，不算失败
+                    if (response.code >= 400) {
+                        AppLog.w(
+                            "图片请求返回 %d：%s",
+                            response.code,
+                            response.request.url,
+                        )
+                    }
+                    response
+                }
+                .build()
+
         return ImageLoader.Builder(context)
             .components {
-                add(OkHttpNetworkFetcherFactory(cacheStrategy = { CacheControlCacheStrategy() }))
+                add(
+                    OkHttpNetworkFetcherFactory(
+                        // callFactory 是工厂 lambda，每次取图时新建 Call
+                        callFactory = { imageHttpClient },
+                        cacheStrategy = { CacheControlCacheStrategy() },
+                    )
+                )
                 add(SvgDecoder.Factory())
             }
             .diskCachePolicy(
@@ -92,6 +120,14 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
                     .build()
             }
             .crossfade(true)
+            // 排查图片加载失败用：任何请求失败都打印 URL 与异常，logcat 过滤 torah 即可看到
+            .eventListener(
+                object : EventListener() {
+                    override fun onError(request: ImageRequest, result: ErrorResult) {
+                        AppLog.e(result.throwable, "图片加载失败：%s", request.data)
+                    }
+                }
+            )
             .build()
     }
 
