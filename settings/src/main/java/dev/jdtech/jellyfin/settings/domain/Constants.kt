@@ -19,7 +19,7 @@ object Constants {
 
     // 外网评论缓存
     const val COMMENT_CACHE_DEFAULT_SIZE_MB = 800
-    const val COMMENT_CACHE_DEFAULT_DAYS = 7
+    const val COMMENT_CACHE_DEFAULT_DAYS = 30
 
     // Translate - 默认填 DeepSeek 的 OpenAI 兼容接口（地址要写到 chat/completions）
     const val TRANSLATE_DEFAULT_URL = "https://api.deepseek.com/chat/completions"

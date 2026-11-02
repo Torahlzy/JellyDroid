@@ -29,4 +29,15 @@
     <string name="player_backdrop_set_success">已用当前画面设置横屏封面</string>
     <string name="player_backdrop_set_failed">设置横屏封面失败</string>
     <string name="player_backdrop_frame_unavailable">视频画面尚未就绪，请稍后再试</string>
+    <string name="player_menu_subtitle_adjust">字幕设置</string>
+    <string name="subtitle_adjust_font_size">字号</string>
+    <string name="subtitle_adjust_text_opacity">字体透明度</string>
+    <string name="subtitle_adjust_offset">字幕进度</string>
+    <string name="subtitle_adjust_offset_hint">偏移秒数，如 0.3 或 -1.5</string>
+    <string name="subtitle_adjust_reset">重置</string>
+    <string name="subtitle_adjust_close">关闭</string>
+    <string name="subtitle_adjust_apply">应用</string>
+    <string name="subtitle_adjust_drag_handle">拖动调整字幕位置</string>
+    <string name="subtitle_adjust_mpv_warning">当前为 mpv 播放器：内嵌样式（ASS）字幕的字号与颜色调整可能不生效</string>
+    <string name="subtitle_adjust_exo_negative_unsupported">ExoPlayer 暂不支持字幕提前，负偏移不生效</string>
 </resources>

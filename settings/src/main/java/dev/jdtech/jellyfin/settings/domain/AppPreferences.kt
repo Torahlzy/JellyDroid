@@ -3,8 +3,10 @@ package dev.jdtech.jellyfin.settings.domain
 import android.content.SharedPreferences
 import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.settings.domain.models.Preference
+import dev.jdtech.jellyfin.settings.domain.models.SubtitleAppearance
 import dev.jdtech.jellyfin.settings.domain.models.TranslateSettings
 import javax.inject.Inject
+import org.json.JSONObject
 
 class AppPreferences @Inject constructor(val sharedPreferences: SharedPreferences) {
     // Server
@@ -30,6 +32,26 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     // Player - 字幕轨记忆：播放器里手动选过的字幕轨语言（外部字幕上传时的 ISO 639-2 代码，如 "chi"），
     // 下次播放按它默认选中；特殊值 SUBTITLE_TRACK_OFF 表示手动关闭字幕；null 表示从未手动选过
     val playerLastSubtitleTrack = Preference<String?>("pref_player_last_subtitle_track", null)
+
+    // Player - 字幕调节模式（外观 / 位置 / 进度偏移）
+
+    /** 全局字幕外观（字体不透明度），空串表示从未修改。 */
+    val subtitleAppearance = Preference("pref_subtitle_appearance", "")
+
+    /**
+     * 字号倍率按屏幕高度（px）分开记录的 JSON map（`{"1768":1.15}`），折叠屏两种尺寸互不影响；
+     * 只保存改过的尺寸，未记录的尺寸回落默认算法（倍率 1f）。
+     */
+    val subtitleScales = Preference("pref_subtitle_scales", "{}")
+
+    /**
+     * 自定义字幕底边距屏幕底部的距离（px），按屏幕高度（px）分开记录的 JSON map；
+     * 只保存改过的尺寸，未记录的尺寸用默认位置规则（黑边高度与最小底距取大者）。
+     */
+    val subtitlePositions = Preference("pref_subtitle_positions", "{}")
+
+    /** 字幕进度偏移（ms）按条目 id 记录的 JSON map；负值表示字幕提前；每次调节实时保存。 */
+    val subtitleOffsets = Preference("pref_subtitle_offsets", "{}")
 
     // Player - mpv
     val playerMpv = Preference("pref_player_mpv", false)
@@ -169,6 +191,98 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
 
     // Migrations
     val mpvMigrated = Preference("mpv_migrated", false)
+
+    // 字幕调节模式的读写辅助（JSON map 的解析 / 序列化集中在这里，调用方不用碰 org.json）
+
+    fun getSubtitleAppearance(): SubtitleAppearance =
+        SubtitleAppearance.fromJson(getValue(subtitleAppearance))
+
+    /** 外观为默认值时存空串（视为"未设置"），避免语义上的"默认"与"未设置"分不开。 */
+    fun setSubtitleAppearance(appearance: SubtitleAppearance) {
+        setValue(
+            subtitleAppearance,
+            if (appearance.isDefault()) "" else appearance.toJson(),
+        )
+    }
+
+    /** 当前屏幕高度下记录的字号倍率，没有记录则返回 null（用默认算法）。 */
+    fun getSubtitleScaleForScreen(screenHeightPx: Int): Float? = readFloatMap(subtitleScales)[screenHeightPx.toString()]
+
+    /** 倍率为默认值 1f 时删除该尺寸的记录。 */
+    fun setSubtitleScaleForScreen(screenHeightPx: Int, scale: Float) {
+        writeFloatMap(subtitleScales, screenHeightPx.toString(), scale, removeIf = { it == 1f })
+    }
+
+    /** 当前屏幕高度下记录的自定义字幕底边距（px），没有记录则返回 null（用默认位置规则）。 */
+    fun getSubtitleBottomOffsetForScreen(screenHeightPx: Int): Int? =
+        readFloatMap(subtitlePositions)[screenHeightPx.toString()]?.toInt()
+
+    /** 距离为 null 时删除该尺寸的记录，恢复默认位置规则。 */
+    fun setSubtitleBottomOffsetForScreen(screenHeightPx: Int, bottomOffsetPx: Int?) {
+        writeNullableFloatMap(subtitlePositions, screenHeightPx.toString(), bottomOffsetPx?.toFloat())
+    }
+
+    /** 条目记录的字幕偏移（ms），没有记录返回 0。 */
+    fun getSubtitleOffset(itemId: String): Long =
+        (readFloatMap(subtitleOffsets)[itemId]?.times(1000f))?.toLong() ?: 0L
+
+    /** 偏移为 0 时删除该条目的记录。 */
+    fun setSubtitleOffset(itemId: String, offsetMs: Long) {
+        writeNullableFloatMap(
+            subtitleOffsets,
+            itemId,
+            if (offsetMs == 0L) null else offsetMs / 1000f,
+        )
+    }
+
+    private fun readFloatMap(preference: Preference<String>): Map<String, Float> {
+        val json = getValue(preference)
+        if (json.isBlank()) {
+            return emptyMap()
+        }
+        return runCatching {
+            val obj = JSONObject(json)
+            buildMap {
+                for (key in obj.keys()) {
+                    put(key, obj.getDouble(key).toFloat())
+                }
+            }
+        }
+            .getOrElse {
+                AppLog.w("字幕偏好 %s 解析失败，回落默认值", preference.backendName)
+                emptyMap()
+            }
+    }
+
+    private fun writeFloatMap(
+        preference: Preference<String>,
+        key: String,
+        value: Float,
+        removeIf: (Float) -> Boolean,
+    ) {
+        writeNullableFloatMap(preference, key, if (removeIf(value)) null else value)
+    }
+
+    /** value 为 null 表示删除 key；写回时保持其余条目不变。 */
+    private fun writeNullableFloatMap(
+        preference: Preference<String>,
+        key: String,
+        value: Float?,
+    ) {
+        val map = readFloatMap(preference).toMutableMap()
+        if (value == null) {
+            map.remove(key)
+        } else {
+            map[key] = value
+        }
+        val json =
+            JSONObject().apply {
+                for ((k, v) in map) {
+                    put(k, v.toDouble())
+                }
+            }
+        setValue(preference, json.toString())
+    }
 
     /** 一次性读出整套翻译设置，供状态初始化与界面回填。 */
     fun getTranslateSettings(): TranslateSettings =

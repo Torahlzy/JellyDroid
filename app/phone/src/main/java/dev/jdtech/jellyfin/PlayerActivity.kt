@@ -25,12 +25,12 @@ import android.widget.ImageView
 import android.widget.Space
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerControlView
 import androidx.media3.ui.PlayerView
@@ -41,6 +41,9 @@ import dev.jdtech.jellyfin.player.local.R as PlayerR
 import dev.jdtech.jellyfin.player.local.presentation.PlayerEvents
 import dev.jdtech.jellyfin.player.local.presentation.PlayerViewModel
 import dev.jdtech.jellyfin.presentation.player.PlayerMenuDialogFragment
+import dev.jdtech.jellyfin.presentation.player.subtitle.SubtitleAdjustManager
+import dev.jdtech.jellyfin.presentation.player.subtitle.SubtitleAdjustOverlay
+import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.utils.PlayerGestureHelper
 import dev.jdtech.jellyfin.utils.PreviewScrubListener
@@ -64,6 +67,7 @@ class PlayerActivity : BasePlayerActivity() {
     @Inject lateinit var appPreferences: AppPreferences
 
     lateinit var binding: ActivityPlayerBinding
+    private lateinit var subtitleAdjustManager: SubtitleAdjustManager
     private var playerGestureHelper: PlayerGestureHelper? = null
     override val viewModel: PlayerViewModel by viewModels()
     private var previewScrubListener: PreviewScrubListener? = null
@@ -111,26 +115,14 @@ class PlayerActivity : BasePlayerActivity() {
 
         binding.playerView.player = viewModel.player
 
-        // 字幕统一外观：白字 + 黑色包边，去掉默认渲染的黑色背景块。
-        // 仅对 ExoPlayer 后端生效；mpv 后端自己渲染字幕，默认就是白字黑边。
-        binding.playerView
-            .subtitleView
-            ?.apply {
-                setStyle(
-                    CaptionStyleCompat(
-                        /* foregroundColor = */ Color.WHITE,
-                        /* backgroundColor = */ Color.TRANSPARENT,
-                        /* windowColor = */ Color.TRANSPARENT,
-                        /* edgeType = */ CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                        /* edgeColor = */ Color.BLACK,
-                        /* typeface = */ null,
-                    )
-                )
-                // 字幕内嵌样式可能自带背景色（如 ASS 的不透明底框），关掉才能保证统一外观；
-                // 单独保留内嵌定位，避免特效字幕的挂轴位置退化成底部居中
-                setApplyEmbeddedStyles(false)
-                setApplyEmbeddedPositions(true)
+        // 字幕外观与位置的统一入口：加载已保存设置、计算默认位置、提供调节模式
+        subtitleAdjustManager = SubtitleAdjustManager(binding.playerView, viewModel.player, appPreferences)
+        subtitleAdjustManager.attach()
+        binding.subtitleAdjustOverlay.setContent {
+            FindroidTheme {
+                SubtitleAdjustOverlay(subtitleAdjustManager)
             }
+        }
         binding.playerView.setControllerVisibilityListener(
             PlayerView.ControllerVisibilityListener { visibility ->
                 if (visibility == View.GONE) {
@@ -159,6 +151,15 @@ class PlayerActivity : BasePlayerActivity() {
 
         binding.playerView.findViewById<View>(R.id.back_button).setOnClickListener {
             finishPlayback()
+        }
+
+        // 系统返回键：调节模式开着时先关闭它（等同「关闭」=取消），再按一次才退出播放器
+        onBackPressedDispatcher.addCallback(this) {
+            if (subtitleAdjustManager.state.value.isAdjustMode) {
+                subtitleAdjustManager.close()
+            } else {
+                finishPlayback()
+            }
         }
 
         val videoNameTextView = binding.playerView.findViewById<TextView>(R.id.video_name)
@@ -241,6 +242,13 @@ class PlayerActivity : BasePlayerActivity() {
                 }
 
                 launch {
+                    // 字幕调节模式覆盖层的显示 / 隐藏
+                    subtitleAdjustManager.state.collect { state ->
+                        binding.subtitleAdjustOverlay.isVisible = state.isAdjustMode
+                    }
+                }
+
+                launch {
                     viewModel.eventsChannelFlow.collect { event ->
                         when (event) {
                             is PlayerEvents.NavigateBack -> finishPlayback()
@@ -307,8 +315,15 @@ class PlayerActivity : BasePlayerActivity() {
                 } else {
                     ::captureBackdrop
                 }
-            PlayerMenuDialogFragment(viewModel, onCaptureBackdrop)
-                .show(supportFragmentManager, "playermenudialog")
+            PlayerMenuDialogFragment(
+                viewModel,
+                onCaptureBackdrop,
+                onSubtitleAdjust = {
+                    // 收起控制层，避免进度条与调节面板 / 拖动手柄互相遮挡
+                    binding.playerView.hideController()
+                    subtitleAdjustManager.enterAdjustMode()
+                },
+            ).show(supportFragmentManager, "playermenudialog")
         }
 
         val exoPlayerControlView = findViewById<FrameLayout>(R.id.player_controls)
@@ -378,6 +393,14 @@ class PlayerActivity : BasePlayerActivity() {
         ) {
             pictureInPicture()
         }
+    }
+
+    override fun onDestroy() {
+        // 播放器即将销毁，摘掉字幕管理器对 Player 的监听，避免泄漏
+        if (::subtitleAdjustManager.isInitialized) {
+            subtitleAdjustManager.detach()
+        }
+        super.onDestroy()
     }
 
     /**
