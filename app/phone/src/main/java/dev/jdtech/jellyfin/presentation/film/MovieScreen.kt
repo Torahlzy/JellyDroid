@@ -815,16 +815,7 @@ private fun MovieScreenLayout(
                                 )
                             }
                         }
-                        // 文件存放路径：已下载时先显示本地路径（文件夹图标），再显示服务器路径（云图标）
-                        // 多个版本会各自占一行（在 State 里去重后拼接），每行默认只显示 1 行，超出时可点击展开 / 收起
-                        state.localFilePath?.let { filePath ->
-                            Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
-                            FilePathText(path = filePath, isRemote = false)
-                        }
-                        state.remoteFilePath?.let { filePath ->
-                            Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
-                            FilePathText(path = filePath, isRemote = true)
-                        }
+                        // 文件路径（服务器 / 本地）与入库时间统一放在播放按钮下方的媒体信息 4 行之后
                     }
                     Spacer(Modifier.height(MaterialTheme.spacings.small))
                     // 年份 / 时长 / 分级 / 视频信息行：依次入场的第 2 组
@@ -911,11 +902,27 @@ private fun MovieScreenLayout(
                         )
                     }
                     Spacer(Modifier.height(MaterialTheme.spacings.small))
-                    // 简介 / 类型 / 标签：依次入场的第 4 组
+                    // 媒体信息 / 服务器路径 / 简介 / 类型 / 标签：依次入场的第 4 组
                     AppearingSection(index = 3, visible = entranceStarted) {
                         if (state.displayExtraInfo && state.videoMetadata != null) {
-                            ExtraInfoText(videoMetadata = state.videoMetadata!!)
+                            // 入库时间紧跟大小行展示；离线库没有该字段，为 null 时不显示
+                            ExtraInfoText(
+                                videoMetadata = state.videoMetadata!!,
+                                addedAt = movie.dateCreated,
+                            )
                             Spacer(Modifier.height(MaterialTheme.spacings.medium))
+                        }
+                        // 文件路径：放在媒体信息 4 行下方，服务器路径（云图标）在上、本地下载路径（文件夹图标）紧随其下
+                        // 多个版本会各自占一行（在 State 里去重后拼接），每行默认只显示 1 行，超出时可点击展开 / 收起
+                        if (state.remoteFilePath != null || state.localFilePath != null) {
+                            state.remoteFilePath?.let { filePath ->
+                                FilePathText(path = filePath, isRemote = true)
+                            }
+                            state.localFilePath?.let { filePath ->
+                                Spacer(Modifier.height(MaterialTheme.spacings.extraSmall))
+                                FilePathText(path = filePath, isRemote = false)
+                            }
+                            Spacer(Modifier.height(MaterialTheme.spacings.small))
                         }
                         OverviewText(text = movie.overview, maxCollapsedLines = 3)
                         Spacer(Modifier.height(MaterialTheme.spacings.medium))

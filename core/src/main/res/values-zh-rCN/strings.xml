@@ -9,6 +9,9 @@
     <string name="title_downloaded">已下载</string>
     <string name="view_all">查看所有</string>
     <string name="error_loading_data">加载数据错误</string>
+    <string name="home_load_failed_title">无法连接到服务器</string>
+    <string name="home_load_failed_message">请检查网络连接，或确认服务器是否可正常访问。</string>
+    <string name="error_details">查看详情</string>
     <string name="retry">重试</string>
     <string name="director">导演</string>
     <string name="genres">类型</string>
@@ -48,6 +51,7 @@
     <string name="sort_by_options_1">IMDB 评分</string>
     <string name="sort_by_options_2">家长分级</string>
     <string name="sort_by_options_3">加入日期</string>
+    <string name="file_added_at">添加时间：%1$s</string>
     <string name="sort_by_options_4">播放日期</string>
     <string name="sort_by_options_5">发行日期</string>
     <string name="sort_by_options_6">随机</string>

@@ -1,11 +1,7 @@
 package dev.jdtech.jellyfin.presentation.film.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -36,11 +32,7 @@ import dev.jdtech.jellyfin.presentation.utils.LocalOfflineMode
 @Composable
 fun HomeHeader(
     serverName: String,
-    isLoading: Boolean,
-    isError: Boolean,
     onServerClick: () -> Unit,
-    onErrorClick: () -> Unit,
-    onRetryClick: () -> Unit,
     onSearchClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -80,43 +72,6 @@ fun HomeHeader(
         Spacer(Modifier.width(MaterialTheme.spacings.medium))
 
         Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.medium)) {
-            AnimatedVisibility(visible = isError, enter = fadeIn(), exit = fadeOut()) {
-                Surface(
-                    onClick = onErrorClick,
-                    modifier = Modifier.fillMaxHeight().aspectRatio(1f),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.errorContainer,
-                ) {
-                    Box {
-                        Icon(
-                            painter = painterResource(CoreR.drawable.ic_alert_circle),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.align(Alignment.Center),
-                        )
-                    }
-                }
-            }
-
-            // 加载过程不再显示 loading 圈，只有出错后才出现重试按钮
-            AnimatedVisibility(visible = isError, enter = fadeIn(), exit = fadeOut()) {
-                Surface(
-                    onClick = onRetryClick,
-                    modifier = Modifier.fillMaxHeight().aspectRatio(1f),
-                    enabled = !isLoading,
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    Box {
-                        Icon(
-                            painter = painterResource(CoreR.drawable.ic_rotate_ccw),
-                            contentDescription = null,
-                            modifier = Modifier.align(Alignment.Center),
-                        )
-                    }
-                }
-            }
-
             if (!isOfflineMode) {
                 Surface(
                     onClick = onSearchClick,
@@ -142,32 +97,11 @@ fun HomeHeader(
 
 @Composable
 @Preview(showBackground = true)
-private fun HomeHeaderLoadingPreview() {
-    FindroidTheme {
-        // 加载中：重试按钮隐藏，搜索入口禁用
-        HomeHeader(
-            serverName = "Jellyfin",
-            isLoading = true,
-            isError = false,
-            onServerClick = {},
-            onErrorClick = {},
-            onRetryClick = {},
-            onSearchClick = {},
-        )
-    }
-}
-
-@Composable
-@Preview(showBackground = true)
-private fun HomeHeaderErrorPreview() {
+private fun HomeHeaderPreview() {
     FindroidTheme {
         HomeHeader(
             serverName = "Jellyfin",
-            isLoading = false,
-            isError = true,
             onServerClick = {},
-            onErrorClick = {},
-            onRetryClick = {},
             onSearchClick = {},
         )
     }

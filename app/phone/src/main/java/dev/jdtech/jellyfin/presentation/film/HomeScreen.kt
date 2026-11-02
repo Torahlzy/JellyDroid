@@ -42,6 +42,7 @@ import dev.jdtech.jellyfin.presentation.components.ErrorDialog
 import dev.jdtech.jellyfin.presentation.film.components.BANNER_ASPECT_RATIO
 import dev.jdtech.jellyfin.presentation.film.components.HomeCarousel
 import dev.jdtech.jellyfin.presentation.film.components.HomeHeader
+import dev.jdtech.jellyfin.presentation.film.components.HomeLoadFailed
 import dev.jdtech.jellyfin.presentation.film.components.HomeSection
 import dev.jdtech.jellyfin.presentation.film.components.HomeView
 import dev.jdtech.jellyfin.presentation.film.components.ServerSelectionBottomSheet
@@ -107,68 +108,78 @@ private fun HomeScreenLayout(state: HomeState, onAction: (HomeAction) -> Unit) {
     var showServerSelectionBottomSheet by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize().semantics { isTraversalGroup = true }) {
-        PullToRefreshBox(isRefreshing = false, onRefresh = { onAction(HomeAction.OnRefresh) }) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().semantics { traversalIndex = 1f },
-                contentPadding = PaddingValues(top = contentPaddingTop, bottom = paddingBottom),
-                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.medium),
-            ) {
-                state.suggestionsSection?.let { section ->
-                    item(key = section.id) {
-                        HomeCarousel(
-                            items = section.items,
-                            itemsPadding = itemsPadding,
-                            onAction = onAction,
-                        )
+        // 加载失败时整块内容区换成可读的提示，避免只靠头部图标让用户猜发生了什么
+        if (state.error == null) {
+            PullToRefreshBox(isRefreshing = false, onRefresh = { onAction(HomeAction.OnRefresh) }) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().semantics { traversalIndex = 1f },
+                    contentPadding = PaddingValues(top = contentPaddingTop, bottom = paddingBottom),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.medium),
+                ) {
+                    state.suggestionsSection?.let { section ->
+                        item(key = section.id) {
+                            HomeCarousel(
+                                items = section.items,
+                                itemsPadding = itemsPadding,
+                                onAction = onAction,
+                            )
+                        }
                     }
-                }
-                state.resumeSection?.let { section ->
-                    item(key = section.id) {
-                        HomeSection(
-                            section = section.homeSection,
+                    state.resumeSection?.let { section ->
+                        item(key = section.id) {
+                            HomeSection(
+                                section = section.homeSection,
+                                itemsPadding = itemsPadding,
+                                onAction = onAction,
+                                modifier = Modifier.animateItem(),
+                                // 继续观看封面沿用首页 banner 的宽高比
+                                aspectRatio = BANNER_ASPECT_RATIO,
+                                heroKeyPrefix = "movie-hero-resume",
+                            )
+                        }
+                    }
+                    state.nextUpSection?.let { section ->
+                        item(key = section.id) {
+                            HomeSection(
+                                section = section.homeSection,
+                                itemsPadding = itemsPadding,
+                                onAction = onAction,
+                                modifier = Modifier.animateItem(),
+                                heroKeyPrefix = "movie-hero-nextup",
+                            )
+                        }
+                    }
+                    items(state.views, key = { it.id }) { view ->
+                        HomeView(
+                            view = view,
                             itemsPadding = itemsPadding,
                             onAction = onAction,
                             modifier = Modifier.animateItem(),
-                            // 继续观看封面沿用首页 banner 的宽高比
-                            aspectRatio = BANNER_ASPECT_RATIO,
-                            heroKeyPrefix = "movie-hero-resume",
                         )
                     }
-                }
-                state.nextUpSection?.let { section ->
-                    item(key = section.id) {
-                        HomeSection(
-                            section = section.homeSection,
-                            itemsPadding = itemsPadding,
-                            onAction = onAction,
-                            modifier = Modifier.animateItem(),
-                            heroKeyPrefix = "movie-hero-nextup",
-                        )
-                    }
-                }
-                items(state.views, key = { it.id }) { view ->
-                    HomeView(
-                        view = view,
-                        itemsPadding = itemsPadding,
-                        onAction = onAction,
-                        modifier = Modifier.animateItem(),
-                    )
                 }
             }
+        } else {
+            HomeLoadFailed(
+                onRetryClick = { onAction(HomeAction.OnRetryClick) },
+                onShowDetails = { showErrorDialog = true },
+                modifier =
+                    Modifier.fillMaxSize()
+                        .padding(top = contentPaddingTop, bottom = paddingBottom)
+                        .semantics { traversalIndex = 1f },
+            )
         }
 
-        if (state.error != null && showErrorDialog) {
-            ErrorDialog(exception = state.error!!, onDismissRequest = { showErrorDialog = false })
+        state.error?.let { error ->
+            if (showErrorDialog) {
+                ErrorDialog(exception = error, onDismissRequest = { showErrorDialog = false })
+            }
         }
     }
 
     HomeHeader(
         serverName = state.server?.name ?: "",
-        isLoading = state.isLoading,
-        isError = state.error != null,
         onServerClick = { showServerSelectionBottomSheet = true },
-        onErrorClick = { showErrorDialog = true },
-        onRetryClick = { onAction(HomeAction.OnRetryClick) },
         onSearchClick = { onAction(HomeAction.OnSearchClick) },
         modifier = Modifier.padding(start = paddingStart, top = paddingTop, end = paddingEnd),
     )
@@ -208,8 +219,18 @@ private fun HomeScreenLayoutPreview() {
                     suggestionsSection = dummyHomeSuggestions,
                     resumeSection = dummyHomeSection,
                     views = listOf(dummyHomeView),
-                    error = Exception("Failed to load data"),
                 ),
+            onAction = {},
+        )
+    }
+}
+
+@PreviewScreenSizes
+@Composable
+private fun HomeScreenLayoutLoadFailedPreview() {
+    FindroidTheme {
+        HomeScreenLayout(
+            state = HomeState(server = dummyServer, error = Exception("Failed to load data")),
             onAction = {},
         )
     }

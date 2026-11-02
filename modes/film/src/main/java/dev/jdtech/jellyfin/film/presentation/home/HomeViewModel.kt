@@ -70,6 +70,8 @@ constructor(
                 loadNextUpItems()
                 loadViews()
             } catch (e: Exception) {
+                // 各分区的异常都在这里统一收敛，不打日志就无法定位是哪一步失败的
+                AppLog.e(e, "加载首页数据失败")
                 _state.emit(_state.value.copy(error = e))
             }
             _state.emit(_state.value.copy(isLoading = false))
@@ -95,11 +97,21 @@ constructor(
         syncedServerNameFor = serverId
 
         val server = database.getServer(serverId) ?: return
+        var fetchFailure: Throwable? = null
         val systemInfo =
             withTimeoutOrNull(SERVER_NAME_SYNC_TIMEOUT_MS) {
-                runCatching { repository.getPublicSystemInfo() }.getOrNull()
+                runCatching { repository.getPublicSystemInfo() }
+                    .onFailure { fetchFailure = it }
+                    .getOrNull()
             }
         if (systemInfo == null) {
+            // 超时不会抛异常、只有请求本身失败才带异常，两种情况都留一条线索
+            val failure = fetchFailure
+            if (failure != null) {
+                AppLog.w(failure, "获取服务器系统信息失败，沿用本地名称")
+            } else {
+                AppLog.w("获取服务器系统信息超时，沿用本地名称")
+            }
             // 这次没拿到，下次进入首页再试
             syncedServerNameFor = null
             return
