@@ -186,8 +186,12 @@ class MPVPlayer(
             mpvLib.setOptionString("alang", it.split("-").last())
         }
         trackSelectionParameters.preferredTextLanguages.firstOrNull()?.let {
-            println(it.split("-").last())
             mpvLib.setOptionString("slang", it.split("-").last())
+        }
+        // 初始参数里禁用了文本轨（记住的"手动关闭字幕"选择）时不选字幕；
+        // 运行中的切换由 setTrackSelectionParameters 处理，这里只覆盖初始化场景
+        if (C.TRACK_TYPE_TEXT in trackSelectionParameters.disabledTrackTypes) {
+            mpvLib.setOptionString("sid", "no")
         }
 
         // Other options

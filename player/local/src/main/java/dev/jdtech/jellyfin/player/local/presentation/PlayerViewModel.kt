@@ -121,17 +121,26 @@ constructor(
                 .setUsage(C.USAGE_MEDIA)
                 .build()
 
-        trackSelector.setParameters(
+        // 字幕默认选择：优先用播放器里记住的选择（手动选过的轨语言或手动关闭），
+        // 从未手动选过才回落到设置页的语言偏好
+        val rememberedSubtitleTrack =
+            appPreferences.getValue(appPreferences.playerLastSubtitleTrack)
+        val parametersBuilder =
             trackSelector
                 .buildUponParameters()
                 .setTunnelingEnabled(true)
                 .setPreferredAudioLanguage(
                     appPreferences.getValue(appPreferences.preferredAudioLanguage)
                 )
-                .setPreferredTextLanguage(
+        when (rememberedSubtitleTrack) {
+            Constants.SUBTITLE_TRACK_OFF -> parametersBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            null ->
+                parametersBuilder.setPreferredTextLanguage(
                     appPreferences.getValue(appPreferences.preferredSubtitleLanguage)
                 )
-        )
+            else -> parametersBuilder.setPreferredTextLanguage(rememberedSubtitleTrack)
+        }
+        trackSelector.setParameters(parametersBuilder)
 
         val playerBackend = appPreferences.getValue(appPreferences.playerBackend)
         player =
@@ -466,6 +475,9 @@ constructor(
     }
 
     fun switchToTrack(trackType: @C.TrackType Int, index: Int) {
+        if (trackType == C.TRACK_TYPE_TEXT) {
+            rememberSubtitleTrackChoice(index)
+        }
         // Index -1 equals disable track
         if (index == -1) {
             player.trackSelectionParameters =
@@ -489,6 +501,31 @@ constructor(
                     .setTrackTypeDisabled(trackType, false)
                     .build()
         }
+    }
+
+    /**
+     * 把用户手动选的字幕轨持久化，下次播放作为默认选择。
+     *
+     * 记语言代码而不是轨 index：index 在不同影片之间不稳定，语言才能跨条目匹配。
+     * 轨没有语言信息（language 为 null）时无法跨条目识别，跳过记忆、保留上一次的值。
+     */
+    private fun rememberSubtitleTrackChoice(index: Int) {
+        if (index == -1) {
+            appPreferences.setValue(appPreferences.playerLastSubtitleTrack, Constants.SUBTITLE_TRACK_OFF)
+            return
+        }
+        val language =
+            player.currentTracks.groups
+                .filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
+                .getOrNull(index)
+                ?.mediaTrackGroup
+                ?.getFormat(0)
+                ?.language
+        if (language == null) {
+            AppLog.w("选中的字幕轨缺少语言信息，不记忆（index=%d）", index)
+            return
+        }
+        appPreferences.setValue(appPreferences.playerLastSubtitleTrack, language)
     }
 
     fun selectSpeed(speed: Float) {

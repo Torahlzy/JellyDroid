@@ -7,6 +7,7 @@
 - **改完代码不要默认跑构建。** 除非用户明确要求，否则不执行 `./gradlew assemble*`、`./gradlew build`、`./gradlew check`（编译耗时长；仓库没有测试，`check` 只校验 ktfmt 格式）。需要格式化时用 `./gradlew ktfmtFormat`，同样只在用户要求时运行。
 - **但要查编译错误，且优先用不产生构建开销的方式。** 顺序是：① 先看编辑器 / IDE 诊断（对已分析文件的实时语法、类型、未解析引用报错，零构建开销，改完代码就该看一眼）；② 诊断不足以判断时（涉及 Gradle 配置、资源引用、KSP / Hilt 生成代码），只编译受影响模块的 Kotlin 任务，如 `./gradlew :app:phone:compileLibreDebugKotlin`（任务名以 `./gradlew :app:phone:tasks --all` 为准）；③ 仅在用户明确要求时才 `assemble*` / `bundle*` 打包。**不要为了「看有没有编译错误」去跑 `assemble*`**——它会附带 dex、资源、打包等与「查错」无关的耗时步骤。
 - 保持修改最小化、聚焦，避免不必要的重构或大范围重写。
+- **`gradle/wrapper/gradle-wrapper.properties` 的本地改动默认忽略。** 用户本机长期把 `distributionUrl` 改成腾讯云镜像加速下载，但官方地址是 F-Droid 构建的要求（见文件内注释），所以这个文件**永远不提交**：审核 / 提交工作区变更时直接排除它，也不要建议还原。
 - **默认只改手机版（`:app:phone`），不考虑 TV 版（`:app:tv`）。** 只有与界面无关的共享逻辑（`:core`、`:data`、`:player:*`、`:settings`）才可能一并影响 TV 版。
 - **注释一律使用中文**（代码注释、KDoc、TODO 说明）。
 - **UI 与动画一律遵守「[UI 与动效规范（Material 3 Expressive）](#ui-与动效规范material-3-expressive)」**。
