@@ -529,6 +529,43 @@ class MPVPlayer(
         mpvLib.setPropertyString(trackType.type, id)
     }
 
+    // 字幕调节模式：把字幕外观 / 偏移折算到 libmpv 属性。
+    // 注意：内嵌 ASS 字幕有自己的样式，这些属性对它可能不生效（可接受的限制，
+    // 应用设置时上层会弹 toast 提示）；SRT 等普通字幕不受影响。
+
+    /**
+     * 字号倍率，写 sub-scale。初始化时已设 sub-scale-with-window=yes，
+     * 基准随窗口缩放，与"字号按屏幕高度记录"的策略一致。
+     */
+    fun setSubtitleScale(scale: Float) {
+        mpvLib.setPropertyDouble("sub-scale", scale.toDouble())
+    }
+
+    /** 字幕进度偏移（秒），正数延后显示、负数提前显示。 */
+    fun setSubtitleDelay(delaySeconds: Double) {
+        mpvLib.setPropertyDouble("sub-delay", delaySeconds)
+    }
+
+    /**
+     * 字体不透明度（百分比 0–100），写 sub-color 的 alpha 通道；包边保持 mpv 默认（黑色）。
+     */
+    fun setSubtitleOpacity(percent: Int) {
+        val alpha = percent.coerceIn(0, 100) * 0xFF / 100
+        mpvLib.setPropertyString("sub-color", String.format(java.util.Locale.US, "#%02XFFFFFF", alpha))
+    }
+
+    /**
+     * 字幕底边距屏幕底部的距离（px）→ sub-pos（0 顶部 ~ 100 底部）。
+     * mpv 的锚点语义与 media3 的 bottomPaddingFraction 略有差异，这里做近似折算。
+     */
+    fun setSubtitleBottomOffset(bottomOffsetPx: Int, screenHeightPx: Int) {
+        if (screenHeightPx <= 0) {
+            return
+        }
+        val pos = (100.0 * (1f - bottomOffsetPx.toFloat() / screenHeightPx)).coerceIn(0.0, 100.0)
+        mpvLib.setPropertyDouble("sub-pos", pos)
+    }
+
     // Timeline wrapper
     private val timeline: Timeline =
         object : Timeline() {

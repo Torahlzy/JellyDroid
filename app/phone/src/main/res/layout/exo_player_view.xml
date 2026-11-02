@@ -50,8 +50,11 @@
 
     </androidx.media3.ui.AspectRatioFrameLayout>
 
-    <androidx.media3.ui.SubtitleView
-        android:id="@id/exo_subtitles"
+    <!-- 自定义延迟渲染字幕容器（内含真实 SubtitleView）。刻意不用 exo_subtitles 这个 id：
+         PlayerView 按该 id 硬转型为 SubtitleView，找不到时才安全跳过内部渲染，
+         由 SubtitleAdjustManager 监听 onCues 后交给本容器做延迟派发 -->
+    <dev.jdtech.jellyfin.presentation.player.subtitle.DelayedSubtitleView
+        android:id="@+id/delayed_subtitle_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 

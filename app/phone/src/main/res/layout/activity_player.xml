@@ -14,6 +14,13 @@
         app:animation_enabled="false"
         app:show_buffering="always" />
 
+    <!-- 字幕调节模式覆盖层（拖动手柄 + 调节面板），只在进入调节模式时显示 -->
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/subtitle_adjust_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/progress_scrubber_layout"
         android:layout_width="wrap_content"

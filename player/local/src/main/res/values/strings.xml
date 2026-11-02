@@ -28,4 +28,19 @@
     <string name="player_backdrop_set_success">Backdrop set from the current frame</string>
     <string name="player_backdrop_set_failed">Failed to set the backdrop</string>
     <string name="player_backdrop_frame_unavailable">The video frame is not ready yet</string>
+    <string name="player_menu_subtitle_adjust">Subtitle settings</string>
+    <string name="subtitle_adjust_font_size">Font size</string>
+    <string name="subtitle_adjust_size_minus" translatable="false">A−</string>
+    <string name="subtitle_adjust_size_plus" translatable="false">A+</string>
+    <string name="subtitle_adjust_scale_percent" translatable="false">%d%%</string>
+    <string name="subtitle_adjust_text_opacity">Text opacity</string>
+    <string name="subtitle_adjust_opacity_percent" translatable="false">%d%%</string>
+    <string name="subtitle_adjust_offset">Subtitle timing</string>
+    <string name="subtitle_adjust_offset_hint">Offset in seconds, e.g. 0.3 or -1.5</string>
+    <string name="subtitle_adjust_reset">Reset</string>
+    <string name="subtitle_adjust_close">Close</string>
+    <string name="subtitle_adjust_apply">Apply</string>
+    <string name="subtitle_adjust_drag_handle">Drag to adjust subtitle position</string>
+    <string name="subtitle_adjust_mpv_warning">mpv: font size and color changes may not apply to embedded ASS subtitles</string>
+    <string name="subtitle_adjust_exo_negative_unsupported">Advancing subtitles is not supported with ExoPlayer; negative offsets are ignored</string>
 </resources>
