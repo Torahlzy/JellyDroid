@@ -1,6 +1,11 @@
 package dev.jdtech.jellyfin.settings.domain
 
 object Constants {
+    // Player - 字幕轨记忆
+
+    /** [AppPreferences.playerLastSubtitleTrack] 的特殊值：用户手动关闭了字幕。 */
+    const val SUBTITLE_TRACK_OFF = "off"
+
     // Player - Media Segments
     object PlayerMediaSegmentsAutoSkip {
         const val ALWAYS = "always"

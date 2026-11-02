@@ -30,6 +30,7 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerControlView
 import androidx.media3.ui.PlayerView
@@ -109,6 +110,27 @@ class PlayerActivity : BasePlayerActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         binding.playerView.player = viewModel.player
+
+        // 字幕统一外观：白字 + 黑色包边，去掉默认渲染的黑色背景块。
+        // 仅对 ExoPlayer 后端生效；mpv 后端自己渲染字幕，默认就是白字黑边。
+        binding.playerView
+            .subtitleView
+            ?.apply {
+                setStyle(
+                    CaptionStyleCompat(
+                        /* foregroundColor = */ Color.WHITE,
+                        /* backgroundColor = */ Color.TRANSPARENT,
+                        /* windowColor = */ Color.TRANSPARENT,
+                        /* edgeType = */ CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                        /* edgeColor = */ Color.BLACK,
+                        /* typeface = */ null,
+                    )
+                )
+                // 字幕内嵌样式可能自带背景色（如 ASS 的不透明底框），关掉才能保证统一外观；
+                // 单独保留内嵌定位，避免特效字幕的挂轴位置退化成底部居中
+                setApplyEmbeddedStyles(false)
+                setApplyEmbeddedPositions(true)
+            }
         binding.playerView.setControllerVisibilityListener(
             PlayerView.ControllerVisibilityListener { visibility ->
                 if (visibility == View.GONE) {

@@ -27,6 +27,10 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     val playerBackend = Preference("pref_player_backend", "exoplayer")
     val playerBrightness = Preference("pref_player_brightness", -1.0f)
 
+    // Player - 字幕轨记忆：播放器里手动选过的字幕轨语言（外部字幕上传时的 ISO 639-2 代码，如 "chi"），
+    // 下次播放按它默认选中；特殊值 SUBTITLE_TRACK_OFF 表示手动关闭字幕；null 表示从未手动选过
+    val playerLastSubtitleTrack = Preference<String?>("pref_player_last_subtitle_track", null)
+
     // Player - mpv
     val playerMpv = Preference("pref_player_mpv", false)
     val playerMpvHwdec = Preference("pref_player_mpv_hwdec", "mediacodec")
