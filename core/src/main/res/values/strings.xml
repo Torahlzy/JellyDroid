@@ -13,6 +13,9 @@
     <string name="title_downloaded">Downloaded</string>
     <string name="view_all">View all</string>
     <string name="error_loading_data">Error loading data</string>
+    <string name="home_load_failed_title">Cannot reach the server</string>
+    <string name="home_load_failed_message">Check your network connection, or make sure the server is running and reachable.</string>
+    <string name="error_details">Details</string>
     <string name="show_stacktrace">Show stacktrace</string>
     <string name="retry">Retry</string>
     <string name="genres">Genres</string>
@@ -64,6 +67,7 @@
     <string name="sort_by_options_1">IMDB Rating</string>
     <string name="sort_by_options_2">Parental Rating</string>
     <string name="sort_by_options_3">Date Added</string>
+    <string name="file_added_at">Added: %1$s</string>
     <string name="sort_by_options_4">Date Played</string>
     <string name="sort_by_options_5">Release Date</string>
     <string name="sort_by_options_6">Random</string>

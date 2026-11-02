@@ -61,6 +61,7 @@ val dummyMovie =
         productionYear = 2019,
         endDate = null,
         trailer = "https://www.youtube.com/watch?v=puKWa8hrvA8",
+        dateCreated = LocalDateTime.parse("2025-03-08T16:12:00"),
         images = FindroidImages(),
         chapters = emptyList(),
         trickplayInfo = null,

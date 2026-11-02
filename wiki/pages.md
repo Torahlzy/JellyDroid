@@ -126,12 +126,12 @@ Select-String -Path wiki/pages.md -Pattern '\.kt:\d+' -AllMatches
 | 引导 | 登录 | `LoginRoute` | `PHONE/presentation/setup/login/LoginScreen.kt` | `SETUP/presentation/login/LoginViewModel.kt` |
 | 播放 | 视频播放 | 无（Activity，非 NavHost 路由） | `PHONE/PlayerActivity.kt` | `PLAYER/presentation/PlayerViewModel.kt` |
 
-**底部导航标签**（`PHONE/NavigationRoot.kt`）：首页 `HomeRoute`、媒体 `MediaRoute`、设置 `SettingsRoute`。离线模式下（`LocalOfflineMode == true`）隐藏「媒体」标签（`PHONE/NavigationRoot.kt`）。下载页入口在媒体页的「已下载」入口（`PHONE/presentation/film/components/MediaEntryCard.kt`，与「我喜欢」并排平分一行宽度）。
+**底部导航标签**（`PHONE/NavigationRoot.kt`）：联网时为首页 `HomeRoute`、媒体 `MediaRoute`、设置 `SettingsRoute`；离线模式下（`LocalOfflineMode == true`）首页与媒体页都要读服务器，底栏改为「下载」`DownloadsRoute` + 「设置」`SettingsRoute` 两个标签。联网时下载页的入口在媒体页的「已下载」入口（`PHONE/presentation/film/components/MediaEntryCard.kt`，与「我喜欢」并排平分一行宽度）。
 
-**启动路由**（`PHONE/NavigationRoot.kt`）：
+**启动路由**（`PHONE/NavigationRoot.kt`，已登录时进入当前模式的落地标签 `landingTab.route`：联网为 `HomeRoute`、离线为 `DownloadsRoute`）：
 
 ```kotlin
-hasServers && hasCurrentServer && hasCurrentUser -> HomeRoute
+hasServers && hasCurrentServer && hasCurrentUser -> landingTab.route
 hasServers && hasCurrentServer -> UsersRoute
 hasServers -> ServersRoute
 else -> WelcomeRoute
@@ -150,7 +150,7 @@ else -> WelcomeRoute
 - **State 字段**：`server`、`suggestionsSection`、`resumeSection`、`nextUpSection`、`views`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadData(refreshSuggestions)`；`OnItemClick`（可带共享元素来源 `heroKey`）、`OnLibraryClick`、`OnRetryClick`、`OnRefresh`、`OnSearchClick`、`OnManageServers`。
 - **数据来源**：`getSuggestions()`、`getResumeItems()`、`getNextUp()`、`getUserViews()` + `getLatestMedia(view.id)`（`HomeViewModel.kt`）；每个 section 分别受 `AppPreferences` 的 `homeSuggestions` / `homeContinueWatching` / `homeNextUp` / `homeLatest` 开关控制，为空则不渲染。banner（推荐轮播）只在首次进入与下拉刷新 / 切换服务器（`OnRefresh`）时拉取，从详情页返回首页不重新请求，避免轮播被重建；返回首页若共享元素转场仍在执行，等转场结束后再刷新其它分区，继续观看条目的增删与排序变化使用 LazyRow 条目动画。
-- **入口**：启动路由 / 底部「首页」标签 / 各详情页的 `navigateHome`。
+- **入口**：启动路由 / 底部「首页」标签 / 各详情页的 `navigateHome`。离线模式下页面不可达（首页数据全来自服务器），落地页与 `navigateHome` 的目标改为下载页。
 
 ### MediaScreen — 媒体库总览
 
@@ -160,7 +160,7 @@ else -> WelcomeRoute
 - **ViewModel / State / Action**：`FILM/presentation/media/MediaViewModel.kt`、`FILM/presentation/media/MediaState.kt`、`FILM/presentation/media/MediaAction.kt`。
 - **State 字段**：`libraries`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadData()`；`OnItemClick`、`OnFavoritesClick`、`OnDownloadsClick`、`OnRetryClick`。
-- **入口**：底部「媒体」标签；首页搜索按钮会切到此页并置 `searchExpanded = true`（`PHONE/NavigationRoot.kt`）。
+- **入口**：底部「媒体」标签（离线模式不显示）；首页搜索按钮会切到此页并置 `searchExpanded = true`（`PHONE/NavigationRoot.kt`）。
 - **浏览入口**：网格末尾追加 `PHONE/presentation/film/components/MediaBrowseSection.kt`——按 nfo 已入库的维度（类别 / 标签 / 分级 / 年份 / 演员 / 导演 / 编剧 / 制片公司，枚举为 `data/src/main/java/dev/jdtech/jellyfin/models/MetadataFacet.kt`）列出入口，固定每行两个、随列表一起滚动，点击进入 `MetadataBrowseRoute`。
 
 ### DownloadsScreen — 下载
@@ -172,7 +172,7 @@ else -> WelcomeRoute
 - **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action，VM 无 `onAction`）。
 - **State 字段**：`sections`、`isLoading`、`error`。
 - **主要方法**：`loadItems()`（内部调用 `repository.getDownloads()`）。
-- **入口**：媒体页的「已下载」入口（`PHONE/presentation/film/components/MediaEntryCard.kt`，与「我喜欢」并排平分一行宽度）。
+- **入口**：媒体页的「已下载」入口（`PHONE/presentation/film/components/MediaEntryCard.kt`，与「我喜欢」并排平分一行宽度）；离线模式下本页同时是底栏「下载」标签的根页面、启动落地页与各详情页 `navigateHome` 的目标，此时（`DownloadsScreen` 的 `isTabRoot`）列表底部额外留出底栏高度，避免最后一行被浮起的底栏压住（`CollectionGrid` 的 `bottomContentPadding`）。
 
 ### LibraryScreen — 媒体库详情
 

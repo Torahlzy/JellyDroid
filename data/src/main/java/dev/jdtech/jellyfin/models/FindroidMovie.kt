@@ -30,6 +30,8 @@ data class FindroidMovie(
     val productionYear: Int?,
     val endDate: LocalDateTime?,
     val trailer: String?,
+    // 服务器条目的 DateCreated（文件入库时间）；离线库的 FindroidMovieDto 没存该字段，离线构造时用 null 兜底
+    val dateCreated: LocalDateTime? = null,
     override val unplayedItemCount: Int? = null,
     override val images: FindroidImages,
     override val chapters: List<FindroidChapter>,
@@ -67,6 +69,7 @@ suspend fun BaseItemDto.toFindroidMovie(
         productionYear = productionYear,
         endDate = endDate,
         trailer = remoteTrailers?.getOrNull(0)?.url,
+        dateCreated = dateCreated,
         images = toFindroidImages(jellyfinRepository),
         chapters = toFindroidChapters(),
         trickplayInfo =

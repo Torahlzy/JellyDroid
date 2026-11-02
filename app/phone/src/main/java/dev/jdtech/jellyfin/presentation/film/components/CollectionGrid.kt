@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.jdtech.jellyfin.film.presentation.collection.CollectionAction
 import dev.jdtech.jellyfin.models.CollectionSection
@@ -27,6 +28,7 @@ internal const val LANDSCAPE_COVER_MIN_WIDTH_DP = 300
  * 分组条目网格。
  *
  * [coverMode] 由「我喜欢」页与合集页从偏好读出后传入（与媒体库列表共用），下载页不传，保持竖图。
+ * [bottomContentPadding] 供浮在内容之上的底部标签栏让位；普通页面沿用默认间距即可。
  */
 @Composable
 fun CollectionGrid(
@@ -34,6 +36,7 @@ fun CollectionGrid(
     innerPadding: PaddingValues,
     onAction: (CollectionAction) -> Unit,
     coverMode: CoverDisplayMode = CoverDisplayMode.defaultValue,
+    bottomContentPadding: Dp = MaterialTheme.spacings.default,
 ) {
     val isLandscape = coverMode == CoverDisplayMode.LANDSCAPE
 
@@ -45,7 +48,13 @@ fun CollectionGrid(
                 GridCellsAdaptiveWithMinColumns(minSize = 160.dp, minColumns = 2)
             },
         modifier = Modifier.padding(innerPadding).fillMaxSize(),
-        contentPadding = PaddingValues(all = MaterialTheme.spacings.default),
+        contentPadding =
+            PaddingValues(
+                start = MaterialTheme.spacings.default,
+                top = MaterialTheme.spacings.default,
+                end = MaterialTheme.spacings.default,
+                bottom = bottomContentPadding,
+            ),
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.default),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.default),
     ) {

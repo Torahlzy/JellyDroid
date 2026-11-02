@@ -163,6 +163,12 @@ val mediaTab =
         icon = CoreR.drawable.ic_library,
         route = MediaRoute,
     )
+val downloadsTab =
+    TabBarItem(
+        title = CoreR.string.title_download,
+        icon = CoreR.drawable.ic_download,
+        route = DownloadsRoute,
+    )
 val settingsTab =
     TabBarItem(
         title = CoreR.string.title_settings,
@@ -182,9 +188,14 @@ fun NavigationRoot(
 ) {
     val isOfflineMode = LocalOfflineMode.current
 
+    // 离线模式连不上服务器，首页（推荐 / 继续观看 / 最新）与「我的媒体」（媒体库、我喜欢、浏览
+    // 维度）都要读服务器，进去只剩空页；真正可用的只有本地已下载的条目，所以离线时首页那一格换成
+    // 下载标签，并作为落地页与详情页「首页」按钮的目标，否则会跳到没有对应标签的页面、底栏随之消失
+    val landingTab = if (isOfflineMode) downloadsTab else homeTab
+
     val startDestination =
         when {
-            hasServers && hasCurrentServer && hasCurrentUser -> HomeRoute
+            hasServers && hasCurrentServer && hasCurrentUser -> landingTab.route
             hasServers && hasCurrentServer -> UsersRoute
             hasServers -> ServersRoute
             else -> WelcomeRoute
@@ -193,7 +204,7 @@ fun NavigationRoot(
     val navigationItems =
         when (isOfflineMode) {
             false -> listOf(homeTab, mediaTab, settingsTab)
-            true -> listOf(homeTab, settingsTab)
+            true -> listOf(downloadsTab, settingsTab)
         }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
@@ -273,7 +284,7 @@ fun NavigationRoot(
             }
             composable<UsersRoute> {
                 UsersScreen(
-                    navigateToHome = { navigateHome(navController) },
+                    navigateToHome = { navigateHome(navController, landingTab.route) },
                     onChangeServerClick = {
                         navController.safeNavigate(ServersRoute) {
                             popUpTo(ServersRoute) { inclusive = false }
@@ -359,7 +370,9 @@ fun NavigationRoot(
                     DownloadsScreen(
                         onItemClick = { item ->
                             navigateToItem(navController = navController, item = item)
-                        }
+                        },
+                        // 离线模式下下载页就是底栏标签的根页面，列表底部要给浮起的底栏留位
+                        isTabRoot = isOfflineMode,
                     )
                 }
             }
@@ -411,7 +424,7 @@ fun NavigationRoot(
                         movieId = UUID.fromString(route.movieId),
                         heroKey = route.heroKey ?: "movie-hero-${route.movieId}",
                         navigateBack = { navController.safePopBackStack() },
-                        navigateHome = { navigateHome(navController) },
+                        navigateHome = { navigateHome(navController, landingTab.route) },
                         navigateToPerson = { personId, personName ->
                             navController.safeNavigate(
                                 ItemFilterRoute(
@@ -448,7 +461,7 @@ fun NavigationRoot(
                 ShowScreen(
                     showId = UUID.fromString(route.showId),
                     navigateBack = { navController.safePopBackStack() },
-                    navigateHome = { navigateHome(navController) },
+                    navigateHome = { navigateHome(navController, landingTab.route) },
                     navigateToItem = { item ->
                         navigateToItem(navController = navController, item = item)
                     },
@@ -471,7 +484,7 @@ fun NavigationRoot(
                 SeasonScreen(
                     seasonId = UUID.fromString(route.seasonId),
                     navigateBack = { navController.safePopBackStack() },
-                    navigateHome = { navigateHome(navController) },
+                    navigateHome = { navigateHome(navController, landingTab.route) },
                     navigateToItem = { item ->
                         navigateToItem(navController = navController, item = item)
                     },
@@ -491,7 +504,7 @@ fun NavigationRoot(
                 EpisodeScreen(
                     episodeId = UUID.fromString(route.episodeId),
                     navigateBack = { navController.safePopBackStack() },
-                    navigateHome = { navigateHome(navController) },
+                    navigateHome = { navigateHome(navController, landingTab.route) },
                     navigateToPerson = { personId, personName ->
                         navController.safeNavigate(
                             ItemFilterRoute(
@@ -629,8 +642,9 @@ fun NavigationRoot(
     }
 }
 
-private fun navigateHome(navController: NavHostController) {
-    navController.safeNavigate(HomeRoute) {
+/** 详情页「首页」按钮：回到当前模式的落地标签（联网是首页，离线是「我的媒体」）。 */
+private fun navigateHome(navController: NavHostController, landingRoute: Any) {
+    navController.safeNavigate(landingRoute) {
         popUpTo(navController.graph.startDestinationId)
         launchSingleTop = true
     }
@@ -714,6 +728,9 @@ private fun SharedTransitionNavHost(
     startDestination: Any,
     builder: NavGraphBuilder.() -> Unit,
 ) {
+    // 下载页算不算标签页取决于是否离线（离线时它是底栏根页面），转场判断需要知道当前模式
+    val isOfflineMode = LocalOfflineMode.current
+
     SharedTransitionLayout {
         CompositionLocalProvider(LocalSharedTransitionScope provides this) {
             NavHost(
@@ -724,16 +741,18 @@ private fun SharedTransitionNavHost(
                 // 预测性返回已在 AndroidManifest 关闭（enableOnBackInvokedCallback=false），
                 // 因此这里不再注册 predictivePop* 转场；若日后恢复预测性返回，需一并补回
                 enterTransition = {
-                    if (isTabSwitch()) EnterTransition.None else defaultEnterTransition()
+                    if (isTabSwitch(isOfflineMode)) EnterTransition.None
+                    else defaultEnterTransition()
                 },
                 exitTransition = {
-                    if (isTabSwitch()) ExitTransition.None else defaultExitTransition()
+                    if (isTabSwitch(isOfflineMode)) ExitTransition.None else defaultExitTransition()
                 },
                 popEnterTransition = {
-                    if (isTabSwitch()) EnterTransition.None else defaultEnterTransition()
+                    if (isTabSwitch(isOfflineMode)) EnterTransition.None
+                    else defaultEnterTransition()
                 },
                 popExitTransition = {
-                    if (isTabSwitch()) ExitTransition.None else defaultExitTransition()
+                    if (isTabSwitch(isOfflineMode)) ExitTransition.None else defaultExitTransition()
                 },
             ) {
                 builder()
@@ -753,12 +772,15 @@ private fun SharedElementHost(scope: AnimatedVisibilityScope, content: @Composab
  *
  * 序号只用来区分「是不是同一个标签」，取值本身没有含义。
  */
-private fun tabIndexOf(entry: NavBackStackEntry): Int? {
+private fun tabIndexOf(entry: NavBackStackEntry, isOfflineMode: Boolean): Int? {
     // 目的地上的 route 是「模式串」，带参路由会追加 ?indexes={indexes}，先还原成类名再比对
     val routeClass = entry.destination.route?.substringBefore('?') ?: return null
     return when (routeClass) {
         HomeRoute::class.qualifiedName -> 0
         MediaRoute::class.qualifiedName -> 1
+        // 离线时下载页是底栏标签的根页面；联网时它只是从「我的媒体」推入的普通页面，
+        // 仍按普通前进导航播放转场
+        DownloadsRoute::class.qualifiedName -> if (isOfflineMode) 3 else null
         SettingsRoute::class.qualifiedName -> {
             // 设置页复用同一个目的地，根部与各级子页只能靠参数区分：一级分类页（如「语言」）的
             // indexes 同样只有一项，所以要看内容是不是标签标题，不能按长度判断
@@ -770,9 +792,11 @@ private fun tabIndexOf(entry: NavBackStackEntry): Int? {
 }
 
 /** 是否在两个不同的底部标签之间切换（标签间切换不做动画）。 */
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.isTabSwitch(): Boolean {
-    val fromIndex = tabIndexOf(initialState) ?: return false
-    val toIndex = tabIndexOf(targetState) ?: return false
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.isTabSwitch(
+    isOfflineMode: Boolean
+): Boolean {
+    val fromIndex = tabIndexOf(initialState, isOfflineMode) ?: return false
+    val toIndex = tabIndexOf(targetState, isOfflineMode) ?: return false
     return fromIndex != toIndex
 }
 

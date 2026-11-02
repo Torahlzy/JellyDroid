@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
+import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.jdtech.jellyfin.core.R as CoreR
@@ -33,10 +34,16 @@ import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.UiText
 import dev.jdtech.jellyfin.presentation.film.components.CollectionGrid
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
+import dev.jdtech.jellyfin.presentation.theme.spacings
+import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
+
+/** M3 NavigationBar 的默认高度；底栏浮在内容之上，标签根页面需要让出这段高度。 */
+private val NAVIGATION_BAR_HEIGHT = 80.dp
 
 @Composable
 fun DownloadsScreen(
     onItemClick: (item: FindroidItem) -> Unit,
+    isTabRoot: Boolean = false,
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -45,6 +52,7 @@ fun DownloadsScreen(
 
     DownloadsScreenLayout(
         state = state,
+        isTabRoot = isTabRoot,
         onAction = { action ->
             when (action) {
                 is CollectionAction.OnItemClick -> onItemClick(action.item)
@@ -59,9 +67,16 @@ fun DownloadsScreen(
 @Composable
 private fun DownloadsScreenLayout(
     state: CollectionState,
+    isTabRoot: Boolean,
     onAction: (CollectionAction) -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+
+    // 作为标签根页面时底栏覆盖在列表之上，最后一行会被压住，额外让出底栏与手势区的高度
+    val bottomContentPadding =
+        rememberSafePadding().bottom +
+            MaterialTheme.spacings.default +
+            if (isTabRoot) NAVIGATION_BAR_HEIGHT else 0.dp
 
     Scaffold(
         modifier =
@@ -91,6 +106,7 @@ private fun DownloadsScreenLayout(
             sections = state.sections,
             innerPadding = innerPadding,
             onAction = onAction,
+            bottomContentPadding = bottomContentPadding,
         )
     }
 }
@@ -111,6 +127,7 @@ private fun DownloadsScreenLayoutPreview() {
                             )
                         )
                 ),
+            isTabRoot = true,
             onAction = {},
         )
     }

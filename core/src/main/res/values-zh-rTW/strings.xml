@@ -45,6 +45,7 @@
     <string name="sort_by_options_1">IMDB 評分</string>
     <string name="sort_by_options_2">Parental 評分</string>
     <string name="sort_by_options_3">添加日期</string>
+    <string name="file_added_at">新增時間：%1$s</string>
     <string name="sort_by_options_4">播放日期</string>
     <string name="sort_by_options_5">發行日期</string>
     <string name="sort_by_options_6">隨機</string>
@@ -59,6 +60,9 @@
     <string name="title_favorite">收藏夾</string>
     <string name="title_downloaded">已下載</string>
     <string name="error_loading_data">載入資料時發生錯誤</string>
+    <string name="home_load_failed_title">無法連線到伺服器</string>
+    <string name="home_load_failed_message">請檢查網路連線，或確認伺服器是否可正常存取。</string>
+    <string name="error_details">查看詳情</string>
     <string name="episode_watched_indicator">影集觀看指標</string>
     <string name="no_downloads">你還沒有下載任何東西</string>
     <string name="view_details">查看詳情</string>

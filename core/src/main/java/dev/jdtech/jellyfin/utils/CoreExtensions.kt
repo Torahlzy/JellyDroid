@@ -11,6 +11,8 @@ import dev.jdtech.jellyfin.models.View
 import java.nio.charset.StandardCharsets
 import java.text.DateFormat
 import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Date
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -46,6 +48,13 @@ fun DateTime.format(): String {
     val instant = this.toInstant(ZoneOffset.UTC)
     val date = Date.from(instant)
     return DateFormat.getDateInstance(DateFormat.SHORT).format(date)
+}
+
+/** 带时间的短格式（如「2025/3/8 16:12」），用于文件入库这类时间点信息。 */
+fun DateTime.formatWithTime(): String {
+    // DateTime 是无时区的 LocalDateTime（服务器本地时间），必须按原值格式化；
+    // 经 UTC Instant 转换再用设备时区格式化会偏移时区差，时刻会错位几个小时
+    return DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).format(this)
 }
 
 fun BroadcastReceiver.launchAsync(
