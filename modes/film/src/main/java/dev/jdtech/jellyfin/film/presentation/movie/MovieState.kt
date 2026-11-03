@@ -77,11 +77,15 @@ data class MovieState(
     /** 是否正在上传抓取到的封面图片，上传期间禁用各行上传按钮，避免重复点。 */
     val isUploadingImages: Boolean = false,
     /**
-     * 下载字幕的当前阶段；null 表示没有进行中的下载（弹窗此时显示关键词输入框）。
+     * 下载字幕的当前阶段；null 表示没有整批进行中的动作（搜索或上传）。
      *
      * 关键词与抓取共用 [defaultScrapeKeyword]，代理也共用 [scrapeProxy]。
      */
     val subtitleDownloadStage: SubtitleDownloadStage? = null,
+    /** 字幕候选列表（含逐条下载状态），按站点给出的顺序展示；为空表示还没搜到候选。 */
+    val subtitleCandidates: List<SubtitleCandidateState> = emptyList(),
+    /** 上一次搜索一个候选都没搜到，关键词输入框下方给出提示。 */
+    val subtitleSearchFoundNothing: Boolean = false,
     /** 是否开启外网评论（设置 → 网络 → 外网）；关闭时详情页不显示评论区。 */
     val commentsEnabled: Boolean = false,
     /** 短评使用过的关键词（通常是识别出的番号），为空表示没识别到、无法抓取。 */

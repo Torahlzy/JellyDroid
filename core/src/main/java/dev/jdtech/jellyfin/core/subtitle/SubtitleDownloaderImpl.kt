@@ -5,130 +5,67 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
 
 /**
- * 字幕挑选规则（**语言优先级高于时长匹配度**）：
+ * 逐条处理搜索结果，每条产出一份「该候选能拿到的最好字幕」：
  *
- * 1. 取搜索结果的前 [MAX_CANDIDATES] 个候选，逐个打开详情页，把每页能下的语言（简体 / 繁体 / 英文）
- *    都解析出来存起来——同一页可能同时有简体和繁体；
- * 2. 先定语言：只有在简体候选一份都没有时，才退到繁体，再没有才用英文。不会出现
- *   「繁体时长更贴合所以改用繁体」——那是用户看不懂的字幕；
- * 3. 在选定语言的候选里逐份下载、比较「字幕最后时间点」与视频时长：一旦落进容差就采用并停止，
- *   都不在容差内才取误差最小的那一份（总比不给字幕好）。
+ * 1. 先搜索，把标题列表一次性发出去（界面据此立刻铺出候选列表）；
+ * 2. 再按站点顺序逐条处理：打开详情页 → 在**这条候选内部**按简体 > 繁体 > 英文取第一份可下载的
+ *    srt / vtt → 下载 → 解析字幕最后时间点 → 与视频时长求差；
+ * 3. 每条处理完立刻发出去，用户不必等后面的候选；单条失败（没有中英文字幕 / 详情页打不开 /
+ *    下载失败）只把这条标为不可用。
  *
- * 单份候选解析 / 下载失败只跳过这一份，不影响其它候选；整组候选都没解析出可用语言时返回 null。
+ * 不做跨候选的语言降档：语言由用户看着列表自己选，选错了重下一遍也比默默换成别的语言好。
  */
 @Singleton
 class SubtitleDownloaderImpl
 @Inject
-constructor(
-    private val scraper: SubtitleScraper,
-    private val cache: SubtitleCache,
-) : SubtitleDownloader {
+constructor(private val scraper: SubtitleScraper) : SubtitleDownloader {
 
-    override suspend fun download(
-        keyword: String,
+    override fun download(keyword: String, videoDurationMs: Long): Flow<SubtitleCandidateResult> =
+        channelFlow {
+            val candidates = search(keyword)
+            send(SubtitleCandidateResult.Found(candidates))
+            if (candidates.isEmpty()) {
+                AppLog.d("字幕站上没有搜到候选：%s", keyword)
+                return@channelFlow
+            }
+            candidates.forEach { candidate ->
+                send(process(candidate, videoDurationMs))
+            }
+        }
+
+    /** 处理单条候选：解析可用语言 → 取优先级最高的一份 → 下载 → 求与视频时长的差。 */
+    private suspend fun process(
+        candidate: SubtitleCandidate,
         videoDurationMs: Long,
-        onStage: suspend (SubtitleDownloadStage) -> Unit,
-    ): DownloadedSubtitle? {
-        cache.deleteExpired()
-        onStage(SubtitleDownloadStage.Searching)
-        val candidates = search(keyword)
-        if (candidates.isEmpty()) {
-            AppLog.d("字幕站上没有搜到候选：%s", keyword)
-            return null
+    ): SubtitleCandidateResult {
+        // resolve 已按语言优先级（简 > 繁 > 英）返回该页可下载的语言，取第一份即可
+        val subtitle = resolve(candidate).firstOrNull()
+        if (subtitle == null) {
+            AppLog.d("候选页没有可用的中英文字幕：%s", candidate.pageUrl)
+            return SubtitleCandidateResult.Unavailable(candidate)
         }
-
-        val downloads = resolveAll(candidates, onStage)
-        if (downloads.isEmpty()) {
-            AppLog.d("候选里没有可用的中英文字幕：%s", keyword)
-            return null
-        }
-        // 语言优先级先定死：只有当前语言一份都下不下来（注意是「下不下来」，不是「没有」）
-        // 才往下降一档，不会因为另一种语言时长更贴合就换语言
-        for (language in SubtitleLanguage.entries) {
-            val pool = downloads.filter { it.language == language }
-            if (pool.isEmpty()) continue
-            AppLog.d("选定语言 %s，共 %d 份候选可比时长", language, pool.size)
-            val picked = pickByDuration(pool, videoDurationMs, onStage)
-            if (picked != null) return picked
-            AppLog.d("%s 的候选全部下载失败，退到下一种语言", language)
-        }
-        return null
-    }
-
-    /** 逐个打开候选页，把可用语言全部收集起来；单页失败只跳过这一页。 */
-    private suspend fun resolveAll(
-        candidates: List<SubtitleCandidate>,
-        onStage: suspend (SubtitleDownloadStage) -> Unit,
-    ): List<SubtitleDownload> {
-        val downloads = mutableListOf<SubtitleDownload>()
-        candidates.forEachIndexed { index, candidate ->
-            onStage(SubtitleDownloadStage.Resolving(index = index + 1, total = candidates.size))
-            downloads += resolve(candidate)
-        }
-        return downloads
-    }
-
-    /**
-     * 在同一种语言的候选里挑与视频时长最贴合的一份。
-     *
-     * 差值落在容差内就采用并停止（按站点热度顺序，越靠前越热门）；都不在容差内时把该语言的候选
-     * 全部下载完再取误差最小的——「差太多才继续看下一个」就是这个意思。
-     * 视频时长未知（或字幕里没有时间戳）无法比较，直接用第一份。
-     */
-    private suspend fun pickByDuration(
-        pool: List<SubtitleDownload>,
-        videoDurationMs: Long,
-        onStage: suspend (SubtitleDownloadStage) -> Unit,
-    ): DownloadedSubtitle? {
-        val toleranceMs = alignmentToleranceMs(videoDurationMs)
-        var closest: DownloadedSubtitle? = null
-        for ((index, subtitle) in pool.withIndex()) {
-            onStage(
-                SubtitleDownloadStage.Downloading(
-                    index = index + 1,
-                    total = pool.size,
-                    language = subtitle.language,
-                )
+        val bytes = fetch(subtitle) ?: return SubtitleCandidateResult.Unavailable(candidate)
+        val diffMs = durationDiffMs(bytes, videoDurationMs)
+        AppLog.d(
+            "候选可用：%s（%s），与视频时长差 %s ms",
+            candidate.title,
+            subtitle.language,
+            diffMs,
+        )
+        return SubtitleCandidateResult.Available(
+            DownloadedSubtitle(
+                candidate = candidate,
+                subtitle = subtitle,
+                bytes = bytes,
+                durationDiffMs = diffMs,
+                isRecommended =
+                    diffMs != null && abs(diffMs) <= alignmentToleranceMs(videoDurationMs),
             )
-            val bytes = fetch(subtitle) ?: continue
-            cache.save(subtitle, bytes)
-            val result = DownloadedSubtitle(subtitle, bytes, durationDiffMs(bytes, videoDurationMs))
-            val diffMs = result.durationDiffMs
-            if (diffMs == null) {
-                AppLog.d("视频时长未知，直接采用第 %d 份候选（%s）", index + 1, subtitle.language)
-                return result
-            }
-            if (diffMs <= toleranceMs) {
-                AppLog.d(
-                    "采用第 %d 份候选（%s）：与视频时长差 %d ms，在容差 %d ms 内",
-                    index + 1,
-                    subtitle.language,
-                    diffMs,
-                    toleranceMs,
-                )
-                return result
-            }
-            AppLog.d(
-                "第 %d 份候选（%s）与视频时长差 %d ms，超出容差 %d ms，继续看下一份",
-                index + 1,
-                subtitle.language,
-                diffMs,
-                toleranceMs,
-            )
-            if (closest == null || (closest?.durationDiffMs ?: Long.MAX_VALUE) > diffMs) {
-                closest = result
-            }
-        }
-        if (closest != null) {
-            AppLog.d(
-                "都不在容差 %d ms 内，取误差最小的一份：差 %s ms",
-                toleranceMs,
-                closest?.durationDiffMs,
-            )
-        }
-        return closest
+        )
     }
 
     private suspend fun search(keyword: String): List<SubtitleCandidate> =
@@ -161,11 +98,30 @@ constructor(
             null
         }
 
-    /** 字幕最后时间点与视频时长的差；视频时长未知或字幕里没有时间戳时返回 null（视为不比较）。 */
+    /**
+     * 字幕最后时间点与视频时长的差，**带符号**：负数表示字幕比视频短。
+     *
+     * 视频时长未知（服务端没给 runtime）时返回 null，界面显示「未知」。
+     *
+     * 上界取「视频时长 + [MAX_TOLERANCE_MS]」：字幕文件末尾常有工具加的签名 cue，时间码是假的
+     * （实测 `23:59:58,000` 的 WhisperJAV 签名行），按它算会得到「字幕比视频长 20 小时」。
+     * 超出上界的时间戳一律忽略，取上界内最晚的那个；全都超出（时间轴完全对不上）时返回 null。
+     */
     private fun durationDiffMs(bytes: ByteArray, videoDurationMs: Long): Long? {
         if (videoDurationMs <= 0) return null
-        val endMs = SubtitleTiming.lastTimestampMillis(String(bytes, Charsets.UTF_8)) ?: return null
-        return abs(endMs - videoDurationMs)
+        val text = String(bytes, Charsets.UTF_8)
+        val upperBoundMs = videoDurationMs + MAX_TOLERANCE_MS
+        val endMs = SubtitleTiming.lastTimestampMillis(text, upperBoundMs) ?: return null
+        val rawEndMs = SubtitleTiming.lastTimestampMillis(text)
+        if (rawEndMs != null && rawEndMs > upperBoundMs) {
+            AppLog.d(
+                "字幕末尾时间点 %d ms 超出视频时长上界 %d ms，已忽略，按 %d ms 计",
+                rawEndMs,
+                upperBoundMs,
+                endMs,
+            )
+        }
+        return endMs - videoDurationMs
     }
 
     /**
@@ -181,7 +137,7 @@ constructor(
             .coerceIn(MIN_TOLERANCE_MS, MAX_TOLERANCE_MS)
 
     private companion object {
-        /** 最多看前 5 个搜索结果，再多也只是把时间耗在翻页上。 */
+        /** 最多列出前 5 个搜索结果，再多也只是把时间耗在翻页上。 */
         const val MAX_CANDIDATES = 5
 
         /** 容差占视频时长的比例。 */

@@ -277,13 +277,6 @@ fun MovieScreen(
                 // 字幕已落到服务器，弹窗使命结束
                 moreDialog = null
             }
-            is MovieEvent.SubtitleNotFound ->
-                Toast.makeText(
-                        context,
-                        context.getString(CoreR.string.subtitle_not_found),
-                        Toast.LENGTH_LONG,
-                    )
-                    .show()
             is MovieEvent.SubtitleDownloadFailed ->
                 showFailureToast(CoreR.string.subtitle_download_failed, event.error)
         }
@@ -458,12 +451,17 @@ fun MovieScreen(
                 defaultKeyword = state.defaultScrapeKeyword,
                 proxy = state.scrapeProxy,
                 stage = state.subtitleDownloadStage,
+                candidates = state.subtitleCandidates,
+                searchFoundNothing = state.subtitleSearchFoundNothing,
                 onProxyChange = { address ->
                     viewModel.onAction(MovieAction.UpdateScrapeProxy(address = address))
                 },
                 onConfirm = { keyword ->
-                    // 弹窗保持打开：下完直接上传，进度就地显示，成功后由事件关掉
+                    // 弹窗保持打开：候选边下边列，用户在列表里自己挑一条上传，成功后由事件关掉
                     viewModel.onAction(MovieAction.DownloadSubtitle(keyword = keyword))
+                },
+                onUpload = { candidate ->
+                    viewModel.onAction(MovieAction.UploadSubtitle(candidate = candidate))
                 },
                 onCancel = { viewModel.onAction(MovieAction.CancelSubtitleDownload) },
                 onDismiss = {

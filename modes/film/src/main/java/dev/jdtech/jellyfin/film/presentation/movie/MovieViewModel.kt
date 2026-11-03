@@ -14,6 +14,9 @@ import dev.jdtech.jellyfin.core.scraper.ScraperSite
 import dev.jdtech.jellyfin.core.scraper.SiteImageScrapeResult
 import dev.jdtech.jellyfin.core.scraper.SiteMetadataScrapeResult
 import dev.jdtech.jellyfin.core.scraper.toItemMetadataEdit
+import dev.jdtech.jellyfin.core.subtitle.DownloadedSubtitle
+import dev.jdtech.jellyfin.core.subtitle.SubtitleCandidate
+import dev.jdtech.jellyfin.core.subtitle.SubtitleCandidateResult
 import dev.jdtech.jellyfin.core.subtitle.SubtitleDownloadStage
 import dev.jdtech.jellyfin.core.subtitle.SubtitleDownloader
 import dev.jdtech.jellyfin.core.translator.MetadataTranslator
@@ -93,8 +96,14 @@ constructor(
     /** 正在跑的图片抓取任务，用户取消时直接 cancel 掉。 */
     private var imageScrapeJob: Job? = null
 
-    /** 正在跑的字幕下载任务（含上传），用户取消时直接 cancel 掉。 */
+    /** 正在跑的候选搜索 / 下载任务，用户选定上传或取消时直接 cancel 掉。 */
     private var subtitleDownloadJob: Job? = null
+
+    /** 正在跑的字幕上传任务。 */
+    private var subtitleUploadJob: Job? = null
+
+    /** 已下载的候选字幕（按候选定位），只留在内存里；上传成功或取消后即丢弃。 */
+    private var downloadedSubtitles: Map<SubtitleCandidate, DownloadedSubtitle> = emptyMap()
 
     /**
      * 本轮抓取里分类 / 标签翻译的连续失败次数，达到上限后本批不再请求引擎（归一照常执行）。
@@ -326,42 +335,121 @@ constructor(
             is MovieAction.DownloadSubtitle -> {
                 downloadSubtitle(action.keyword)
             }
+            is MovieAction.UploadSubtitle -> {
+                uploadSubtitle(action.candidate)
+            }
             is MovieAction.CancelSubtitleDownload -> {
-                subtitleDownloadJob?.cancel()
-                subtitleDownloadJob = null
+                cancelSubtitleDownload()
             }
             else -> Unit
         }
     }
 
     /**
-     * 下载字幕并上传到服务器。
+     * 搜索字幕并逐条下载候选，把结果流式写进 [MovieState.subtitleCandidates]。
      *
-     * 挑选规则（比时长、优先繁简）在 [SubtitleDownloader] 里，这里只负责状态与上传：
-     * 视频时长取条目的运行时长，服务端没给时传 0，由下载器跳过时长比较、直接用第一个候选。
-     * 找不到可用字幕时弹窗保持打开（阶段回到 null），用户可以改关键词重试。
+     * 语言优先级与时长容差判据都在 [SubtitleDownloader] 里，这里只负责状态与（用户选定后的）上传。
+     * 视频时长取条目的运行时长，服务端没给时传 0，由下载器跳过时长比较（界面显示「未知」）。
      */
     private fun downloadSubtitle(keyword: String) {
-        if (keyword.isBlank() || subtitleDownloadJob?.isActive == true) return
+        if (keyword.isBlank()) return
+        subtitleDownloadJob?.cancel()
+        subtitleUploadJob?.cancel()
+        subtitleUploadJob = null
+        downloadedSubtitles = emptyMap()
         subtitleDownloadJob =
             viewModelScope.launch {
                 _state.emit(
-                    _state.value.copy(subtitleDownloadStage = SubtitleDownloadStage.Searching)
+                    _state.value.copy(
+                        subtitleDownloadStage = SubtitleDownloadStage.Searching,
+                        subtitleCandidates = emptyList(),
+                        subtitleSearchFoundNothing = false,
+                    )
                 )
                 try {
-                    val videoDurationMs =
-                        _state.value.movie?.runtimeTicks?.div(TICKS_PER_MILLISECOND) ?: 0L
-                    val downloaded =
-                        subtitleDownloader.download(keyword, videoDurationMs) { stage ->
-                            _state.emit(_state.value.copy(subtitleDownloadStage = stage))
-                        }
-                    if (downloaded == null) {
-                        eventsChannel.send(MovieEvent.SubtitleNotFound)
-                        return@launch
-                    }
-                    _state.emit(
-                        _state.value.copy(subtitleDownloadStage = SubtitleDownloadStage.Uploading)
+                    subtitleDownloader
+                        .download(keyword, videoDurationMs())
+                        .collect { result -> handleSubtitleResult(result) }
+                } catch (e: CancellationException) {
+                    AppLog.d("字幕搜索已取消：%s", keyword)
+                    throw e
+                } catch (e: Exception) {
+                    AppLog.e(e, "搜索 / 下载字幕失败：%s", movieId)
+                    eventsChannel.send(MovieEvent.SubtitleDownloadFailed(e))
+                    _state.emit(_state.value.copy(subtitleDownloadStage = null))
+                }
+            }
+    }
+
+    /** 把下载器的流式结果落到候选列表上：先铺标题，再逐条填状态。 */
+    private suspend fun handleSubtitleResult(result: SubtitleCandidateResult) {
+        when (result) {
+            is SubtitleCandidateResult.Found ->
+                _state.emit(
+                    _state.value.copy(
+                        subtitleDownloadStage = null,
+                        // 搜索一回来就把标题铺出来，右侧先显示下载中，不等任何一条下完
+                        subtitleCandidates =
+                            result.candidates.map { SubtitleCandidateState.Loading(it) },
+                        subtitleSearchFoundNothing = result.candidates.isEmpty(),
                     )
+                )
+            is SubtitleCandidateResult.Available -> {
+                val downloaded = result.subtitle
+                downloadedSubtitles = downloadedSubtitles + (downloaded.candidate to downloaded)
+                _state.emit(
+                    _state.value.copy(
+                        subtitleCandidates =
+                            _state.value.subtitleCandidates.map { item ->
+                                if (item.candidate == downloaded.candidate) {
+                                    SubtitleCandidateState.Ready(
+                                        candidate = downloaded.candidate,
+                                        language = downloaded.subtitle.language,
+                                        durationDiffMs = downloaded.durationDiffMs,
+                                        isRecommended = downloaded.isRecommended,
+                                    )
+                                } else {
+                                    item
+                                }
+                            }
+                    )
+                )
+            }
+            is SubtitleCandidateResult.Unavailable ->
+                _state.emit(
+                    _state.value.copy(
+                        subtitleCandidates =
+                            _state.value.subtitleCandidates.map { item ->
+                                if (item.candidate == result.candidate) {
+                                    SubtitleCandidateState.Unavailable(result.candidate)
+                                } else {
+                                    item
+                                }
+                            }
+                    )
+                )
+        }
+    }
+
+    /**
+     * 上传用户选中的候选字幕。
+     *
+     * 用户已经做出选择，剩余候选的下载随即取消（见 [SubtitleDownloadStage.Uploading]）。
+     * 失败时列表与已下载的字节都保留：只解禁按钮，用户可重试或改选别的。
+     */
+    private fun uploadSubtitle(candidate: SubtitleCandidate) {
+        val downloaded = downloadedSubtitles[candidate] ?: return
+        if (subtitleUploadJob?.isActive == true) return
+        subtitleDownloadJob?.cancel()
+        subtitleDownloadJob = null
+        subtitleUploadJob =
+            viewModelScope.launch {
+                _state.emit(
+                    _state.value.copy(
+                        subtitleDownloadStage = SubtitleDownloadStage.Uploading(candidate)
+                    )
+                )
+                try {
                     repository.uploadSubtitle(
                         itemId = movieId,
                         subtitleBytes = downloaded.bytes,
@@ -375,22 +463,46 @@ constructor(
                         downloaded.bytes.size,
                         downloaded.durationDiffMs,
                     )
-                    eventsChannel.send(
-                        MovieEvent.SubtitleUploaded(downloaded.subtitle.language)
-                    )
+                    eventsChannel.send(MovieEvent.SubtitleUploaded(downloaded.subtitle.language))
+                    // 上传成功由事件关掉弹窗，这里把字幕相关状态清回关键词输入
+                    resetSubtitleSelection()
                     // 重新拉一次条目，让播放源里带上刚上传的字幕轨
                     loadMovie(movieId)
                 } catch (e: CancellationException) {
-                    AppLog.d("字幕下载已取消：%s", keyword)
+                    AppLog.d("字幕上传已取消：%s", candidate.title)
                     throw e
                 } catch (e: Exception) {
-                    AppLog.e(e, "下载 / 上传字幕失败：%s", movieId)
+                    AppLog.e(e, "上传字幕失败：%s", movieId)
                     eventsChannel.send(MovieEvent.SubtitleDownloadFailed(e))
-                } finally {
                     _state.emit(_state.value.copy(subtitleDownloadStage = null))
                 }
             }
     }
+
+    /** 中断字幕的搜索 / 剩余下载 / 上传，回到关键词输入状态。 */
+    private fun cancelSubtitleDownload() {
+        subtitleDownloadJob?.cancel()
+        subtitleDownloadJob = null
+        subtitleUploadJob?.cancel()
+        subtitleUploadJob = null
+        downloadedSubtitles = emptyMap()
+        viewModelScope.launch { resetSubtitleSelection() }
+    }
+
+    private suspend fun resetSubtitleSelection() {
+        downloadedSubtitles = emptyMap()
+        _state.emit(
+            _state.value.copy(
+                subtitleDownloadStage = null,
+                subtitleCandidates = emptyList(),
+                subtitleSearchFoundNothing = false,
+            )
+        )
+    }
+
+    /** 视频时长（毫秒）；服务端没给 runtime 时返回 0，表示未知、不比较时长。 */
+    private fun videoDurationMs(): Long =
+        _state.value.movie?.runtimeTicks?.div(TICKS_PER_MILLISECOND) ?: 0L
 
     /**
      * 加载外网短评。

@@ -2,6 +2,7 @@ package dev.jdtech.jellyfin.film.presentation.movie
 
 import dev.jdtech.jellyfin.core.scraper.ScrapedImage
 import dev.jdtech.jellyfin.core.scraper.ScraperSite
+import dev.jdtech.jellyfin.core.subtitle.SubtitleCandidate
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.models.ItemMetadataEdit
@@ -92,11 +93,14 @@ sealed interface MovieAction {
     data object ReloadComments : MovieAction
 
     /**
-     * 以 [keyword]（通常是番号）为关键词到字幕站搜索并下载字幕，挑与视频时长最贴合的那份，
-     * 下载后上传到服务器。
+     * 以 [keyword]（通常是番号）为关键词到字幕站搜索，把候选逐条列出来并各自下载、
+     * 算出与视频时长的差，等用户在列表里手选。
      */
     data class DownloadSubtitle(val keyword: String) : MovieAction
 
-    /** 用户中途取消了字幕下载。 */
+    /** 上传用户在候选列表里选中的那条字幕；[candidate] 同时用来定位列表里的行。 */
+    data class UploadSubtitle(val candidate: SubtitleCandidate) : MovieAction
+
+    /** 用户关掉弹窗或中途取消了字幕下载：中断搜索、剩余下载与上传。 */
     data object CancelSubtitleDownload : MovieAction
 }
