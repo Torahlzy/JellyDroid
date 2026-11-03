@@ -22,6 +22,7 @@ class PlayerMenuDialogFragment(
     private val viewModel: PlayerViewModel,
     private val onCaptureBackdrop: (() -> Unit)?,
     private val onSubtitleAdjust: (() -> Unit)? = null,
+    private val onDownloadSubtitle: (() -> Unit)? = null,
 ) : DialogFragment() {
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
@@ -29,6 +30,7 @@ class PlayerMenuDialogFragment(
             listOfNotNull(
                 R.string.select_subtitle_track to { showTrackSelection(C.TRACK_TYPE_TEXT) },
                 onSubtitleAdjust?.let { R.string.player_menu_subtitle_adjust to it },
+                onDownloadSubtitle?.let { R.string.player_menu_download_subtitle to it },
                 R.string.select_playback_speed to { showSpeedSelection() },
                 R.string.select_audio_track to { showTrackSelection(C.TRACK_TYPE_AUDIO) },
                 onCaptureBackdrop?.let { R.string.player_menu_capture_backdrop to it },

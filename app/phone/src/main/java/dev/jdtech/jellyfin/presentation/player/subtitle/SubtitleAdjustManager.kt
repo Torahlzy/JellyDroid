@@ -11,6 +11,7 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import dev.jdtech.jellyfin.R
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.player.local.R as PlayerR
 import dev.jdtech.jellyfin.player.local.mpv.MPVPlayer
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
@@ -130,6 +131,23 @@ class SubtitleAdjustManager(
     fun detach() {
         player.removeListener(this)
         playerView.removeOnLayoutChangeListener(layoutListener)
+    }
+
+    /**
+     * 隐藏 / 恢复真实字幕轨的渲染。
+     *
+     * 播放页的字幕对照面板打开时要关掉它：面板已经铺了 5 行，底部再来一行真实字幕会堆成 6 行。
+     * 两条后端走各自的开关：ExoPlayer 侧在 [DelayedSubtitleView] 里抑制转发，mpv 侧写 `sub-visibility`。
+     */
+    fun setRealSubtitleVisible(visible: Boolean) {
+        AppLog.d(
+            "真实字幕轨渲染：%s（exo 视图 %s，后端 %s）",
+            if (visible) "恢复" else "隐藏",
+            if (delayedSubtitleView != null) "有" else "无",
+            if (player is MPVPlayer) "mpv" else "exoplayer",
+        )
+        delayedSubtitleView?.isSuppressed = !visible
+        (player as? MPVPlayer)?.setSubtitleVisible(visible)
     }
 
     // 进入 / 退出调节模式 -----------------------------------------------------------------------

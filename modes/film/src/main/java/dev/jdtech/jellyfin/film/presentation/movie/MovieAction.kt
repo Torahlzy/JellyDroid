@@ -103,4 +103,11 @@ sealed interface MovieAction {
 
     /** 用户关掉弹窗或中途取消了字幕下载：中断搜索、剩余下载与上传。 */
     data object CancelSubtitleDownload : MovieAction
+
+    /**
+     * 把已下载好的候选落盘成对照快照，进播放器边看边比（二期）。
+     *
+     * 不在此上传任何字幕；上传要等用户在对照面板里点「应用」并二次确认。
+     */
+    data object PrepareSubtitleCompare : MovieAction
 }

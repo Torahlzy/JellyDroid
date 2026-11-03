@@ -35,15 +35,21 @@ import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerControlView
 import androidx.media3.ui.PlayerView
 import dagger.hilt.android.AndroidEntryPoint
+import dev.jdtech.jellyfin.core.subtitle.SubtitleCompareCache
+import dev.jdtech.jellyfin.core.subtitle.SubtitleDownloadController
 import dev.jdtech.jellyfin.databinding.ActivityPlayerBinding
 import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.player.local.R as PlayerR
 import dev.jdtech.jellyfin.player.local.presentation.PlayerEvents
 import dev.jdtech.jellyfin.player.local.presentation.PlayerViewModel
 import dev.jdtech.jellyfin.presentation.player.PlayerMenuDialogFragment
+import dev.jdtech.jellyfin.presentation.player.subtitle.PlayerSubtitleDownloadDialogHost
 import dev.jdtech.jellyfin.presentation.player.subtitle.SubtitleAdjustManager
 import dev.jdtech.jellyfin.presentation.player.subtitle.SubtitleAdjustOverlay
+import dev.jdtech.jellyfin.presentation.player.subtitle.SubtitleCompareOverlay
+import dev.jdtech.jellyfin.presentation.player.subtitle.SubtitlePlaybackCoordinator
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
+import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.utils.PlayerGestureHelper
 import dev.jdtech.jellyfin.utils.PreviewScrubListener
@@ -62,12 +68,28 @@ class PlayerActivity : BasePlayerActivity() {
     companion object {
         /** 指定播放条目下的哪个来源（多版本时由用户选择），未携带该 extra 时由播放器按默认规则挑选。 */
         const val EXTRA_MEDIA_SOURCE_INDEX = "mediaSourceIndex"
+
+        /**
+         * 开播后直接打开字幕对照面板（候选已由详情页落盘）。
+         *
+         * 同一部影片已在播放时只开面板、不重开视频，否则播放进度会被重置。
+         */
+        const val EXTRA_OPEN_SUBTITLE_COMPARE = "openSubtitleCompare"
     }
 
     @Inject lateinit var appPreferences: AppPreferences
+    @Inject lateinit var repository: JellyfinRepository
+
+    /** 播放页自己的一份字幕下载状态机（**不是单例**，与详情页互不干扰）。 */
+    @Inject lateinit var subtitleController: SubtitleDownloadController
+    @Inject lateinit var subtitleCompareCache: SubtitleCompareCache
 
     lateinit var binding: ActivityPlayerBinding
     private lateinit var subtitleAdjustManager: SubtitleAdjustManager
+
+    /** 「下载字幕 + 字幕对照」的编排：实现细节都在这个类里，本 Activity 只做装配与生命周期接线。 */
+    private lateinit var subtitleCoordinator: SubtitlePlaybackCoordinator
+
     private var playerGestureHelper: PlayerGestureHelper? = null
     override val viewModel: PlayerViewModel by viewModels()
     private var previewScrubListener: PreviewScrubListener? = null
@@ -108,6 +130,7 @@ class PlayerActivity : BasePlayerActivity() {
         // 未携带来源索引（-1）时置为 null，交给播放器按默认规则选源
         val mediaSourceIndex =
             intent.extras!!.getInt(EXTRA_MEDIA_SOURCE_INDEX, -1).takeIf { index -> index >= 0 }
+        val openSubtitleCompare = consumeOpenSubtitleCompareExtra()
 
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -122,6 +145,37 @@ class PlayerActivity : BasePlayerActivity() {
             FindroidTheme {
                 SubtitleAdjustOverlay(subtitleAdjustManager)
             }
+        }
+
+        subtitleCoordinator =
+            SubtitlePlaybackCoordinator(
+                context = this,
+                scope = lifecycleScope,
+                player = viewModel.player,
+                appPreferences = appPreferences,
+                repository = repository,
+                subtitleController = subtitleController,
+                compareCache = subtitleCompareCache,
+                subtitleAdjustManager = subtitleAdjustManager,
+                hidePlayerController = { binding.playerView.hideController() },
+                currentPlayerItemId = { viewModel.currentItemId },
+                reloadWithExternalSubtitle = { uri, label, language ->
+                    viewModel.reloadCurrentItemWithExternalSubtitle(uri, label, language)
+                },
+            )
+        binding.subtitleCompareOverlay.setContent {
+            FindroidTheme {
+                SubtitleCompareOverlay(
+                    manager = subtitleCoordinator.compareManager,
+                    onApply = subtitleCoordinator::confirmApplyCompare,
+                    onClose = { subtitleCoordinator.closeComparePanel() },
+                )
+            }
+        }
+        // 与另外两个覆盖层一致套 FindroidTheme：否则弹窗会用 M3 默认配色（浅色），
+        // 与详情页里同一个弹窗的外观不一致
+        binding.subtitleDialogOverlay.setContent {
+            FindroidTheme { PlayerSubtitleDownloadDialogHost(subtitleCoordinator) }
         }
         binding.playerView.setControllerVisibilityListener(
             PlayerView.ControllerVisibilityListener { visibility ->
@@ -153,12 +207,13 @@ class PlayerActivity : BasePlayerActivity() {
             finishPlayback()
         }
 
-        // 系统返回键：调节模式开着时先关闭它（等同「关闭」=取消），再按一次才退出播放器
+        // 系统返回键优先级：对照面板 > 字幕调节模式 > 退出播放器；
+        // 调节模式关闭等同「关闭」=取消
         onBackPressedDispatcher.addCallback(this) {
-            if (subtitleAdjustManager.state.value.isAdjustMode) {
-                subtitleAdjustManager.close()
-            } else {
-                finishPlayback()
+            when {
+                subtitleCoordinator.isCompareShowing -> subtitleCoordinator.closeComparePanel()
+                subtitleAdjustManager.state.value.isAdjustMode -> subtitleAdjustManager.close()
+                else -> finishPlayback()
             }
         }
 
@@ -249,6 +304,20 @@ class PlayerActivity : BasePlayerActivity() {
                 }
 
                 launch {
+                    // 对照面板跟随播放：发现播放器内部切集 + 每 150ms 重算各行 cue。
+                    // 放在 repeatOnLifecycle(STARTED) 里，进后台即停，不白烧电
+                    subtitleCoordinator.playbackLoop()
+                }
+
+                launch {
+                    subtitleCoordinator.observeSubtitleEvents()
+                }
+
+                launch {
+                    subtitleCoordinator.observeCompareUpdates()
+                }
+
+                launch {
                     viewModel.eventsChannelFlow.collect { event ->
                         when (event) {
                             is PlayerEvents.NavigateBack -> finishPlayback()
@@ -308,13 +377,10 @@ class PlayerActivity : BasePlayerActivity() {
         }
 
         menuButton.setOnClickListener {
-            // 离线模式下没有可写的服务器，截图设封面必然失败，直接不提供该入口
-            val onCaptureBackdrop: (() -> Unit)? =
-                if (appPreferences.getValue(appPreferences.offlineMode)) {
-                    null
-                } else {
-                    ::captureBackdrop
-                }
+            // 离线模式下没有可写的服务器：截图设封面与上传字幕都必然失败，不提供这两个入口
+            // （与详情页的「更多」菜单一致，那里离线模式整块隐藏）
+            val isOffline = appPreferences.getValue(appPreferences.offlineMode)
+            val onCaptureBackdrop: (() -> Unit)? = if (isOffline) null else ::captureBackdrop
             PlayerMenuDialogFragment(
                 viewModel,
                 onCaptureBackdrop,
@@ -323,6 +389,8 @@ class PlayerActivity : BasePlayerActivity() {
                     binding.playerView.hideController()
                     subtitleAdjustManager.enterAdjustMode()
                 },
+                onDownloadSubtitle =
+                    if (isOffline) null else subtitleCoordinator::showDownloadDialog,
             ).show(supportFragmentManager, "playermenudialog")
         }
 
@@ -363,6 +431,10 @@ class PlayerActivity : BasePlayerActivity() {
             mediaSourceIndex = mediaSourceIndex,
         )
         hideSystemUI()
+
+        // 进播放页就把字幕关键词识别好（等用户打开「下载字幕」时输入框里已有番号）；
+        // 详情页点了「播放视频时对比」则直接把对照面板铺出来（不上传任何字幕）
+        subtitleCoordinator.onPlaybackStarted(itemId, openSubtitleCompare)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -374,6 +446,13 @@ class PlayerActivity : BasePlayerActivity() {
         val startFromBeginning = intent.extras!!.getBoolean("startFromBeginning")
         val mediaSourceIndex =
             intent.extras!!.getInt(EXTRA_MEDIA_SOURCE_INDEX, -1).takeIf { index -> index >= 0 }
+        val openSubtitleCompare = consumeOpenSubtitleCompareExtra()
+
+        // 同一部影片只开对照面板、不重开视频：否则播放进度会被重置
+        if (openSubtitleCompare && itemId == viewModel.currentItemId) {
+            subtitleCoordinator.openComparePanel(itemId)
+            return
+        }
 
         viewModel.initializePlayer(
             itemId = itemId,
@@ -381,6 +460,18 @@ class PlayerActivity : BasePlayerActivity() {
             startFromBeginning = startFromBeginning,
             mediaSourceIndex = mediaSourceIndex,
         )
+        // 换了一部影片：字幕目标条目与关键词跟着换，「播放视频时对比」则直接铺面板
+        subtitleCoordinator.onPlaybackStarted(itemId, openSubtitleCompare)
+    }
+
+    /** 读一次并清掉「打开对照面板」标记：旋转屏幕 / 重入时不该再开一次。 */
+    private fun consumeOpenSubtitleCompareExtra(): Boolean {
+        val extras = intent.extras ?: return false
+        val requested = extras.getBoolean(EXTRA_OPEN_SUBTITLE_COMPARE)
+        if (requested) {
+            intent.removeExtra(EXTRA_OPEN_SUBTITLE_COMPARE)
+        }
+        return requested
     }
 
     override fun onUserLeaveHint() {
@@ -399,6 +490,10 @@ class PlayerActivity : BasePlayerActivity() {
         // 播放器即将销毁，摘掉字幕管理器对 Player 的监听，避免泄漏
         if (::subtitleAdjustManager.isInitialized) {
             subtitleAdjustManager.detach()
+        }
+        // 字幕下载状态与对照快照的收尾（清内存状态 + 后台删快照）都在编排类里
+        if (this::subtitleCoordinator.isInitialized) {
+            subtitleCoordinator.release()
         }
         super.onDestroy()
     }
@@ -587,6 +682,10 @@ class PlayerActivity : BasePlayerActivity() {
                 wasZoom = playerGestureHelper?.isZoomEnabled == true
                 playerGestureHelper?.updateZoomMode(false)
 
+                // 对照面板是 Compose 覆盖层，会跟着进小窗：整个隐藏并恢复真实字幕轨，
+                // 小窗里仍有字幕可看。缓存保留，退出小窗后可以重新打开
+                subtitleCoordinator.onEnterPictureInPicture()
+
                 // Brightness mode Auto
                 window.attributes =
                     window.attributes.apply {
@@ -600,6 +699,8 @@ class PlayerActivity : BasePlayerActivity() {
 
                 // 画中画期间交给系统自动亮度，退出后重新应用记住的亮度
                 playerGestureHelper?.restoreSavedBrightness()
+
+                subtitleCoordinator.onExitPictureInPicture()
             }
         }
     }

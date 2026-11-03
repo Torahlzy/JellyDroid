@@ -29,6 +29,7 @@
     <string name="player_backdrop_set_failed">Failed to set the backdrop</string>
     <string name="player_backdrop_frame_unavailable">The video frame is not ready yet</string>
     <string name="player_menu_subtitle_adjust">Subtitle settings</string>
+    <string name="player_menu_download_subtitle">Download subtitles</string>
     <string name="subtitle_adjust_font_size">Font size</string>
     <string name="subtitle_adjust_size_minus" translatable="false">A−</string>
     <string name="subtitle_adjust_size_plus" translatable="false">A+</string>

@@ -8,8 +8,13 @@ package dev.jdtech.jellyfin.core.subtitle
  */
 internal object SubtitleTiming {
 
-    /** 兼容 SRT / VTT 的 `HH:MM:SS,mmm` / `HH:MM:SS.mmm` 与 ASS 的 `H:MM:SS.cc`。 */
-    private val TIMESTAMP = Regex("""(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})""")
+    /**
+     * 兼容 SRT / VTT 的 `HH:MM:SS,mmm` / `HH:MM:SS.mmm` 与 ASS 的 `H:MM:SS.cc`。
+     *
+     * 对 [SubtitleCueParser] 也可见：解析每条 cue 的起止时间要用的就是这一份正则，
+     * 不要再复制第二套（两处不一致时会出现「时长判断用一套、取句用另一套」的错位）。
+     */
+    internal val TIMESTAMP = Regex("""(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})""")
 
     /**
      * 正文里不超过 [maxMs] 的最晚时间点（毫秒）；一个时间戳都没有时返回 null。
@@ -19,16 +24,16 @@ internal object SubtitleTiming {
      * 「字幕比视频长 20 小时」这种荒唐结论。调用方按视频时长传上界，签名行就自然被忽略。
      */
     fun lastTimestampMillis(text: String, maxMs: Long = Long.MAX_VALUE): Long? =
-        TIMESTAMP.findAll(text)
-            .map { match ->
-                val (hours, minutes, seconds, fraction) = match.destructured
-                hours.toLong() * 3_600_000 +
-                    minutes.toLong() * 60_000 +
-                    seconds.toLong() * 1_000 +
-                    fractionToMillis(fraction)
-            }
-            .filter { it <= maxMs }
-            .maxOrNull()
+        TIMESTAMP.findAll(text).map(::timestampMillis).filter { it <= maxMs }.maxOrNull()
+
+    /** 把 [TIMESTAMP] 的一次匹配换算成毫秒。 */
+    internal fun timestampMillis(match: MatchResult): Long {
+        val (hours, minutes, seconds, fraction) = match.destructured
+        return hours.toLong() * 3_600_000 +
+            minutes.toLong() * 60_000 +
+            seconds.toLong() * 1_000 +
+            fractionToMillis(fraction)
+    }
 
     /** 小数位可能是 1~3 位：1 位是十分之一秒，2 位（ASS 的厘秒）是百分之一秒。 */
     private fun fractionToMillis(fraction: String): Long =

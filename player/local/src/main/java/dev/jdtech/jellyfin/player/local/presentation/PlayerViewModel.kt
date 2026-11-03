@@ -3,6 +3,7 @@ package dev.jdtech.jellyfin.player.local.presentation
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.widget.Toast
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -11,6 +12,8 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -20,6 +23,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.FindroidSegment
 import dev.jdtech.jellyfin.models.FindroidSegmentType
+import dev.jdtech.jellyfin.player.core.domain.models.ExternalSubtitle
 import dev.jdtech.jellyfin.player.core.domain.models.PlayerChapter
 import dev.jdtech.jellyfin.player.core.domain.models.PlayerItem
 import dev.jdtech.jellyfin.player.core.domain.models.Trickplay
@@ -102,6 +106,16 @@ constructor(
     var playbackSpeed: Float = 1f
 
     var isInPictureInPictureMode: Boolean = false
+
+    /**
+     * 正在为「应用对照字幕」重载当前条目。
+     *
+     * 重载期间暂停进度上报：重载会把播放位置短暂清零，此时上报会把服务器上的观看进度冲回开头。
+     */
+    private var isReloadingForSubtitle: Boolean = false
+
+    /** 重载标记的兜底时长：超过它还没到 READY 就强制恢复进度上报（见 [reloadCurrentItemWithExternalSubtitle]）。 */
+    private val reloadFlagTimeoutMs = 15_000L
 
     init {
         segmentsSkipButton = appPreferences.getValue(appPreferences.playerMediaSegmentsSkipButton)
@@ -237,9 +251,10 @@ constructor(
         }
     }
 
-    private fun PlayerItem.toMediaItem(): MediaItem {
+    private fun PlayerItem.toMediaItem(extraSubtitle: ExternalSubtitle? = null): MediaItem {
         val streamUrl = mediaSourceUri
-        val mediaSubtitles = externalSubtitles.map { externalSubtitle ->
+        val allSubtitles = externalSubtitles + listOfNotNull(extraSubtitle)
+        val mediaSubtitles = allSubtitles.map { externalSubtitle ->
             MediaItem.SubtitleConfiguration.Builder(externalSubtitle.uri)
                 .setLabel(
                     externalSubtitle.title.ifBlank { application.getString(R.string.external) }
@@ -260,6 +275,53 @@ constructor(
 
         return mediaItem
     }
+
+    /**
+     * 把 [uri] 处的侧载字幕注入当前条目并重新 prepare（ExoPlayer 后端）。
+     *
+     * 为什么是重载而不是切轨：字幕已在服务器上，但服务器重新索引的时机不确定，
+     * 等它的新 `MediaStream` 出现不可控；用本地缓存文件重新 prepare 才能确定地立即生效。
+     * 代价是一次短暂的重载（转圈），因此要显式保住播放位置与播放状态，
+     * 并在重载期间暂停进度上报（[isReloadingForSubtitle]）。
+     */
+    fun reloadCurrentItemWithExternalSubtitle(uri: Uri, label: String, language: String) {
+        val mediaId = player.currentMediaItem?.mediaId ?: return
+        val item = items.firstOrNull { it.itemId.toString() == mediaId } ?: return
+        val position = player.currentPosition
+        val wasPlaying = player.playWhenReady
+        val extraSubtitle =
+            ExternalSubtitle(
+                title = label,
+                language = language,
+                uri = uri,
+                mimeType = subtitleMimeType(uri),
+            )
+        isReloadingForSubtitle = true
+        player.replaceMediaItem(
+            player.currentMediaItemIndex,
+            item.toMediaItem(extraSubtitle = extraSubtitle),
+        )
+        player.prepare()
+        player.seekTo(position)
+        player.playWhenReady = wasPlaying
+        // 兜底：正常路径由 STATE_READY / onPlayerError 复位，但重载可能被新的播放指令打断，
+        // 两种回调都不来；那时标记一直为 true 会让进度上报永久停摆
+        viewModelScope.launch {
+            delay(reloadFlagTimeoutMs)
+            if (isReloadingForSubtitle) {
+                isReloadingForSubtitle = false
+                AppLog.w("侧载字幕重载超时未就绪，已恢复进度上报")
+            }
+        }
+        AppLog.d("已注入侧载字幕并重载当前条目：%s（%s）", label, language)
+    }
+
+    /** 侧载字幕的 MIME 类型：只收 srt / vtt（与字幕站的下载格式一致），其余按 srt 兜底。 */
+    private fun subtitleMimeType(uri: Uri): String =
+        when (uri.lastPathSegment?.substringAfterLast('.', "")?.lowercase()) {
+            "vtt" -> MimeTypes.TEXT_VTT
+            else -> MimeTypes.APPLICATION_SUBRIP
+        }
 
     @OptIn(DelicateCoroutinesApi::class)
     private fun releasePlayer() {
@@ -291,6 +353,7 @@ constructor(
     }
 
     fun updatePlaybackProgress() {
+        if (isReloadingForSubtitle) return
         AppLog.d("Updating playback progress")
         viewModelScope.launch(Dispatchers.Main) {
             savedStateHandle["position"] = player.currentPosition
@@ -357,6 +420,12 @@ constructor(
     }
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+        // 注入侧载字幕会原地替换当前 MediaItem，进而触发一次条目切换。这里必须跳过：
+        // 否则会重复 postPlaybackStart、重拉 segments / trickplay，并往播放列表里再插一遍上 / 下一集
+        if (isReloadingForSubtitle) {
+            AppLog.d("重载侧载字幕中，跳过条目切换处理：${mediaItem?.mediaId}")
+            return
+        }
         AppLog.d("Playing MediaItem: ${mediaItem?.mediaId}")
         savedStateHandle["mediaItemIndex"] = player.currentMediaItemIndex
         viewModelScope.launch {
@@ -459,6 +528,7 @@ constructor(
             ExoPlayer.STATE_READY -> {
                 stateString = "ExoPlayer.STATE_READY     -"
                 _uiState.update { it.copy(fileLoaded = true) }
+                isReloadingForSubtitle = false
             }
             ExoPlayer.STATE_ENDED -> {
                 stateString = "ExoPlayer.STATE_ENDED     -"
@@ -466,6 +536,13 @@ constructor(
             }
         }
         AppLog.d("Changed player state to $stateString")
+    }
+
+    override fun onPlayerError(error: PlaybackException) {
+        super.onPlayerError(error)
+        AppLog.e(error, "播放出错")
+        // 重载失败时不会再到 STATE_READY，这里必须把标记清掉，否则进度上报会一直停着
+        isReloadingForSubtitle = false
     }
 
     override fun onCleared() {

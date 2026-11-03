@@ -212,6 +212,13 @@
     <string name="subtitle_language_simplified">Simplified Chinese</string>
     <string name="subtitle_language_traditional">Traditional Chinese</string>
     <string name="subtitle_language_english">English</string>
+    <string name="subtitle_compare_entry">Compare while playing</string>
+    <string name="subtitle_compare_apply">Apply</string>
+    <string name="subtitle_compare_apply_confirm_title">Upload and apply this subtitle?</string>
+    <!-- 二次确认正文：%1$s 是候选标题，%2$s 是语言；必须写明会覆盖服务器上同语言的旧字幕 -->
+    <string name="subtitle_compare_apply_confirm_message">The %2$s subtitle of “%1$s” will be uploaded and switched to as the current subtitle track. An existing subtitle in the same language on the server will be overwritten.</string>
+    <string name="subtitle_compare_close">Close</string>
+    <string name="subtitle_compare_cache_missing">Local subtitles are gone, please download again</string>
     <string name="movie_comments_title">Short reviews</string>
     <string name="movie_comments_empty">No short reviews yet</string>
     <string name="movie_comments_no_keyword">Cannot identify the movie number, short reviews are unavailable</string>
