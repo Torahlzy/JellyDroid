@@ -195,12 +195,20 @@
     <string name="scrape_proxy_entry">Proxy: %1$s</string>
     <string name="scrape_proxy_unset">Not set</string>
     <string name="subtitle_searching">Searching subtitles…</string>
-    <string name="subtitle_reading_candidate">Checking candidate %1$d/%2$d…</string>
-    <string name="subtitle_trying_candidate">Trying candidate %1$d/%2$d (%3$s)</string>
-    <string name="subtitle_uploading">Uploading subtitle to the server…</string>
     <string name="subtitle_uploaded">Subtitle uploaded (%1$s)</string>
-    <string name="subtitle_not_found">No Simplified Chinese / Traditional Chinese / English subtitle found</string>
-    <string name="subtitle_download_failed">Subtitle download failed: %1$s</string>
+    <string name="subtitle_download_failed">Subtitle request failed: %1$s</string>
+    <string name="subtitle_candidate_unavailable">Unavailable</string>
+    <string name="subtitle_candidate_unknown_duration">Unknown</string>
+    <string name="subtitle_candidate_recommended">Recommended</string>
+    <!-- 时长本身：%1$d 为分钟数，%2$d 为秒数 -->
+    <string name="subtitle_candidate_duration_seconds">%1$d s</string>
+    <string name="subtitle_candidate_duration_minutes">%1$d min %2$d s</string>
+    <!-- 字幕比视频短 / 长：%1$s 是时长（如「27 s」「3 min 12 s」） -->
+    <string name="subtitle_candidate_shorter">%1$s shorter than video</string>
+    <string name="subtitle_candidate_longer">%1$s longer than video</string>
+    <string name="subtitle_candidate_length_matched">Same length as video</string>
+    <string name="subtitle_uploading_candidate">Uploading…</string>
+    <string name="subtitle_no_candidates">No usable subtitle found</string>
     <string name="subtitle_language_simplified">Simplified Chinese</string>
     <string name="subtitle_language_traditional">Traditional Chinese</string>
     <string name="subtitle_language_english">English</string>

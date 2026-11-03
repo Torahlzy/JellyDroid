@@ -1,22 +1,22 @@
 package dev.jdtech.jellyfin.core.subtitle
 
+import kotlinx.coroutines.flow.Flow
+
 /**
- * 按关键词找一份「配得上这部片子」的字幕。
+ * 到字幕站按关键词找候选，并把每条候选处理成「可直接上传的一份字幕」。
  *
- * 两条规则，**语言优先于时长**：先按简体 > 繁体 > 英文定下语言（一个简体候选都没有才退到繁体），
- * 再在该语言的候选里比「字幕最后时间点」与视频时长挑最贴合的一份。
- * 时长不符只用来在同语言内排序，不会让实现改用另一种语言。
+ * 语言优先级在**每条候选内部**生效（简体 > 繁体 > 英文）：用户看得到每条候选实际能拿到的语言，
+ * 自己决定用哪条，因此这里不再跨候选统一降档。
  */
 interface SubtitleDownloader {
     /**
-     * 搜索并下载 [keyword] 的字幕，返回挑中的那一份；站点上没有可用的中英文一字幕时返回 null。
+     * 搜索 [keyword] 并按站点顺序逐条处理候选，依次发出：
+     * 1. [SubtitleCandidateResult.Found]：候选标题列表（可能为空），界面据此立刻把列表铺出来；
+     * 2. 每条候选处理完发一次 [SubtitleCandidateResult.Available] 或
+     *    [SubtitleCandidateResult.Unavailable]，先处理完的先发。
      *
-     * [videoDurationMs] 为视频时长（毫秒），小于等于 0 表示未知，此时不比较时长、直接用第一个候选。
-     * [onStage] 在每一步开始时回调，供界面显示进度。
+     * [videoDurationMs] 为视频时长（毫秒），小于等于 0 表示未知，此时不算时长差（结果为 null）。
+     * 收集方取消即中断剩余候选的处理。
      */
-    suspend fun download(
-        keyword: String,
-        videoDurationMs: Long,
-        onStage: suspend (SubtitleDownloadStage) -> Unit,
-    ): DownloadedSubtitle?
+    fun download(keyword: String, videoDurationMs: Long): Flow<SubtitleCandidateResult>
 }

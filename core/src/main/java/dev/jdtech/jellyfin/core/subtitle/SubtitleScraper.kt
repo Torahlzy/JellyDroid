@@ -4,7 +4,7 @@ package dev.jdtech.jellyfin.core.subtitle
  * 外部字幕站的搜索 / 解析 / 下载。
  *
  * 拆成三步而不是一个方法：搜索结果可能有好几条，每条要打开详情页才知道有哪些语言，
- * 由调用方（[SubtitleDownloader]）先把候选页都解析出来，再按语言优先级与时长挑选。
+ * 由调用方（[SubtitleDownloader]）逐条解析出一条结果发给界面，再交用户决定用哪条。
  */
 interface SubtitleScraper {
     /** 站点名称，用于拼失败原因与日志。 */

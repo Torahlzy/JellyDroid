@@ -38,12 +38,9 @@ sealed interface MovieEvent {
      */
     data class MetadataTranslateFailed(val error: Exception) : MovieEvent
 
-    /** 字幕已下载并上传到服务器，[language] 为实际采用的那份语言。 */
+    /** 字幕已下载并上传到服务器，[language] 为用户选中的那份的语言。 */
     data class SubtitleUploaded(val language: SubtitleLanguage) : MovieEvent
 
-    /** 字幕站上没有可用的简体 / 繁体 / 英文字幕。 */
-    data object SubtitleNotFound : MovieEvent
-
-    /** 字幕下载或上传失败，[error] 用于向用户展示失败原因。 */
+    /** 字幕搜索或上传失败，[error] 用于向用户展示失败原因。 */
     data class SubtitleDownloadFailed(val error: Exception) : MovieEvent
 }

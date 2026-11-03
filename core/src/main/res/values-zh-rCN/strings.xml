@@ -195,12 +195,20 @@
     <string name="scrape_proxy_entry">代理：%1$s</string>
     <string name="scrape_proxy_unset">未设置</string>
     <string name="subtitle_searching">正在搜索字幕…</string>
-    <string name="subtitle_reading_candidate">正在读取第 %1$d/%2$d 个候选…</string>
-    <string name="subtitle_trying_candidate">正在尝试第 %1$d/%2$d 个候选（%3$s）</string>
-    <string name="subtitle_uploading">正在上传字幕到服务器…</string>
     <string name="subtitle_uploaded">字幕已上传（%1$s）</string>
-    <string name="subtitle_not_found">没有找到简体 / 繁体 / 英文字幕</string>
-    <string name="subtitle_download_failed">下载字幕失败：%1$s</string>
+    <string name="subtitle_download_failed">字幕操作失败：%1$s</string>
+    <string name="subtitle_candidate_unavailable">不可用</string>
+    <string name="subtitle_candidate_unknown_duration">未知</string>
+    <string name="subtitle_candidate_recommended">推荐</string>
+    <!-- 时长本身：%1$d 为分钟数，%2$d 为秒数 -->
+    <string name="subtitle_candidate_duration_seconds">%1$d 秒</string>
+    <string name="subtitle_candidate_duration_minutes">%1$d 分 %2$d 秒</string>
+    <!-- 字幕比视频短 / 长：%1$s 是时长（如「27 秒」「3 分 12 秒」） -->
+    <string name="subtitle_candidate_shorter">字幕短 %1$s</string>
+    <string name="subtitle_candidate_longer">字幕长 %1$s</string>
+    <string name="subtitle_candidate_length_matched">与视频等长</string>
+    <string name="subtitle_uploading_candidate">上传中…</string>
+    <string name="subtitle_no_candidates">没找到可用字幕</string>
     <string name="subtitle_language_simplified">简体中文</string>
     <string name="subtitle_language_traditional">繁体中文</string>
     <string name="subtitle_language_english">英文</string>
