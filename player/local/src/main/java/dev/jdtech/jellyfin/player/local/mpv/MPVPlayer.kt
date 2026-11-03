@@ -2,6 +2,7 @@ package dev.jdtech.jellyfin.player.local.mpv
 
 import android.content.Context
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.Surface
@@ -564,6 +565,28 @@ class MPVPlayer(
         }
         val pos = (100.0 * (1f - bottomOffsetPx.toFloat() / screenHeightPx)).coerceIn(0.0, 100.0)
         mpvLib.setPropertyDouble("sub-pos", pos)
+    }
+
+    /**
+     * 显示 / 隐藏字幕渲染（写 sub-visibility）。
+     *
+     * 播放页的字幕对照面板打开时要关掉真实字幕轨：面板已经铺了 5 行，
+     * 底部再来一行真实字幕会在画面上堆成 6 行。退出面板时恢复。
+     */
+    fun setSubtitleVisible(visible: Boolean) {
+        mpvLib.setPropertyString("sub-visibility", if (visible) "yes" else "no")
+    }
+
+    /**
+     * 侧载一份外部字幕并立即选为当前字幕轨。
+     *
+     * 上传到服务器后不等服务器把新字幕流发回来（重新索引的时机不确定），直接用本地缓存文件生效，
+     * 下次播放时服务器上的轨道自然会出现。`select` 标志就是「加进来并切到它」。
+     */
+    fun addExternalSubtitle(fileUri: Uri, label: String, language: String) {
+        // mpv 对本地文件既接受裸路径也接受 file:// URI；裸路径少一层解析，优先用它
+        val path = if (fileUri.scheme == "file") fileUri.path.orEmpty() else fileUri.toString()
+        mpvLib.command(arrayOf("sub-add", path, "select", label, language))
     }
 
     // Timeline wrapper

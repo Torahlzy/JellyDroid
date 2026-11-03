@@ -53,8 +53,27 @@ constructor(
     /** 还没渲染的待播 Cue 组，null 表示当前没有挂起的渲染。 */
     private var pending: Pair<Runnable, List<Cue>>? = null
 
+    /**
+     * 抑制渲染的开关：为 true 时收到的 Cue 一律丢弃并清空画面。
+     *
+     * 播放页的字幕对照面板打开时置 true —— 面板本身已经铺了 5 行，
+     * 底部再来一行真实字幕会在画面上堆成 6 行。退出面板时置回 false。
+     */
+    var isSuppressed: Boolean = false
+        set(value) {
+            if (field == value) {
+                return
+            }
+            field = value
+            if (value) {
+                clearPending()
+                subtitleView.setCues(emptyList())
+            }
+        }
+
     /** 由 SubtitleAdjustManager 在收到 onCues 时调用，替代 PlayerView 的内部转发。 */
     fun setCues(cues: List<Cue>) {
+        if (isSuppressed) return
         if (delayMs == 0L) {
             clearPending()
             subtitleView.setCues(cues)

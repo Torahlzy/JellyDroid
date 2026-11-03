@@ -14,12 +14,24 @@
         app:animation_enabled="false"
         app:show_buffering="always" />
 
+    <!-- 字幕对照覆盖层（最多 5 行同屏对照），只在打开对照面板时组合内容 -->
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/subtitle_compare_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
     <!-- 字幕调节模式覆盖层（拖动手柄 + 调节面板），只在进入调节模式时显示 -->
     <androidx.compose.ui.platform.ComposeView
         android:id="@+id/subtitle_adjust_overlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="gone" />
+
+    <!-- 下载字幕弹窗的宿主：内容为空时不组合任何东西，不拦截触摸 -->
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/subtitle_dialog_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
     <LinearLayout
         android:id="@+id/progress_scrubber_layout"

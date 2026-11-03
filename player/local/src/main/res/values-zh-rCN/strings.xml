@@ -30,6 +30,7 @@
     <string name="player_backdrop_set_failed">设置横屏封面失败</string>
     <string name="player_backdrop_frame_unavailable">视频画面尚未就绪，请稍后再试</string>
     <string name="player_menu_subtitle_adjust">字幕设置</string>
+    <string name="player_menu_download_subtitle">下载字幕</string>
     <string name="subtitle_adjust_font_size">字号</string>
     <string name="subtitle_adjust_text_opacity">字体透明度</string>
     <string name="subtitle_adjust_offset">字幕进度</string>

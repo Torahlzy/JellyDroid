@@ -65,6 +65,7 @@ import dev.jdtech.jellyfin.core.presentation.downloader.DownloaderState
 import dev.jdtech.jellyfin.core.presentation.downloader.DownloaderViewModel
 import dev.jdtech.jellyfin.core.presentation.dummy.dummyMovie
 import dev.jdtech.jellyfin.core.presentation.dummy.dummyVideoMetadata
+import dev.jdtech.jellyfin.core.presentation.subtitle.labelRes
 import dev.jdtech.jellyfin.film.presentation.actorimage.ActorImageScrapeAction
 import dev.jdtech.jellyfin.film.presentation.actorimage.ActorImageScrapeEvent
 import dev.jdtech.jellyfin.film.presentation.actorimage.ActorImageScrapeViewModel
@@ -96,7 +97,6 @@ import dev.jdtech.jellyfin.presentation.film.components.ScrapeProgressDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScraperUrlsDialog
 import dev.jdtech.jellyfin.presentation.film.components.SubtitleDownloadDialog
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
-import dev.jdtech.jellyfin.presentation.film.components.labelRes
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.Motion
 import dev.jdtech.jellyfin.presentation.theme.spacings
@@ -147,6 +147,9 @@ fun MovieScreen(
     var showPlaybackSourceDialog by rememberSaveable { mutableStateOf(false) }
     // 记住本次点击是「从头播放」还是「继续播放」，选完版本后照此启动播放器
     var playFromBeginningAfterSelect by rememberSaveable { mutableStateOf(false) }
+    // 上次开播用的来源下标（null = 交给播放器按默认规则挑）；「播放视频时对比」必须原样带上它，
+    // 否则会在另一个版本上开对照面板
+    var lastPlayedSourceIndex by rememberSaveable { mutableStateOf<Int?>(null) }
 
     // nfo 抓取流程的两个弹窗：先输关键词，再显示进度；进度弹窗叠在编辑 nfo 弹窗之上
     var showScrapeKeywordDialog by rememberSaveable { mutableStateOf(false) }
@@ -279,6 +282,19 @@ fun MovieScreen(
             }
             is MovieEvent.SubtitleDownloadFailed ->
                 showFailureToast(CoreR.string.subtitle_download_failed, event.error)
+            is MovieEvent.SubtitleCompareReady -> {
+                // 快照已落盘：走独立关闭路径，不经过 onDismiss 里的「取消字幕下载」；
+                // 然后带对照标记开播放器，并用上次开播的那个来源，避免播成另一个版本
+                moreDialog = null
+                startPlayer(
+                    context = context,
+                    itemId = movieId,
+                    itemKind = BaseItemKind.MOVIE,
+                    startFromBeginning = false,
+                    mediaSourceIndex = lastPlayedSourceIndex,
+                    openSubtitleCompare = true,
+                )
+            }
         }
     }
 
@@ -323,6 +339,7 @@ fun MovieScreen(
                         playFromBeginningAfterSelect = action.startFromBeginning
                         showPlaybackSourceDialog = true
                     } else {
+                        lastPlayedSourceIndex = null
                         startPlayer(
                             context = context,
                             itemId = movieId,
@@ -450,9 +467,9 @@ fun MovieScreen(
             SubtitleDownloadDialog(
                 defaultKeyword = state.defaultScrapeKeyword,
                 proxy = state.scrapeProxy,
-                stage = state.subtitleDownloadStage,
-                candidates = state.subtitleCandidates,
-                searchFoundNothing = state.subtitleSearchFoundNothing,
+                stage = state.subtitleDownload.stage,
+                candidates = state.subtitleDownload.candidates,
+                searchFoundNothing = state.subtitleDownload.searchFoundNothing,
                 onProxyChange = { address ->
                     viewModel.onAction(MovieAction.UpdateScrapeProxy(address = address))
                 },
@@ -468,6 +485,8 @@ fun MovieScreen(
                     moreDialog = null
                     viewModel.onAction(MovieAction.CancelSubtitleDownload)
                 },
+                readyCount = state.subtitleDownload.readyCount,
+                onCompare = { viewModel.onAction(MovieAction.PrepareSubtitleCompare) },
             )
         null -> Unit
     }
@@ -498,6 +517,7 @@ fun MovieScreen(
             sources = state.playbackSources,
             onSelect = { index ->
                 showPlaybackSourceDialog = false
+                lastPlayedSourceIndex = index
                 startPlayer(
                     context = context,
                     itemId = movieId,
@@ -1125,11 +1145,16 @@ private fun startPlayer(
     itemKind: BaseItemKind,
     startFromBeginning: Boolean,
     mediaSourceIndex: Int?,
+    /** 开播后直接打开字幕对照面板（候选已由详情页落盘）；不再重置播放进度。 */
+    openSubtitleCompare: Boolean = false,
 ) {
     val intent = Intent(context, PlayerActivity::class.java)
     intent.putExtra("itemId", itemId.toString())
     intent.putExtra("itemKind", itemKind.serialName)
     intent.putExtra("startFromBeginning", startFromBeginning)
     mediaSourceIndex?.let { intent.putExtra(PlayerActivity.EXTRA_MEDIA_SOURCE_INDEX, it) }
+    if (openSubtitleCompare) {
+        intent.putExtra(PlayerActivity.EXTRA_OPEN_SUBTITLE_COMPARE, true)
+    }
     context.startActivity(intent)
 }

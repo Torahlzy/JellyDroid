@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-11-02**
+**最后更新：2026-11-04**
 
 ---
 
@@ -212,7 +212,7 @@ else -> WelcomeRoute
 
 ### MovieScreen — 电影详情
 
-- **职责**：加载影片元数据 / 视频信息 / 演员，演员长按菜单支持获取头像与复制完整演员名，提供播放、预告、标记已看、收藏、下载、跳转演员、点击类型 / 标签跳到对应筛选结果页，以及「更多」菜单（编辑封面 / 编辑 nfo / 下载字幕 / 删除全部 / 抓取网址），并处理离线模式（离线时类型 / 标签不可点）。信息行的类型 / 标签取值由 `PHONE/presentation/film/components/InfoText.kt` 渲染，点击经 `MovieAction.NavigateToGenre` / `NavigateToTag` → `PHONE/NavigationRoot.kt` 的 `navigateToMetadataFacet` 跳转 `ItemFilterRoute`。
+- **职责**：加载影片元数据 / 视频信息 / 演员，演员长按菜单支持获取头像与复制完整演员名，提供播放、预告、标记已看、收藏、下载、跳转演员、点击类型 / 标签跳到对应筛选结果页，以及「更多」菜单（编辑封面 / 编辑 nfo / 下载字幕 / 删除全部 / 抓取网址），下载字幕弹窗可把已下好的候选带进播放器做同屏对照（带上上次播放的来源下标，避免在另一个版本上开面板），并处理离线模式（离线时类型 / 标签不可点，也不显示「更多」菜单）。信息行的类型 / 标签取值由 `PHONE/presentation/film/components/InfoText.kt` 渲染，点击经 `MovieAction.NavigateToGenre` / `NavigateToTag` → `PHONE/NavigationRoot.kt` 的 `navigateToMetadataFacet` 跳转 `ItemFilterRoute`。
 - **路由**：`MovieRoute(movieId, heroKey?)`，定义并注册于 `PHONE/NavigationRoot.kt`；`heroKey` 记录点击来源，普通列表为空时使用默认卡片 key。
 - **进场动画**：列表封面与详情页头部之间是共享元素 morph（普通卡片 key 为 `movie-hero-<movieId>`，首页 Banner / 继续观看 / 接下来 / 最新添加分别使用带来源的 key，避免同一电影同时出现在多个分区时互相抢占；经 `PHONE/presentation/utils/SharedTransition.kt` 的 `heroSharedBounds` 建立，两个转场作用域由 `PHONE/NavigationRoot.kt` 的 `SharedTransitionNavHost` / `SharedElementHost` 经 CompositionLocal 下发）；加载态为居中转圈，内容区块等进场转场（morph）结束后才组合并让标题 / 信息行 / 按钮栏 / 简介 / 演员行依次入场（`AppearingSection`），避免转场中途组合整页内容抢帧卡顿；详情页进入为淡入 + 轻微放大、返回反向收缩，转场参数在 `PHONE/NavigationRoot.kt`（全局 token 镜像在 `PHONE/presentation/theme/Motion.kt`）。
 - **评论区（外网短评）**：最下方为 `MovieCommentsSection.kt`，支持加载、失败重试、JavDB 登录态提示。数据访问与磁盘缓存位于 `CORE/comment/`；开关、代理和缓存策略来自设置页「网络 → 外网」。访客可见条数受站点账号权益限制，评论失败不影响详情页其它内容。失败原因是被站点拦截（Cloudflare，`ScraperException.SiteBlocked`，State 字段 `isCommentsSiteBlocked`）时额外提供「打开网页过盾」按钮，经 `NavigationRoot.kt` 的 `navigateToUnblock` 跳转 `JavDbUnblockRoute`。
@@ -229,11 +229,11 @@ else -> WelcomeRoute
   - `ScrapeActorImageDialog.kt`：「获取头像」弹窗，与人物列表页共用 `ActorImageScrapeViewModel`；演员长按菜单另有「复制演员名」。抓取支持并发搜索、逐站点展示结果、代理设置与取消，上传头像写入 Person 条目并覆盖原头像，需要服务器管理员权限。具体站点规则见 `CORE/scraper/ActorImageScraperImpl.kt`，站点不匹配或占位图不得上传。
   - `TranslateSettingsDialog.kt`：读写本机 OpenAI 兼容接口设置，可选翻译标题、简介、分类 / 标签及抓取后自动翻译；「翻译现有内容」只处理当前表单。实现位于 `CORE/translator/`：标题 / 简介由模型翻译，分类 / 标签优先使用内置词典与缓存、模型兜底；部分失败保留已成功的译文与原文，不覆盖用户未确认的服务器数据。
   - `ScrapeKeywordDialog.kt` / `ScrapeProgressDialog.kt`：nfo 抓取关键词与进度入口，预填识别出的番号，支持代理、逐站点结果和取消；取消后仍保留已成功结果。封面抓取不走此进度弹窗。
-  - `SubtitleDownloadDialog.kt`：「下载字幕」弹窗，一个弹窗两个阶段（关键词 + 代理入口 / 下载进度 + 取消），关键词与代理分别复用 `defaultScrapeKeyword` / `scrapeProxy`。实现位于 `CORE/subtitle/`：搜索 subtitlecat 前 5 个候选并读完每页可用语言，**先按简体 > 繁体 > 英文定语言**（有简体就绝不退到繁体），再在该语言内按「字幕最后时间点与视频时长之差」挑最贴合的一份（容差为时长的 2%，限 1~3 分钟，因为片尾长时间无台词时字幕最后时间点会早于视频结束），下载后经 `JellyfinRepository.uploadSubtitle` 上传服务器；临时文件落在 `cacheDir/subtitle_temp`，每次使用前清理 3 天前的文件。
+  - `SubtitleDownloadDialog.kt`：「下载字幕」弹窗，一个弹窗三个阶段（关键词 + 代理入口 / 搜索中 / 候选列表），关键词与代理分别复用 `defaultScrapeKeyword` / `scrapeProxy`。搜索与上传的状态机在 `CORE/subtitle/SubtitleDownloadController.kt`（`SubtitleDownloadState` / `SubtitleDownloadEvent`，详情页与播放页各注入一份、互不干扰），本弹窗与播放页菜单里的「下载字幕」共用同一套 UI：搜索 subtitlecat 前 5 个候选并读完每页可用语言，**先按简体 > 繁体 > 英文定语言**（有简体就绝不退到繁体），再在该语言内按「字幕最后时间点与视频时长之差」挑最贴合的一份（容差为时长的 2%，限 1~3 分钟，因为片尾长时间无台词时字幕最后时间点会早于视频结束），下载后经 `JellyfinRepository.uploadSubtitle` 上传服务器；临时文件落在 `cacheDir/subtitle_temp`，每次使用前清理 3 天前的文件。列表底部另有「播放视频时对比」入口（`MovieAction.PrepareSubtitleCompare` → `SubtitleDownloadEvent.CompareReady`），把已下好的候选落盘并带 Intent extra `openSubtitleCompare` 进播放器，见「字幕对照模式」。
   - 抓取实现集中在 `CORE/scraper/`，文字、封面与头像抓取共用站点解析和 HTTP 基础设施。站点地址优先取运行时配置，未配置则回退打包配置；封面按真实比例归类横图 / 竖图。Cookie、UA 和具体站点兼容规则以该目录源码为准，不在页面索引重复维护。
 - **ViewModel / State / Action / Event**：`FILM/presentation/movie/MovieViewModel.kt`、`FILM/presentation/movie/MovieState.kt`、`FILM/presentation/movie/MovieAction.kt`、`FILM/presentation/movie/MovieEvent.kt`；另使用 `CORE/presentation/downloader/DownloaderViewModel.kt` 与共享的 `FILM/presentation/actorimage/ActorImageScrapeViewModel.kt`（State / Action / Event 同层：`ActorImageScrapeState.kt` / `ActorImageScrapeAction.kt` / `ActorImageScrapeEvent.kt`，与人物列表页共用同一个 ViewModel（各页面一份实例），编排「获取头像」弹窗的抓取 / 上传 / 代理；人物 Id + 名字 + 是否已有头像由界面传入，上传成功后各自负责刷新自己的列表；抓取整体异常（非单站失败）时会给尚无结果的站点补一条失败原因，避免这些行一直停在转圈状态）。
-- **State 分组**：影片 / 播放源与演职员；封面和 nfo 的加载、编辑与错误；元数据 / 图片抓取的站点、结果、来源选择、代理与翻译；评论开关、关键词、列表、加载 / 错误及 JavDB 登录态；字幕下载阶段（`subtitleDownloadStage`）；派生本地 / 远程路径与文件名。完整字段以 `MovieState.kt` 为准。
-- **主要方法 / Action**：加载影片 / 图片 / nfo；播放、标记、导航、元数据与图片抓取 / 上传 / 删除、翻译、抓取网址、`ReloadComments`、字幕下载与上传（`DownloadSubtitle` / `CancelSubtitleDownload`）。成功 / 失败通过 `MovieEvent` 反馈，包括 `MetadataUpdated`、`MetadataUnchanged`、`MetadataTranslateFailed`、`SubtitleUploaded`、`SubtitleNotFound` 等；完整集合以 `MovieAction.kt` / `MovieEvent.kt` 为准。
+- **State 分组**：影片 / 播放源与演职员；封面和 nfo 的加载、编辑与错误；元数据 / 图片抓取的站点、结果、来源选择、代理与翻译；评论开关、关键词、列表、加载 / 错误及 JavDB 登录态；字幕下载整份状态（`subtitleDownload`，镜像自 `CORE/subtitle/SubtitleDownloadState.kt`）；派生本地 / 远程路径与文件名。完整字段以 `MovieState.kt` 为准。
+- **主要方法 / Action**：加载影片 / 图片 / nfo；播放、标记、导航、元数据与图片抓取 / 上传 / 删除、翻译、抓取网址、`ReloadComments`、字幕下载与上传（`DownloadSubtitle` / `CancelSubtitleDownload`）与进播放器对比（`PrepareSubtitleCompare`）。成功 / 失败通过 `MovieEvent` 反馈，包括 `MetadataUpdated`、`MetadataUnchanged`、`MetadataTranslateFailed`、`SubtitleUploaded`、`SubtitleCompareReady` 等；完整集合以 `MovieAction.kt` / `MovieEvent.kt` 为准。
 - **入口**：任意列表页点击 `FindroidMovie` 条目（`PHONE/NavigationRoot.kt`），如首页、媒体库、下载、收藏、合集、剧集 / 季 / 人物作品列表页。
 
 ### ShowScreen — 剧集详情
@@ -431,13 +431,13 @@ else -> WelcomeRoute
 
 ### PlayerActivity — 视频播放
 
-- **职责**：视频播放界面（传统 View + Media3 `PlayerView` / ExoPlayer），展示标题、章节，提供跳过片头 / 片尾、PiP、手势，以及右上角菜单（字幕 / 倍速 / 音轨 / 字幕设置 / 截取当前画面设为横屏封面）。字幕外观（字号 / 颜色 / 位置 / 偏移）的加载与应用委托给 `PHONE/presentation/player/subtitle/SubtitleAdjustManager.kt`。
-- **路由**：**无 NavHost 路由**，为独立 `Activity`（`class PlayerActivity : BasePlayerActivity()`）。
-- **Screen**：`PHONE/PlayerActivity.kt`；其中 `override val viewModel: PlayerViewModel by viewModels()`。菜单里的「截取当前画面设为横屏封面」由 `PlayerActivity.captureBackdrop()` 先经 `PlayerViewModel.hasBackdrop()` 确认服务器上没有 `BACKDROP`，再截帧上传（离线模式下不显示该菜单项）；截帧工具为 `PHONE/utils/VideoFrameCapture.kt`（`SurfaceView.captureFrameAsJpeg()`，PixelCopy + 按视频显示比例居中裁掉黑边 + JPEG 压缩）。
+- **职责**：视频播放界面（传统 View + Media3 `PlayerView` / ExoPlayer），展示标题、章节，提供跳过片头 / 片尾、PiP、手势，以及右上角菜单（字幕 / 字幕设置 / 下载字幕 / 倍速 / 音轨 / 截取当前画面设为横屏封面）。字幕外观（字号 / 颜色 / 位置 / 偏移）的加载与应用委托给 `PHONE/presentation/player/subtitle/SubtitleAdjustManager.kt`，字幕搜索 / 上传与多字幕同屏对照分别见「字幕下载」与「字幕对照模式」。
+- **路由**：**无 NavHost 路由**，为独立 `Activity`（`class PlayerActivity : BasePlayerActivity()`）；Intent extra `openSubtitleCompare` 表示开播后直接打开字幕对照面板（详情页「播放视频时对比」使用，读一次即清除；同一影片已在播放时只开面板、不重开视频，否则进度会被重置）。
+- **Screen**：`PHONE/PlayerActivity.kt`；其中 `override val viewModel: PlayerViewModel by viewModels()`。菜单里的「截取当前画面设为横屏封面」由 `PlayerActivity.captureBackdrop()` 先经 `PlayerViewModel.hasBackdrop()` 确认服务器上没有 `BACKDROP`，再截帧上传（离线模式下不显示该菜单项，同样不显示「下载字幕」）；截帧工具为 `PHONE/utils/VideoFrameCapture.kt`（`SurfaceView.captureFrameAsJpeg()`，PixelCopy + 按视频显示比例居中裁掉黑边 + JPEG 压缩）。
 - **ViewModel**：`PLAYER/presentation/PlayerViewModel.kt`。
 - **State 字段**（`UiState`，`PlayerViewModel.kt`）：`currentItemTitle`、`currentSegment`、`currentSkipButtonStringRes`、`currentTrickplay`、`currentChapters`、`fileLoaded`；事件流 `eventsChannelFlow`（`PlayerEvents`）。
-- **主要方法**：`initializePlayer(itemId, itemKind, startFromBeginning, mediaSourceIndex)`（`mediaSourceIndex` 由详情页「选择播放版本」经 Intent extra `mediaSourceIndex` 传入，为 `null` 时按默认规则选源）、`updatePlaybackProgress()`、`updateCurrentSegment()`、`switchToTrack()`、`selectSpeed()`、`skipSegment()`、`seekToNextChapter()`、`seekToPreviousChapter()`、`isLastChapter()`、`hasBackdrop(itemId)`、`setBackdrop(itemId, imageBytes)`；属性 `currentItemId`（当前播放条目的服务器 id，未开始播放时为 `null`）。
-- **辅助弹窗**（非页面）：`PHONE/presentation/player/PlayerMenuDialogFragment.kt`（右上角菜单，汇总字幕 / 字幕设置 / 倍速 / 音轨入口，并把截图设封面的动作回调给宿主 `PlayerActivity`）、`PHONE/presentation/player/SpeedSelectionDialogFragment.kt`、`PHONE/presentation/player/TrackSelectionDialogFragment.kt`，与 `PlayerActivity` 通过构造参数共享同一 `PlayerViewModel`。
+- **主要方法**：`initializePlayer(itemId, itemKind, startFromBeginning, mediaSourceIndex)`（`mediaSourceIndex` 由详情页「选择播放版本」经 Intent extra `mediaSourceIndex` 传入，为 `null` 时按默认规则选源）、`updatePlaybackProgress()`、`updateCurrentSegment()`、`reloadCurrentItemWithExternalSubtitle(uri, label, language)`（ExoPlayer 后端注入侧载字幕并重载当前条目，保住位置 / 播放状态并在重载期间暂停进度上报）、`switchToTrack()`、`selectSpeed()`、`skipSegment()`、`seekToNextChapter()`、`seekToPreviousChapter()`、`isLastChapter()`、`hasBackdrop(itemId)`、`setBackdrop(itemId, imageBytes)`；属性 `currentItemId`（当前播放条目的服务器 id，未开始播放时为 `null`，是字幕上传 / 侧载的依据）。
+- **辅助弹窗**（非页面）：`PHONE/presentation/player/PlayerMenuDialogFragment.kt`（右上角菜单，汇总字幕 / 字幕设置 / 下载字幕 / 倍速 / 音轨入口，并把截图设封面、打开下载字幕弹窗的动作回调给宿主 `PlayerActivity`）、`PHONE/presentation/player/SpeedSelectionDialogFragment.kt`、`PHONE/presentation/player/TrackSelectionDialogFragment.kt`，与 `PlayerActivity` 通过构造参数共享同一 `PlayerViewModel`。
 - **入口**：各详情页的播放动作（`MovieAction.Play`、`EpisodeAction.Play` 等）。
 
 ### 字幕调节模式（播放器内组件，非独立页面）
@@ -447,10 +447,22 @@ else -> WelcomeRoute
   - `PHONE/presentation/player/subtitle/SubtitleAdjustManager.kt`：状态与编排（State 数据类 + `MutableStateFlow`），监听视频尺寸变化计算默认位置（黑边放得下一行字幕时整条落进黑边、顶边贴视频底边；放不下时一半盖画面一半盖黑边、底边至少 15dp），把预览改动实时应用到两个后端，「应用 / 重置 / 关闭」的持久化语义也在这里。
   - `PHONE/presentation/player/subtitle/SubtitleAdjustOverlay.kt`：调节模式的全屏 Compose 覆盖层（挂载于 `activity_player.xml` 的 `ComposeView`），含垂直拖动手柄（按住拖动改变字幕底边距）。
   - `PHONE/presentation/player/subtitle/SubtitleAdjustPanel.kt`：紧凑悬浮设置卡（非弹窗），依附当前字幕区域——左侧、底边贴着字幕文字上方并随拖动跟随，调整时可同时看到字幕效果；内容为字号 / 字体透明度 / 进度偏移 / 重置 / 关闭 / 应用。
-  - `PHONE/presentation/player/subtitle/DelayedSubtitleView.kt`：字幕容器（内含真实 media3 `SubtitleView`；`SubtitleView` 是 final 不能继承），布局里刻意不放 `exo_subtitles` 让 `PlayerView` 跳过内部渲染，由 `SubtitleAdjustManager` 监听 `onCues` 转发进来、延迟 `setCues` 实现 ExoPlayer 后端的字幕延后；负偏移（提前）ExoPlayer 做不到，按 0 处理并提示。
-- **后端差异**：ExoPlayer 走 `SubtitleView`（`setFractionalTextSize` / `CaptionStyleCompat` / `setBottomPaddingFraction` / 延迟 `setCues`）；mpv 由 `PLAYER/mpv/MPVPlayer.kt` 的 `setSubtitleScale` / `setSubtitleColors` / `setSubtitleBottomOffset` / `setSubtitleDelay` 写 libmpv 属性（`sub-scale` / `sub-color` / `sub-border-color` / `sub-pos` / `sub-delay`），内嵌 ASS 字幕的字号 / 颜色调整可能不生效，应用时弹 toast 提示。
+  - `PHONE/presentation/player/subtitle/DelayedSubtitleView.kt`：字幕容器（内含真实 media3 `SubtitleView`；`SubtitleView` 是 final 不能继承），布局里刻意不放 `exo_subtitles` 让 `PlayerView` 跳过内部渲染，由 `SubtitleAdjustManager` 监听 `onCues` 转发进来、延迟 `setCues` 实现 ExoPlayer 后端的字幕延后；负偏移（提前）ExoPlayer 做不到，按 0 处理并提示。`isSuppressed` 为 true 时丢弃 cue 并清空画面（字幕对照模式打开时用）。
+- **后端差异**：ExoPlayer 走 `SubtitleView`（`setFractionalTextSize` / `CaptionStyleCompat` / `setBottomPaddingFraction` / 延迟 `setCues`）；mpv 由 `PLAYER/mpv/MPVPlayer.kt` 的 `setSubtitleScale` / `setSubtitleColors` / `setSubtitleBottomOffset` / `setSubtitleDelay` 写 libmpv 属性（`sub-scale` / `sub-color` / `sub-border-color` / `sub-pos` / `sub-delay`），内嵌 ASS 字幕的字号 / 颜色调整可能不生效，应用时弹 toast 提示。隐藏 / 恢复真实字幕轨与侧载新字幕也分两套：ExoPlayer 侧用 `DelayedSubtitleView.isSuppressed` 与重新 prepare（`PlayerViewModel.reloadCurrentItemWithExternalSubtitle`），mpv 侧写 `sub-visibility` 与 `sub-add <path> select <title> <lang>`（`MPVPlayer.setSubtitleVisible` / `MPVPlayer.addExternalSubtitle`）。
 - **持久化**：`SETTINGS/domain/models/SubtitleAppearance.kt`（外观 JSON 模型，目前仅字体不透明度）+ `SETTINGS/domain/AppPreferences.kt` 的 `subtitleAppearance` / `subtitleScales` / `subtitlePositions` / `subtitleOffsets` 四个偏好（后三个为 JSON map）。
 - **入口**：播放器菜单「字幕设置」（`PHONE/presentation/player/PlayerMenuDialogFragment.kt`）；锁屏状态下控制层不可见，自然不可达。
+
+### 字幕对照模式（播放器内组件，非独立页面）
+
+- **职责**：把下载好的多份候选字幕**同屏**叠在画面上逐条对照，最多 5 行，每行「序号 + 时长差 + 当前这句 + 应用」；文本随播放位置刷新，点「应用」二次确认后上传服务器并立即切换为当前字幕轨。为什么不用播放器自身的字幕轨：ExoPlayer 的一个 `TextRenderer` 只渲染一个 group，mpv 也只有 `sid` + `secondary-sid`，都撑不住 5 条，因此由 App 自己解析字幕、按播放位置取句。
+- **无路由 / 无 Screen / 无 ViewModel**：由 `PlayerActivity` 装配并接线，实现细节收拢在编排类里——
+  - `PHONE/presentation/player/subtitle/SubtitlePlaybackCoordinator.kt`：播放页「下载字幕（入口 B）+ 对照面板」的编排——弹窗与面板状态、状态机事件（上传后侧载切轨 / 失败提示 / 快照就绪开面板）、面板开关、目标条目与关键词跟随切集、对照快照生命周期（`release()`）、画中画收放。由 `PlayerActivity` 手动构造（非 Hilt 单例，依赖作用域与播放器随页面生灭），Activity 只留装配与生命周期接线；弹窗宿主为 `PHONE/presentation/player/subtitle/PlayerSubtitleDownloadDialogHost.kt`（与详情页共用 `SubtitleDownloadDialog`）。
+  - `PHONE/presentation/player/subtitle/SubtitleCompareManager.kt`：状态（`CompareState` / `CompareRow`）与取句；播放页每 150ms 调一次 `refresh()`，按「当前播放位置 − 已保存的字幕进度偏移」二分取句，行号与次序**固定不重排**（避免用户点错）。面板打开时通过 `SubtitleAdjustManager.setRealSubtitleVisible(false)` 关掉真实字幕轨，否则画面会堆成 6 行。
+  - `PHONE/presentation/player/subtitle/SubtitleCompareOverlay.kt`：全屏 Compose 覆盖层（`activity_player.xml` 的 `subtitle_compare_overlay`），每行独立 30% 黑蒙层圆角块（不整片压暗画面）、正文 18sp 最多两行、面板内 `fontScale` 锁 1、「关闭」固定在右上角且不参与行流。
+  - `CORE/subtitle/SubtitleCompareCache.kt`：快照落盘 `cacheDir/subtitle_compare/<itemId>/`（`manifest.json` + 按候选 `pageUrl` hash 命名的文件，先写 `.tmp` 再 rename）；`@Singleton`，`updates` 流让播放页在候选边下边比时增量补行；新一轮对比由 `SubtitleDownloadController.prepareCompare()` 先清空该目录，否则旧行号会按序合并进面板。
+  - `CORE/subtitle/SubtitleCueParser.kt`：解析 SRT / VTT 为按时间排序的 `SubtitleCue`，编码按 UTF-8 → GBK → Big5 严格解码兜底；时间戳正则复用 `CORE/subtitle/SubtitleTiming.kt`（Android 的 ICU 正则里花括号必须写成 `[{]` / `[}]`，否则类初始化直接抛异常）。
+- **两个入口**：A 详情页下载字幕弹窗底部的「播放视频时对比」（落盘后带 Intent extra `openSubtitleCompare` 进播放器）；B 播放页菜单「下载字幕」打开同一个弹窗后再点「播放视频时对比」。已在播放同一部影片时只开面板、不重开视频。
+- **生命周期**：进画中画隐藏面板并恢复真实字幕轨，退出小窗后重新打开（缓存保留）；关闭面板、应用成功、播放器内部切集、退出播放页都会删除对应条目的快照。上传成功（含一期弹窗里的「上传」）会立即侧载到当前播放器并切轨，不必等服务器重新索引。
 
 ---
 

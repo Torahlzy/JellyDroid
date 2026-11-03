@@ -212,6 +212,13 @@
     <string name="subtitle_language_simplified">簡體中文</string>
     <string name="subtitle_language_traditional">繁體中文</string>
     <string name="subtitle_language_english">英文</string>
+    <string name="subtitle_compare_entry">播放影片時對比</string>
+    <string name="subtitle_compare_apply">套用</string>
+    <string name="subtitle_compare_apply_confirm_title">上傳並套用這條字幕？</string>
+    <!-- 二次確認正文：%1$s 是候選標題，%2$s 是語言；必須寫明會覆蓋伺服器上同語言的舊字幕 -->
+    <string name="subtitle_compare_apply_confirm_message">將把「%1$s」的%2$s字幕上傳到伺服器並切換為目前字幕軌。伺服器上同語言的舊字幕會被覆蓋。</string>
+    <string name="subtitle_compare_close">關閉</string>
+    <string name="subtitle_compare_cache_missing">本機字幕已失效，請重新下載</string>
     <string name="movie_comments_title">短評</string>
     <string name="movie_comments_empty">暫無短評</string>
     <string name="movie_comments_no_keyword">未識別到番號，無法載入短評</string>

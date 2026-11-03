@@ -1,12 +1,9 @@
-package dev.jdtech.jellyfin.film.presentation.movie
-
-import dev.jdtech.jellyfin.core.subtitle.SubtitleCandidate
-import dev.jdtech.jellyfin.core.subtitle.SubtitleLanguage
+package dev.jdtech.jellyfin.core.subtitle
 
 /**
- * 字幕候选列表里的一条，按三态渲染：下载中 / 可用（可上传）/ 不可用。
+ * 字幕候选列表里的一条，按三态渲染：下载中 / 可用（可上传 / 可对照）/ 不可用。
  *
- * 下载到的字节不放在这里——界面不需要，由 ViewModel 按 [candidate] 存在内存里。
+ * 下载到的字节不放在这里——界面不需要，由 [SubtitleDownloadController] 按 [candidate] 存在内存里。
  */
 sealed interface SubtitleCandidateState {
     /** 站点给出的候选，同时用来把流式结果对回列表里的某一行。 */

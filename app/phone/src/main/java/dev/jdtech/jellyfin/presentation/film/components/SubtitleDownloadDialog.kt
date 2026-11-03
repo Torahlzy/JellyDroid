@@ -1,6 +1,5 @@
 package dev.jdtech.jellyfin.presentation.film.components
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,6 +20,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,14 +31,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.jdtech.jellyfin.core.R as CoreR
+import dev.jdtech.jellyfin.core.presentation.subtitle.labelRes
+import dev.jdtech.jellyfin.core.presentation.subtitle.subtitleDurationDiffText
 import dev.jdtech.jellyfin.core.subtitle.SubtitleCandidate
+import dev.jdtech.jellyfin.core.subtitle.SubtitleCandidateState
 import dev.jdtech.jellyfin.core.subtitle.SubtitleDownloadStage
 import dev.jdtech.jellyfin.core.subtitle.SubtitleLanguage
-import dev.jdtech.jellyfin.film.presentation.movie.SubtitleCandidateState
 import dev.jdtech.jellyfin.presentation.components.BaseDialog
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
-import kotlin.math.abs
 
 /**
  * 下载字幕弹窗，三个阶段共用一个弹窗：
@@ -62,9 +63,16 @@ fun SubtitleDownloadDialog(
     onUpload: (SubtitleCandidate) -> Unit,
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
+    /** 可对照的条数（已下到可用字幕）；为 0 时底部「播放视频时对比」禁用。 */
+    readyCount: Int = 0,
+    onCompare: () -> Unit = {},
 ) {
     var keyword by remember { mutableStateOf(defaultKeyword) }
     var showProxyDialog by remember { mutableStateOf(false) }
+    // 播放页的关键词要联网从来源路径识别，可能比弹窗晚到；用户还没输入时跟着补上
+    LaunchedEffect(defaultKeyword) {
+        if (keyword.isBlank()) keyword = defaultKeyword
+    }
     val isSearching = stage == SubtitleDownloadStage.Searching
     val uploadingCandidate = (stage as? SubtitleDownloadStage.Uploading)?.candidate
     // 候选已经搜出来就切换到列表，之后不再回到输入框（除非用户点「取消」）
@@ -94,13 +102,25 @@ fun SubtitleDownloadDialog(
             isSearching ->
                 SubtitleSearchingRow(modifier = Modifier.padding(contentPadding))
             showList ->
-                SubtitleCandidateList(
-                    candidates = candidates,
-                    uploadingCandidate = uploadingCandidate,
-                    onUpload = onUpload,
+                Column(
                     // weight 让列表只占内容需要的高度（条目多时再滚动），弹窗不会被撑满
-                    modifier = Modifier.weight(1f, fill = false).padding(contentPadding),
-                )
+                    modifier = Modifier.weight(1f, fill = false).padding(contentPadding)
+                ) {
+                    SubtitleCandidateList(
+                        candidates = candidates,
+                        uploadingCandidate = uploadingCandidate,
+                        onUpload = onUpload,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    // 入口 A：把已下好的候选带进播放器，5 条同屏边看边挑（不上传任何一条）
+                    TextButton(
+                        onClick = onCompare,
+                        enabled = readyCount > 0 && uploadingCandidate == null,
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text(text = stringResource(CoreR.string.subtitle_compare_entry))
+                    }
+                }
             else ->
                 SubtitleKeywordInput(
                     keyword = keyword,
@@ -256,7 +276,7 @@ private fun SubtitleCandidateRow(
                     }
                     // 时长差写成「字幕短 / 长多少」，只给 ±秒 用户分不清是字幕短还是视频短
                     Text(
-                        text = durationDiffText(item.durationDiffMs),
+                        text = subtitleDurationDiffText(item.durationDiffMs),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -291,47 +311,6 @@ private fun SubtitleCandidateRow(
         }
     }
 }
-
-/**
- * 时长差的说明文案：「字幕短 27 秒」/「字幕长 3 分 12 秒」。
- *
- * 不写成 ±秒：光看符号分不清是字幕比视频短，还是视频比字幕短。
- * 差值不足 1 秒视为与视频等长；视频时长未知或字幕里没有时间戳时显示「未知」。
- */
-@Composable
-private fun durationDiffText(diffMs: Long?): String {
-    if (diffMs == null) return stringResource(CoreR.string.subtitle_candidate_unknown_duration)
-    val absMs = abs(diffMs)
-    if (absMs < 1_000) return stringResource(CoreR.string.subtitle_candidate_length_matched)
-    val duration = durationText(absMs)
-    return if (diffMs < 0) {
-        stringResource(CoreR.string.subtitle_candidate_shorter, duration)
-    } else {
-        stringResource(CoreR.string.subtitle_candidate_longer, duration)
-    }
-}
-
-/** 时长本身的写法：不足 1 分钟只给秒，满 1 分钟给分 + 秒。 */
-@Composable
-private fun durationText(durationMs: Long): String {
-    val totalSeconds = durationMs / 1_000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return if (minutes == 0L) {
-        stringResource(CoreR.string.subtitle_candidate_duration_seconds, seconds)
-    } else {
-        stringResource(CoreR.string.subtitle_candidate_duration_minutes, minutes, seconds)
-    }
-}
-
-/** 语言在界面上的名字；同时供详情页的完成提示复用。 */
-@StringRes
-internal fun SubtitleLanguage.labelRes(): Int =
-    when (this) {
-        SubtitleLanguage.SIMPLIFIED_CHINESE -> CoreR.string.subtitle_language_simplified
-        SubtitleLanguage.TRADITIONAL_CHINESE -> CoreR.string.subtitle_language_traditional
-        SubtitleLanguage.ENGLISH -> CoreR.string.subtitle_language_english
-    }
 
 @Preview
 @Composable
