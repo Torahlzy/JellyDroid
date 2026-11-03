@@ -39,6 +39,7 @@ import dev.jdtech.jellyfin.R
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.SafePadding
+import dev.jdtech.jellyfin.presentation.utils.headerScaleForScroll
 import kotlin.math.roundToInt
 
 // 收起态与 ItemTopBar 的 IconButton 视觉圆片尺寸一致（40dp），飞过去后能接在顶栏按钮后面
@@ -67,6 +68,8 @@ private const val COLLAPSED_ICON_ALPHA = 0.7f
 fun ItemPlayButton(
     scrollState: ScrollState,
     headerHeightPx: Int,
+    /** 屏幕高度：头图吸顶时会等比缩小，锚点要跟着缩小后的高度走。 */
+    screenHeightPx: Int = 0,
     safePadding: SafePadding,
     /** 头图是否吸顶（不随页面滚动移出屏幕）：吸顶时展开锚点固定在头图中心。 */
     isHeaderPinned: Boolean = false,
@@ -148,8 +151,17 @@ fun ItemPlayButton(
                                 // 吸顶时头图不动，锚点也不能按滚动量上移，否则按钮会脱离封面漂移
                                 val scrollOffset =
                                     if (isHeaderPinned) 0f else scrollState.value.toFloat()
+                                // 吸顶时头图会等比缩小，锚点按缩小后的实际高度取中心，
+                                // 否则按钮会停在原尺寸的中心、缩小时逐渐飘出图片底边
+                                val headerScale =
+                                    headerScaleForScroll(
+                                        scrollPx = scrollState.value,
+                                        headerHeightPx = headerHeightPx,
+                                        screenHeightPx = screenHeightPx,
+                                        isHeaderPinned = isHeaderPinned,
+                                    )
                                 val expandedCy =
-                                    (topPx + headerHeightPx / 2f - scrollOffset)
+                                    (topPx + headerHeightPx * headerScale / 2f - scrollOffset)
                                         .coerceAtLeast(collapsedCyPx.toFloat())
                                 // 收起锚点：顶栏第三个按钮的圆心
                                 val collapsedCx =

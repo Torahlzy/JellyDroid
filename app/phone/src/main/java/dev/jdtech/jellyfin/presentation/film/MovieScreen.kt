@@ -53,7 +53,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import androidx.core.graphics.toColorInt
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -103,6 +102,8 @@ import dev.jdtech.jellyfin.presentation.theme.Motion
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.LocalNavAnimatedVisibilityScope
 import dev.jdtech.jellyfin.presentation.utils.LocalOfflineMode
+import dev.jdtech.jellyfin.presentation.utils.headerNeedsShrink
+import dev.jdtech.jellyfin.presentation.utils.headerScaleForScroll
 import dev.jdtech.jellyfin.presentation.utils.heroSharedBounds
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
 import dev.jdtech.jellyfin.utils.ObserveAsEvents
@@ -659,9 +660,11 @@ private fun MovieScreenLayout(
         showLoadingSpinner = state.movie == null
     }
 
-    // 头图吸顶仅在短评区块存在时启用：吸顶的视觉终点是「头图固定 + 短评占满下方一屏」，
-    // 没有短评时页面滚到底会只剩头图悬在顶部、下方一片空白，观感不对
-    val isHeaderPinned = state.commentsEnabled
+    // 头图吸顶有两种场景：
+    // ① 头图高过限高（横屏 / 平板）：缩小必须和吸顶同时成立，否则头图边缩边被页面带走（见 headerNeedsShrink）；
+    // ② 有短评区块：吸顶的视觉终点是「头图固定 + 短评占满下方一屏」。
+    // 竖屏手机头图不超过限高、又没有短评时不吸顶（否则页面滚到底只剩头图悬在顶部、下方一片空白）
+    val isHeaderPinned = state.commentsEnabled || headerNeedsShrink(headerHeightPx, screenHeightPx)
 
     Box(modifier = Modifier.fillMaxSize().onSizeChanged { screenHeightPx = it.height }) {
         Column(modifier = Modifier.fillMaxWidth().verticalScroll(scrollState)) {
@@ -707,6 +710,7 @@ private fun MovieScreenLayout(
                                             scrollPx = scrollState.value,
                                             headerHeightPx = headerHeightPx,
                                             screenHeightPx = screenHeightPx,
+                                            isHeaderPinned = isHeaderPinned,
                                         )
                                     val bandHeight =
                                         (safePadding.top.toPx() + headerHeightPx * scale)
@@ -753,6 +757,7 @@ private fun MovieScreenLayout(
                                                 scrollPx = scrollState.value,
                                                 headerHeightPx = headerHeightPx,
                                                 screenHeightPx = screenHeightPx,
+                                                isHeaderPinned = isHeaderPinned,
                                             )
                                         val placeable = measurable.measure(constraints)
                                         if (scale == 1f) {
@@ -1027,6 +1032,7 @@ private fun MovieScreenLayout(
             ItemPlayButton(
                 scrollState = scrollState,
                 headerHeightPx = headerHeightPx,
+                screenHeightPx = screenHeightPx,
                 safePadding = safePadding,
                 isHeaderPinned = isHeaderPinned,
                 onClick = { onAction(MovieAction.Play(startFromBeginning = false)) },
@@ -1046,29 +1052,6 @@ private const val ENTRANCE_HEAD_START_MILLIS = 100
 
 // 加载转圈的延迟出现阈值：数据在此之前到达就完全不显示 loading
 private const val LOADING_SPINNER_DELAY_MILLIS = 400
-
-// 头图允许占用的最大屏幕高度比例：横屏 / 平板上宽幅头图会铺满整屏，上滑时缩小到该比例为止
-private const val HEADER_MAX_HEIGHT_FRACTION_OF_SCREEN = 2f / 5f
-
-/**
- * 头图随上滑的等比缩放比例。
- *
- * 头图高度不超过 [HEADER_MAX_HEIGHT_FRACTION_OF_SCREEN] 屏时恒为 1（竖屏手机基本落在这里，行为不变）；
- * 超过时（横屏 / 平板上宽幅头图会占满整屏），从 1 线性缩小到
- * 「限高 / 头图高」，正好在滚过头图与限高的差值距离时缩到限高并停住。
- */
-private fun headerScaleForScroll(
-    scrollPx: Int,
-    headerHeightPx: Int,
-    screenHeightPx: Int,
-): Float {
-    if (headerHeightPx <= 0 || screenHeightPx <= 0) return 1f
-    val maxHeaderHeight = screenHeightPx * HEADER_MAX_HEIGHT_FRACTION_OF_SCREEN
-    if (headerHeightPx <= maxHeaderHeight) return 1f
-    val shrinkScrollDistance = headerHeightPx - maxHeaderHeight
-    val progress = (scrollPx / shrinkScrollDistance).coerceIn(0f, 1f)
-    return lerp(1f, maxHeaderHeight / headerHeightPx, progress)
-}
 
 /**
  * 详情页内容区块的依次入场：淡入 + 轻微上移。
