@@ -29,6 +29,7 @@ import dev.jdtech.jellyfin.models.ItemMetadataEdit
 import dev.jdtech.jellyfin.models.pickPlaybackSource
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
+import dev.jdtech.jellyfin.settings.domain.Constants
 import dev.jdtech.jellyfin.settings.domain.JavDbSession
 import dev.jdtech.jellyfin.settings.domain.models.TranslateSettings
 import java.util.UUID
@@ -702,16 +703,20 @@ constructor(
         viewModelScope.launch { _state.emit(_state.value.copy(scrapeProxy = address)) }
     }
 
-    /** 从本地偏好读各站点的自定义网址，供「抓取网址」弹窗回填。 */
-    private fun loadScrapeSiteUrls(): Map<String, String> =
-        ScraperSite.entries.associate { site ->
-            site.key to appPreferences.getValue(appPreferences.scrapeSiteUrl(site.key))
+    /** 从本地偏好读各站点的网址，供「抓取网址」弹窗回填；字幕站取的是回退后的实际生效地址。 */
+    private fun loadScrapeSiteUrls(): Map<String, String> = buildMap {
+        ScraperSite.entries.forEach { site ->
+            put(site.key, appPreferences.getValue(appPreferences.scrapeSiteUrl(site.key)))
         }
+        // 字幕站不参与 nfo / 封面 / 头像抓取，只和它们共用「抓取网址」弹窗这一处配置入口
+        put(Constants.SUBTITLE_SITE_KEY, appPreferences.subtitleSiteBaseUrl())
+    }
 
     /**
-     * 保存各站点在「抓取网址」弹窗里填写的自定义网址（scheme 补全与去空白已在弹窗里做过）。
+     * 保存各站点在「抓取网址」弹窗里填写的网址（scheme 补全与去空白已在弹窗里做过）。
      * 同时刷新站点列表：抓取弹窗按它决定「抓取」按钮是否可用、列出哪些站点行，
      * 不刷新的话本页内刚配置的网址要退出详情页重进才会体现。
+     * 字幕站被清空时会回退默认地址，所以回填的是读回的实际生效值，而不是用户刚输入的内容。
      */
     private fun updateScrapeSiteUrls(urls: Map<String, String>) {
         urls.forEach { (key, url) ->
@@ -720,7 +725,7 @@ constructor(
         viewModelScope.launch {
             _state.emit(
                 _state.value.copy(
-                    scrapeSiteUrls = urls.mapValues { (_, url) -> url.trim() },
+                    scrapeSiteUrls = loadScrapeSiteUrls(),
                     imageScrapeSites = imageScraper.sites,
                     metadataScrapeSites = metadataScraper.sites,
                 )

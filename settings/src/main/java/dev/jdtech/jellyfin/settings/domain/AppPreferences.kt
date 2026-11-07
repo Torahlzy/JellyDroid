@@ -160,10 +160,32 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     val scraperCookies = Preference("pref_scraper_cookies", "")
 
     /**
-     * nfo 抓取站点的自定义网址：按站点 key（见 `:core` 的 `ScraperSite.key`）在「更多」菜单里
-     * 运行时配置，优先于打包时的 BuildConfig 本地配置（仅 debug 包带入真实值）；留空表示用打包配置。
+     * 字幕抓取站的网址：与 nfo 站点共用「抓取网址」弹窗，但默认值已填好官方地址，用户不必手动填写。
+     * 该站没有打包配置，留空表示恢复 [Constants.SUBTITLE_SITE_DEFAULT_URL]。
      */
-    fun scrapeSiteUrl(siteKey: String) = Preference("pref_scrape_site_url_$siteKey", "")
+    val subtitleSiteUrl =
+        Preference(
+            "pref_scrape_site_url_${Constants.SUBTITLE_SITE_KEY}",
+            Constants.SUBTITLE_SITE_DEFAULT_URL,
+        )
+
+    /**
+     * 「抓取网址」弹窗按站点 key 取对应的偏好：nfo 站点（见 `:core` 的 `ScraperSite.key`）默认留空、
+     * 回退打包配置（仅 debug 包带入真实值），字幕站则带内置默认地址。
+     */
+    fun scrapeSiteUrl(siteKey: String): Preference<String> =
+        if (siteKey == Constants.SUBTITLE_SITE_KEY) {
+            subtitleSiteUrl
+        } else {
+            Preference("pref_scrape_site_url_$siteKey", "")
+        }
+
+    /** 字幕站当前生效的网址：留空时回退默认地址，避免拼出无效 URL；同时去掉结尾斜杠。 */
+    fun subtitleSiteBaseUrl(): String {
+        // 走 scrapeSiteUrl 统一入口，避免以后改了偏好映射却漏掉这里
+        val configured = getValue(scrapeSiteUrl(Constants.SUBTITLE_SITE_KEY)).trim().trimEnd('/')
+        return configured.takeIf { it.isNotEmpty() } ?: Constants.SUBTITLE_SITE_DEFAULT_URL
+    }
 
     // nfo 翻译（OpenAI 兼容接口）：只在「编辑 nfo」弹窗里配置，作用范围同抓取代理
     val translateUrl = Preference("pref_translate_url", Constants.TRANSLATE_DEFAULT_URL)
