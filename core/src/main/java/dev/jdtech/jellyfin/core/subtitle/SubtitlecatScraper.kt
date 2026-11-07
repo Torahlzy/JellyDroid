@@ -2,6 +2,8 @@ package dev.jdtech.jellyfin.core.subtitle
 
 import dev.jdtech.jellyfin.core.scraper.ScraperHttp
 import dev.jdtech.jellyfin.core.scraper.requireSuccess
+import dev.jdtech.jellyfin.settings.domain.AppPreferences
+import dev.jdtech.jellyfin.settings.domain.Constants
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -15,16 +17,26 @@ import org.jsoup.Jsoup
  * - 详情页每种语言一个 `div.sub-single`，下载入口是 `a#download_<语言代码>`，`href` 就是 `.srt` 直链；
  * - 直链不需要 Referer、也不需要 Cookie，但要能连上站点（走抓取代理，见 [ScraperHttp]）。
  *
+ * 站点地址在「抓取网址」弹窗里配置，默认已填官方地址（见 [AppPreferences.subtitleSiteBaseUrl]），
+ * 用户可改成镜像域名；详情页与直链都从页面里取绝对地址，因此换了域名也能跟着走，但镜像须与官方站
+ * 保持相同的路径结构（搜索页 `/index.php` 与详情页 `/subs/` 是写死的）。
+ *
  * 站点会给几十种机翻语言，这里只认 [SubtitleLanguage] 里的三种；同一份候选优先简体，
  * 没有简体才退到繁体、英文。
  */
 @Singleton
-class SubtitlecatScraper @Inject constructor(private val http: ScraperHttp) : SubtitleScraper {
+class SubtitlecatScraper
+@Inject
+constructor(
+    private val http: ScraperHttp,
+    private val appPreferences: AppPreferences,
+) : SubtitleScraper {
 
     override val siteName: String = SITE_NAME
 
     override suspend fun search(keyword: String, limit: Int): List<SubtitleCandidate> {
-        val searchUrl = "$BASE_URL$SEARCH_PATH?search=${encode(keyword)}"
+        val baseUrl = appPreferences.subtitleSiteBaseUrl()
+        val searchUrl = "$baseUrl$SEARCH_PATH?search=${encode(keyword)}"
         val response = http.getFollowingRedirects(searchUrl).requireSuccess(siteName)
         val document = Jsoup.parse(response.body, response.url)
         return document
@@ -72,10 +84,8 @@ class SubtitlecatScraper @Inject constructor(private val http: ScraperHttp) : Su
     private fun encode(keyword: String): String = URLEncoder.encode(keyword, Charsets.UTF_8.name())
 
     private companion object {
-        const val SITE_NAME = "subtitlecat"
-
-        /** 站点没有配置项（不像 JavDB / JavBus 那样可在「抓取网址」里改），地址写死在这里。 */
-        const val BASE_URL = "https://subtitlecat.com"
+        /** 错误提示用的站点名，与配置 key 分开，避免 key 变更时文案跟着变。 */
+        const val SITE_NAME = Constants.SUBTITLE_SITE_DISPLAY_NAME
 
         const val SEARCH_PATH = "/index.php"
 

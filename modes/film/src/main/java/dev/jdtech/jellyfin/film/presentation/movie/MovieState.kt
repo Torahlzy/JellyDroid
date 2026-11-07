@@ -57,8 +57,8 @@ data class MovieState(
     /** 抓取使用的本地代理地址，留空表示直连；入口在抓取关键词弹窗里，不影响其它网络请求。 */
     val scrapeProxy: String = "",
     /**
-     * 各抓取站点的自定义网址（key 为 `ScraperSite.key`），空串表示该站点未自定义、回退打包配置；
-     * 入口在「更多」菜单的「抓取网址」弹窗里。
+     * 各抓取站点的网址（key 为 `ScraperSite.key` 或字幕站 key），nfo 站点空串表示未自定义、
+     * 回退打包配置；字幕站始终带内置默认地址。入口在「更多」菜单的「抓取网址」弹窗里。
      */
     val scrapeSiteUrls: Map<String, String> = emptyMap(),
     /** 翻译设置（OpenAI 兼容的大模型接口），入口在「编辑 nfo」弹窗里；只存本地，与服务器无关。 */

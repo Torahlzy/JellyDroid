@@ -21,6 +21,12 @@ object Constants {
     const val COMMENT_CACHE_DEFAULT_SIZE_MB = 800
     const val COMMENT_CACHE_DEFAULT_DAYS = 30
 
+    // 字幕抓取站：不参与 nfo / 封面 / 头像抓取，因此不放进 ScraperSite 枚举
+    const val SUBTITLE_SITE_KEY = "subtitlecat"
+    /** 错误提示里的站点名：与配置 key 分开，改 key 时用户可见文案不跟着变。 */
+    const val SUBTITLE_SITE_DISPLAY_NAME = "subtitlecat"
+    const val SUBTITLE_SITE_DEFAULT_URL = "https://subtitlecat.com"
+
     // Translate - 默认填 DeepSeek 的 OpenAI 兼容接口（地址要写到 chat/completions）
     const val TRANSLATE_DEFAULT_URL = "https://api.deepseek.com/chat/completions"
     const val TRANSLATE_DEFAULT_MODEL = "deepseek-flash"
