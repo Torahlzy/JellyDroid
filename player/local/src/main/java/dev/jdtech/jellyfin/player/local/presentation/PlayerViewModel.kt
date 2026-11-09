@@ -36,6 +36,7 @@ import dev.jdtech.jellyfin.settings.domain.Constants
 import java.util.UUID
 import javax.inject.Inject
 import kotlin.math.ceil
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -277,16 +278,30 @@ constructor(
     }
 
     /**
-     * 把 [uri] 处的侧载字幕注入当前条目并重新 prepare（ExoPlayer 后端）。
+     * 把刚上传的字幕挂到当前播放器上（ExoPlayer 后端）。
      *
-     * 为什么是重载而不是切轨：字幕已在服务器上，但服务器重新索引的时机不确定，
-     * 等它的新 `MediaStream` 出现不可控；用本地缓存文件重新 prepare 才能确定地立即生效。
-     * 代价是一次短暂的重载（转圈），因此要显式保住播放位置与播放状态，
-     * 并在重载期间暂停进度上报（[isReloadingForSubtitle]）。
+     * 不能只 `replaceMediaItem`：实测在已 READY 的播放器上原地替换当前条目后，
+     * 虽然会 BUFFERING → READY，但新的 SubtitleConfiguration 不进播放图，
+     * `currentTracks` 里始终没有文本轨、连 `onTracksChanged` 都不派发。
+     * 因此改走与重新播放相同的 `setMediaItems` 重建播放列表，并顺带重取一次
+     * 服务器刚索引好的外挂字幕；服务器还没索引好时才用本地侧载文件兜底。
+     * 播放位置、播放状态与上下集列表都在这里显式保住。
      */
     fun reloadCurrentItemWithExternalSubtitle(uri: Uri, label: String, language: String) {
-        val mediaId = player.currentMediaItem?.mediaId ?: return
-        val item = items.firstOrNull { it.itemId.toString() == mediaId } ?: return
+        if (player.currentMediaItem == null) {
+            AppLog.tag("SubSideload").w("注入中止：currentMediaItem 为空")
+            return
+        }
+        val currentIndex = player.currentMediaItemIndex
+        val item = items.getOrNull(currentIndex)
+        if (item == null) {
+            AppLog.tag("SubSideload").w(
+                "注入中止：items 里没有 index=%d 的条目（共 %d 条）",
+                currentIndex,
+                items.size,
+            )
+            return
+        }
         val position = player.currentPosition
         val wasPlaying = player.playWhenReady
         val extraSubtitle =
@@ -296,24 +311,76 @@ constructor(
                 uri = uri,
                 mimeType = subtitleMimeType(uri),
             )
-        isReloadingForSubtitle = true
-        player.replaceMediaItem(
-            player.currentMediaItemIndex,
-            item.toMediaItem(extraSubtitle = extraSubtitle),
+        val parameters = player.trackSelectionParameters
+        AppLog.tag("SubSideload").d(
+            "注入前：index=%d，state=%d，文本组=%d，TEXT 禁用=%b，override=%d，playlist=%d，items=%d，mime=%s",
+            currentIndex,
+            player.playbackState,
+            player.currentTracks.groups.count { it.type == C.TRACK_TYPE_TEXT },
+            C.TRACK_TYPE_TEXT in parameters.disabledTrackTypes,
+            parameters.overrides.size,
+            player.mediaItemCount,
+            items.size,
+            extraSubtitle.mimeType,
         )
-        player.prepare()
-        player.seekTo(position)
-        player.playWhenReady = wasPlaying
-        // 兜底：正常路径由 STATE_READY / onPlayerError 复位，但重载可能被新的播放指令打断，
-        // 两种回调都不来；那时标记一直为 true 会让进度上报永久停摆
         viewModelScope.launch {
-            delay(reloadFlagTimeoutMs)
-            if (isReloadingForSubtitle) {
-                isReloadingForSubtitle = false
-                AppLog.w("侧载字幕重载超时未就绪，已恢复进度上报")
+            // 服务器刚把上传的字幕写进 mediaStreams，重取一次；失败时保留播放会话原有的字幕列表，
+            // 否则会把影片原本就有的外挂字幕一起丢掉
+            val serverSubtitles =
+                try {
+                    playlistManager.getExternalSubtitles(item.itemId, item.mediaSourceId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLog.tag("SubSideload").w(e, "重取服务器字幕失败，保留原有字幕列表并只用本地侧载")
+                    item.externalSubtitles
+                }
+            // 服务器字幕轨的 label 可能为空、标题也由服务器生成，按标题无法可靠比对；
+            // 用「外挂字幕数比上传前变多」判断刚上传的那条是否已被索引
+            val serverIndexedUpload = serverSubtitles.size > item.externalSubtitles.size
+            items[currentIndex] = item.copy(externalSubtitles = serverSubtitles)
+            // 服务器已索引好时不叠加本地副本，避免轨道列表里出现两条一样的字幕
+            val sideLoad = if (serverIndexedUpload) null else extraSubtitle
+            val mediaItems =
+                items.mapIndexed { index, playerItem ->
+                    if (index == currentIndex) {
+                        playerItem.toMediaItem(extraSubtitle = sideLoad)
+                    } else {
+                        playerItem.toMediaItem()
+                    }
+                }
+            AppLog.tag("SubSideload").d(
+                "setMediaItems 重建：服务器字幕=%d（新增=%b），本地侧载=%b，列表=%d，index=%d，position=%d",
+                serverSubtitles.size,
+                serverIndexedUpload,
+                sideLoad != null,
+                mediaItems.size,
+                currentIndex,
+                position,
+            )
+            // 紧挨着重建设置：网络请求期间不该屏蔽条目切换，而 setMediaItems 触发的
+            // 切换与短暂位置清零必须屏蔽，否则会重复上报进度、重复插入上下集
+            isReloadingForSubtitle = true
+            player.setMediaItems(mediaItems, currentIndex, position)
+            player.prepare()
+            player.playWhenReady = wasPlaying
+            AppLog.tag("SubSideload").d(
+                "setMediaItems 已返回：文本组=%d，state=%d，playlist=%d",
+                player.currentTracks.groups.count { it.type == C.TRACK_TYPE_TEXT },
+                player.playbackState,
+                player.mediaItemCount,
+            )
+            // 兜底计时必须从重建发起后才开始：网络请求比它更慢时，提前复位标记
+            // 会让随后触发的条目切换失去屏蔽
+            viewModelScope.launch {
+                delay(reloadFlagTimeoutMs)
+                if (isReloadingForSubtitle) {
+                    isReloadingForSubtitle = false
+                    AppLog.w("侧载字幕重载超时未就绪，已恢复进度上报")
+                }
             }
         }
-        AppLog.d("已注入侧载字幕并重载当前条目：%s（%s）", label, language)
+        AppLog.tag("SubSideload").d("已排队重建当前条目：%s（%s）", label, language)
     }
 
     /** 侧载字幕的 MIME 类型：只收 srt / vtt（与字幕站的下载格式一致），其余按 srt 兜底。 */
@@ -420,7 +487,7 @@ constructor(
     }
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-        // 注入侧载字幕会原地替换当前 MediaItem，进而触发一次条目切换。这里必须跳过：
+        // 注入侧载字幕会用 setMediaItems 重建播放列表，进而触发一次条目切换。这里必须跳过：
         // 否则会重复 postPlaybackStart、重拉 segments / trickplay，并往播放列表里再插一遍上 / 下一集
         if (isReloadingForSubtitle) {
             AppLog.d("重载侧载字幕中，跳过条目切换处理：${mediaItem?.mediaId}")

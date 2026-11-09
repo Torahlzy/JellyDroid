@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,15 +27,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -50,8 +46,9 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 /**
- * 字幕调节面板：依附在当前字幕区域（左侧、底边贴着字幕文字上方）的紧凑悬浮卡，
- * 拖动字幕时跟着字幕走，保证调整的同时能看到字幕效果。
+ * 字幕调节面板：依附在当前字幕区域左侧的紧凑悬浮卡，垂直位置由调用方
+ * （[SubtitleAdjustOverlay]）按字幕底边线计算并经 modifier 传入，拖动字幕时跟着走，
+ * 保证调整的同时能看到字幕效果。
  *
  * 内容：字号、字体透明度、字幕进度偏移，以及重置 / 关闭 / 应用。
  * 所有改动经回调进入 [SubtitleAdjustManager] 实时预览；「应用」才持久化，
@@ -60,7 +57,6 @@ import kotlin.math.roundToLong
 @Composable
 internal fun SubtitleAdjustPanel(
     state: SubtitleAdjustManager.SubtitleAdjustState,
-    subtitleTextHeightPx: Int,
     onScaleStep: (Boolean) -> Unit,
     onTextOpacityChanged: (Int) -> Unit,
     onOffsetStep: (Long) -> Unit,
@@ -70,24 +66,8 @@ internal fun SubtitleAdjustPanel(
     onApply: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var cardHeightPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
-    // 卡片底边贴字幕文字上方（字幕底边线 + 一行字幕估高，再留间隙），
-    // 贴不下（字幕被拖得太靠上）时贴屏幕顶
-    val offsetY =
-        with(density) {
-            val lineY = (state.viewHeightPx - state.bottomOffsetPx).toFloat()
-            val gap = 12.dp.toPx()
-            val cardBottomY = lineY - subtitleTextHeightPx - gap
-            (cardBottomY - cardHeightPx).coerceAtLeast(8.dp.toPx()).toDp()
-        }
-
     Surface(
-        modifier =
-            modifier.padding(start = MaterialTheme.spacings.medium)
-                .offset(y = offsetY)
-                .widthIn(max = 320.dp)
-                .onSizeChanged { cardHeightPx = it.height },
+        modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         tonalElevation = 3.dp,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),

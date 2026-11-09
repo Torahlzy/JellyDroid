@@ -75,7 +75,7 @@ constructor(
         cancelJobs()
         downloadedSubtitles = emptyMap()
         // 新一批候选重新开始：之前那次对照的关联就此断开（用户要对比得再点一次）
-        compareItemId = null
+        invalidateCompareBatch()
         _state.value =
             SubtitleDownloadState(stage = SubtitleDownloadStage.Searching)
         downloadJob =
@@ -111,6 +111,11 @@ constructor(
             scope.launch {
                 try {
                     uploadToServer(itemId, downloaded)
+                    AppLog.tag("SubSideload").d(
+                        "服务器上传成功，准备发 Uploaded：item=%s，bytes=%d",
+                        itemId,
+                        downloaded.bytes.size,
+                    )
                     reset()
                     eventsChannel.send(
                         SubtitleDownloadEvent.Uploaded(
@@ -118,6 +123,7 @@ constructor(
                             subtitle = downloaded,
                         )
                     )
+                    AppLog.tag("SubSideload").d("Uploaded 事件已被消费（send 返回）")
                 } catch (e: CancellationException) {
                     AppLog.d("字幕上传已取消：%s", candidate.title)
                     throw e
@@ -140,10 +146,10 @@ constructor(
     suspend fun prepareCompare(itemId: UUID) {
         val ready = readySubtitlesByOrder()
         if (ready.isEmpty()) return
-        // 新一轮对比（上次关联已在 download() / reset() 里断开）先把上一轮留下的快照清掉：
-        // upsert 是按行号合并的，不清的话本次没下到的旧行号会跟着进面板
-        val isNewBatch = compareItemId == null
-        if (isNewBatch) {
+        // 关联断开、换了条目、或快照被别处 clear（关闭面板 / 另一处开新一轮）都会让令牌换代。
+        // 这三种情况都按新批次重新落盘，否则会拿着过期令牌写入被拒，用户连点几次都进不了面板。
+        if (!isCurrentBatch(itemId)) {
+            // upsert 是按行号合并的，不清的话本次没下到的旧行号会跟着进面板
             compareCache.clear(itemId)
             // 必须在 clear 之后取令牌：之后每一次追加写入都带着它校验，
             // 期间快照再被别处 clear 过就写不进去（详见 [compareBatchToken]）
@@ -154,6 +160,13 @@ constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            // 首次开批时 compareItemId 还没登记，只能按令牌判换代，不能用 isCurrentBatch。
+            // 换代说明这份快照已不归本批所有，静默作废等下一轮重开，不该给用户报错
+            if (compareCache.batchToken(itemId) != compareBatchToken) {
+                AppLog.d("对照快照已换代，本批落盘作废：%s", itemId)
+                invalidateCompareBatch()
+                return
+            }
             AppLog.e(e, "字幕对照快照落盘失败：%s", itemId)
             eventsChannel.send(SubtitleDownloadEvent.Failed(e))
             return
@@ -176,6 +189,20 @@ constructor(
                 downloadedSubtitles[ready.candidate]?.let { downloaded -> index + 1 to downloaded }
             }
             .toMap()
+
+    /** 本批快照是否还作数：关联未断，且令牌没有被别处 clear 换代。 */
+    private fun isCurrentBatch(itemId: UUID): Boolean =
+        compareItemId == itemId && compareCache.batchToken(itemId) == compareBatchToken
+
+    /**
+     * 断开关联：剩余候选不再往一份已经不属于本批的快照里补写。
+     *
+     * 播放页应用了某条字幕后也调用它结束本批，避免后续候选继续追加到旧快照。
+     */
+    fun invalidateCompareBatch() {
+        compareItemId = null
+        compareBatchToken = 0L
+    }
 
     /** 中断搜索 / 剩余下载 / 上传，回到关键词输入状态。 */
     fun cancel() {
@@ -200,8 +227,7 @@ constructor(
 
     private fun reset() {
         downloadedSubtitles = emptyMap()
-        compareItemId = null
-        compareBatchToken = 0L
+        invalidateCompareBatch()
         _state.value = SubtitleDownloadState()
     }
 
@@ -279,11 +305,10 @@ constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (compareCache.batchToken(itemId) != compareBatchToken) {
+            if (!isCurrentBatch(itemId)) {
                 // 新一轮对比已清掉快照：本批关联随之作废，剩余候选不再往新快照里补
                 AppLog.d("对照快照已换代，本批剩余候选不再补写：%s", itemId)
-                compareItemId = null
-                compareBatchToken = 0L
+                invalidateCompareBatch()
             } else {
                 AppLog.w(e, "把新下载的字幕补进对照快照失败：%s", itemId)
             }

@@ -1,22 +1,29 @@
 package dev.jdtech.jellyfin.presentation.player
 
-import android.app.Dialog
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.DialogFragment
 import androidx.media3.common.C
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import dev.jdtech.jellyfin.player.local.R
+import dev.jdtech.jellyfin.core.R as CoreR
+import dev.jdtech.jellyfin.player.local.R as PlayerR
 import dev.jdtech.jellyfin.player.local.presentation.PlayerViewModel
-import java.lang.IllegalStateException
+import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 
 /**
- * 播放器右上角菜单，把字幕、播放速度、音轨收进一个弹窗，并额外提供「截图设为横屏封面」。
+ * 播放器右上角菜单：横屏下用一行正方形格子展示字幕、播放速度、音轨等入口。
  *
- * 截图与字幕调节都依赖 Activity 持有的视频视图 / 管理器，所以通过构造参数把动作交回宿主处理；
- * [onCaptureBackdrop] 为 null 表示当前环境不提供该入口（离线模式下无法写入服务器）。
+ * 截图与字幕调节依赖 Activity 持有的视频视图 / 管理器，因此通过构造参数把动作交回宿主；
+ * [onCaptureBackdrop] 为 null 表示离线模式下不提供该入口。窗口用无边框透明主题，
+ * 卡片与蒙层交给 Compose 绘制，才能去掉标题行、控制上下留白并横向铺开。
  */
 class PlayerMenuDialogFragment(
     private val viewModel: PlayerViewModel,
@@ -25,25 +32,98 @@ class PlayerMenuDialogFragment(
     private val onDownloadSubtitle: (() -> Unit)? = null,
 ) : DialogFragment() {
 
-    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-        val menuItems =
-            listOfNotNull(
-                R.string.select_subtitle_track to { showTrackSelection(C.TRACK_TYPE_TEXT) },
-                onSubtitleAdjust?.let { R.string.player_menu_subtitle_adjust to it },
-                onDownloadSubtitle?.let { R.string.player_menu_download_subtitle to it },
-                R.string.select_playback_speed to { showSpeedSelection() },
-                R.string.select_audio_track to { showTrackSelection(C.TRACK_TYPE_AUDIO) },
-                onCaptureBackdrop?.let { R.string.player_menu_capture_backdrop to it },
-            )
-        return activity?.let { activity ->
-            MaterialAlertDialogBuilder(activity)
-                .setTitle(getString(R.string.player_controls_menu))
-                .setItems(menuItems.map { getString(it.first) }.toTypedArray()) { dialog, which ->
-                    dialog.dismiss()
-                    menuItems[which].second()
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setStyle(STYLE_NO_FRAME, 0)
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View {
+        val items = buildMenuItems()
+        return ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                FindroidTheme {
+                    PlayerMenuContent(
+                        items = items,
+                        onDismiss = ::dismiss,
+                        onSelect = ::onMenuItemSelected,
+                    )
                 }
-                .create()
-        } ?: throw IllegalStateException("Activity cannot be null")
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.let { window ->
+            window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            // 蒙层由 PlayerMenuContent 自己绘制，关掉系统 dim 免得叠成两层黑
+            window.setDimAmount(0f)
+            window.setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+        }
+        hideSystemBars()
+    }
+
+    private fun buildMenuItems(): List<PlayerMenuItem> {
+        // 与 TrackSelectionDialogFragment 同一口径：没有可支持的文本轨时，选轨与字幕设置
+        // 都无从下手，置灰但仍占位，菜单布局不因视频有无字幕而跳动
+        val hasSubtitleTracks =
+            viewModel.player.currentTracks.groups.any {
+                it.type == C.TRACK_TYPE_TEXT && it.isSupported
+            }
+        return listOfNotNull(
+            PlayerMenuItem(
+                labelRes = PlayerR.string.select_subtitle_track,
+                iconRes = CoreR.drawable.ic_closed_caption,
+                enabled = hasSubtitleTracks,
+                onClick = { showTrackSelection(C.TRACK_TYPE_TEXT) },
+            ),
+            onSubtitleAdjust?.let { action ->
+                PlayerMenuItem(
+                    labelRes = PlayerR.string.player_menu_subtitle_adjust,
+                    iconRes = CoreR.drawable.ic_settings,
+                    enabled = hasSubtitleTracks,
+                    onClick = action,
+                )
+            },
+            onDownloadSubtitle?.let { action ->
+                PlayerMenuItem(
+                    labelRes = PlayerR.string.player_menu_download_subtitle,
+                    iconRes = CoreR.drawable.ic_download,
+                    onClick = action,
+                )
+            },
+            PlayerMenuItem(
+                labelRes = PlayerR.string.select_playback_speed,
+                iconRes = CoreR.drawable.ic_gauge,
+                onClick = ::showSpeedSelection,
+            ),
+            PlayerMenuItem(
+                labelRes = PlayerR.string.select_audio_track,
+                iconRes = CoreR.drawable.ic_speaker,
+                onClick = { showTrackSelection(C.TRACK_TYPE_AUDIO) },
+            ),
+            onCaptureBackdrop?.let { action ->
+                PlayerMenuItem(
+                    labelRes = PlayerR.string.player_menu_capture_backdrop,
+                    iconRes = CoreR.drawable.ic_film,
+                    onClick = action,
+                )
+            },
+        )
+    }
+
+    private fun onMenuItemSelected(item: PlayerMenuItem) {
+        if (!item.enabled) return
+        dismiss()
+        item.onClick()
     }
 
     private fun showTrackSelection(type: @C.TrackType Int) {
@@ -56,15 +136,19 @@ class PlayerMenuDialogFragment(
             .show(requireActivity().supportFragmentManager, "speedselectiondialog")
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        // Fix for hiding the system bars on API < 30
-        activity?.window?.let {
-            WindowCompat.getInsetsController(it, it.decorView).apply {
+    private fun hideSystemBars() {
+        activity?.window?.let { window ->
+            WindowCompat.getInsetsController(window, window.decorView).apply {
                 systemBarsBehavior =
                     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 hide(WindowInsetsCompat.Type.systemBars())
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // API < 30 在弹窗关闭后不会自动恢复沉浸模式，重新隐藏系统栏
+        hideSystemBars()
     }
 }

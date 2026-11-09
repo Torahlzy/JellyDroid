@@ -35,6 +35,7 @@ import androidx.media3.common.util.Clock
 import androidx.media3.common.util.ListenerSet
 import androidx.media3.common.util.Size
 import androidx.media3.common.util.Util
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.mpv.MPVLib
 import dev.jdtech.mpv.MPVLib.MpvEvent
 import dev.jdtech.mpv.MPVLib.MpvFormat
@@ -335,6 +336,11 @@ class MPVPlayer(
             when (property) {
                 "track-list" -> {
                     val newTracks = getTracks(value)
+                    AppLog.tag("SubSideload").d(
+                        "mpv track-list 更新：总组=%d，sub 组=%d",
+                        newTracks.groups.size,
+                        newTracks.groups.count { it.type == C.TRACK_TYPE_TEXT },
+                    )
                     currentTracks = newTracks
                     listeners.sendEvent(EVENT_TRACKS_CHANGED) { listener ->
                         listener.onTracksChanged(currentTracks)
@@ -548,11 +554,16 @@ class MPVPlayer(
     }
 
     /**
-     * 字体不透明度（百分比 0–100），写 sub-color 的 alpha 通道；包边保持 mpv 默认（黑色）。
+     * 字幕不透明度（百分比 0–100），同时写 sub-color 与 sub-border-color 的 alpha 通道。
+     *
+     * mpv 把字体色和黑色包边当作两个独立属性，只改字体色会让包边一直是实心黑边，
+     * 看起来整条字幕并没有变淡。
      */
     fun setSubtitleOpacity(percent: Int) {
         val alpha = percent.coerceIn(0, 100) * 0xFF / 100
-        mpvLib.setPropertyString("sub-color", String.format(java.util.Locale.US, "#%02XFFFFFF", alpha))
+        val locale = java.util.Locale.US
+        mpvLib.setPropertyString("sub-color", String.format(locale, "#%02XFFFFFF", alpha))
+        mpvLib.setPropertyString("sub-border-color", String.format(locale, "#%02X000000", alpha))
     }
 
     /**
@@ -586,6 +597,13 @@ class MPVPlayer(
     fun addExternalSubtitle(fileUri: Uri, label: String, language: String) {
         // mpv 对本地文件既接受裸路径也接受 file:// URI；裸路径少一层解析，优先用它
         val path = if (fileUri.scheme == "file") fileUri.path.orEmpty() else fileUri.toString()
+        AppLog.tag("SubSideload").d(
+            "mpv sub-add：path=%s，flags=select，title=%s，lang=%s，文件存在=%b",
+            path,
+            label,
+            language,
+            fileUri.path?.let { File(it).isFile } ?: false,
+        )
         mpvLib.command(arrayOf("sub-add", path, "select", label, language))
     }
 
@@ -1089,6 +1107,11 @@ class MPVPlayer(
         internalMediaItems.getOrNull(index)?.let { mediaItem ->
             resetInternalState()
             mediaItem.localConfiguration?.subtitleConfigurations?.forEach { subtitle ->
+                AppLog.tag("SubSideload").d(
+                    "mpv 初始 sub-add（重播路径）：flags=auto，title=%s，lang=%s",
+                    subtitle.label,
+                    subtitle.language,
+                )
                 initialCommands.add(
                     arrayOf(
                         /* command= */ "sub-add",

@@ -7,6 +7,7 @@ import dev.jdtech.jellyfin.models.FindroidChapter
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.FindroidMovie
+import dev.jdtech.jellyfin.models.FindroidSource
 import dev.jdtech.jellyfin.models.FindroidSources
 import dev.jdtech.jellyfin.models.pickPlaybackSource
 import dev.jdtech.jellyfin.player.core.domain.models.ExternalSubtitle
@@ -213,26 +214,13 @@ class PlaylistManager @Inject internal constructor(private val repository: Jelly
             } else {
                 mediaSources.getOrNull(mediaSourceIndex)
             } ?: throw IllegalStateException("No media source available for item ${this.id}")
-        val externalSubtitles =
-            mediaSource.mediaStreams
-                .filter { mediaStream ->
-                    mediaStream.isExternal &&
-                        mediaStream.type == MediaStreamType.SUBTITLE &&
-                        !mediaStream.path.isNullOrBlank()
-                }
-                .map { mediaStream ->
-                    ExternalSubtitle(
-                        mediaStream.title,
-                        mediaStream.language,
-                        mediaStream.path!!.toUri(),
-                        when (mediaStream.codec) {
-                            "subrip" -> MimeTypes.APPLICATION_SUBRIP
-                            "webvtt" -> MimeTypes.APPLICATION_SUBRIP
-                            "ass" -> MimeTypes.TEXT_SSA
-                            else -> MimeTypes.TEXT_UNKNOWN
-                        },
-                    )
-                }
+        val externalSubtitles = mediaSource.toExternalSubtitles()
+        AppLog.tag("SubSideload").d(
+            "构造 PlayerItem：条目=%s，服务器外挂字幕=%d，标题=%s",
+            id,
+            externalSubtitles.size,
+            externalSubtitles.map { it.title },
+        )
         val trickplayInfo =
             when (this) {
                 is FindroidSources -> {
@@ -264,6 +252,40 @@ class PlaylistManager @Inject internal constructor(private val repository: Jelly
             trickplayInfo = trickplayInfo,
         )
     }
+
+    /**
+     * 重新读取指定来源的外挂字幕。
+     *
+     * 上传字幕后服务器会多一条 MediaStream，但当前播放会话持有的 [PlayerItem] 还是旧的；
+     * 用它刷新字幕列表，不必为了看到新轨而重开播放。找不到该来源时返回空表。
+     */
+    suspend fun getExternalSubtitles(itemId: UUID, mediaSourceId: String): List<ExternalSubtitle> {
+        val source =
+            repository.getMediaSources(itemId, true).firstOrNull { it.id == mediaSourceId }
+        return source?.toExternalSubtitles().orEmpty()
+    }
+
+    /** MediaStream → 播放端字幕配置；构造条目与上传后刷新共用同一套映射。 */
+    private fun FindroidSource.toExternalSubtitles(): List<ExternalSubtitle> =
+        mediaStreams
+            .filter { mediaStream ->
+                mediaStream.isExternal &&
+                    mediaStream.type == MediaStreamType.SUBTITLE &&
+                    !mediaStream.path.isNullOrBlank()
+            }
+            .map { mediaStream ->
+                ExternalSubtitle(
+                    mediaStream.title,
+                    mediaStream.language,
+                    mediaStream.path!!.toUri(),
+                    when (mediaStream.codec) {
+                        "subrip" -> MimeTypes.APPLICATION_SUBRIP
+                        "webvtt" -> MimeTypes.APPLICATION_SUBRIP
+                        "ass" -> MimeTypes.TEXT_SSA
+                        else -> MimeTypes.TEXT_UNKNOWN
+                    },
+                )
+            }
 
     private fun List<FindroidChapter>.toPlayerChapters(): List<PlayerChapter> {
         return this.map { chapter ->
