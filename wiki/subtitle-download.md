@@ -437,9 +437,13 @@
    controller 只依赖 `SubtitleDownloader` / `JellyfinRepository` / `SubtitleCompareCache` 三样。
 3. **「播放视频时对比」放在候选列表正下方**，而不是与「取消」同一行的按钮区：
    `BaseDialog` 的按钮行只有取消 / 确定两个槽位，硬塞第三个会把两侧挤在一起。
-4. **应用后清缓存前先等播放器回到 `STATE_READY`**（最多 8 秒）：原方案只说「清理必须放在切轨之后」，
-   而 ExoPlayer 读侧载字幕是异步的，光靠「调用顺序」不足以保证读完，因此显式等一次就绪 + 超时兜底。
-5. **重载期间跳过 `onMediaItemTransition` 的整套处理**：注入侧载字幕是原地替换当前 MediaItem，
+4. **应用后清缓存前先等侧载字幕轨出现**（最多 8 秒）：原方案只说「清理必须放在切轨之后」，
+   而 ExoPlayer 读侧载字幕是异步的，光靠「调用顺序」不足以保证读完。最初实现等的是播放器回到
+   `STATE_READY`，但重载刚发起时状态往往还是旧的 READY，等于没等，文件随即被删，
+   「选择字幕轨」里始终没有新轨（2026-11-08 修复，见第 24 条）。现改为监听 `onTracksChanged`，
+   等到文本组数量增加或出现带该 label 且 isSupported 的文本组才清理文件，
+   超时则保留文件交给缓存回收（服务器字幕轨的 label 可能为空，不能只按标签找）。
+5. **重载期间跳过 `onMediaItemTransition` 的整套处理**：注入侧载字幕会用 `setMediaItems` 重建播放列表，
    会触发一次条目切换；不跳过会重复 `postPlaybackStart`、重拉 segments / trickplay，
    并往播放列表里再插一遍上 / 下一集。进度上报同样用 `isReloadingForSubtitle` 挡住。
 6. **mpv 侧切轨用 `sub-add <path> select` 一次完成「加入 + 选中」**，没有再单独查一次 `sid`；
@@ -501,3 +505,47 @@
     `IllegalStateException`，调用方据此作废本批关联）。
 23. **离线模式不识别字幕关键词**（2026-11-04 审核修正）：播放页进页时的关键词识别依赖服务器来源路径，
     离线来源是本地路径识别不出，且菜单里没有「下载字幕」入口，直接跳过。
+24. **上传 / 应用后「选择字幕轨」仍没有新轨的修复**（2026-11-08 用户反馈）：根因是
+    `SubtitlePlaybackCoordinator.awaitPlaybackReady()` 在注入侧载字幕的异步操作刚返回时就命中
+    `playbackState == STATE_READY` 立即返回，随后 `file.delete()`（弹窗上传路径）或
+    `compareCache.clear()`（对照「应用」路径）把还没被播放器读取的字幕文件删掉，轨根本没形成。
+    现改为 `awaitSubtitleTrack(label)`：监听 `onTracksChanged`，等 `currentTracks` 里出现带该 label
+    且 isSupported 的文本组才清理文件；等不到则保留文件（切集 / 退出播放页由 `clear` 清，
+    `cacheDir` 也可由系统回收）。`logTextTracks()` 同步标出 supported / selected，
+    口径与 `TrackSelectionDialogFragment` 一致，便于一眼区分「没注入」与「轨不被支持」。
+25. **字幕站变体时间行与编码兜底**（2026-11-09 用户反馈）：`aisubs.app` 的 srt 时间行写作
+    `00：00：00.000-> 00：00：03.000`（全角冒号 + 单短横箭头），不是标准 SRT。时间戳正则只认
+    ASCII 冒号、cue 解析只认 `-->`，真机上同期出现「时长差全是未知」与「对照面板 0 条 cue、
+    每行文本区全空」；直接上传 / 侧载时 ExoPlayer 的 SubRipParser 与服务端同样解析不出内容。
+    现在 `SubtitleTiming.TIMESTAMP` 兼容全角冒号、`SubtitleCueParser` 用 `contains("->")` 识别
+    时间行，并在 `SubtitleDownloaderImpl` 下载后由 `SubtitleTiming.normalizeTimingLines()`
+    把时间行写成标准 SRT / VTT 字节，让时长判断、落盘、上传、侧载、面板解析共用同一份数据。
+    编码统一走新增的 `SubtitleTextDecoder`（UTF-8 → GBK → Big5 严格解码，返回文本与实际编码）：
+    规范化只改「含箭头且至少两个时间戳」的行，台词里的全角冒号保持原样，改写后按原编码写回字节，
+    因此 GBK / Big5 字幕也能被规范化且不会把台词弄乱。**遗留**：已落盘旧快照的
+    `manifest.json` 里 `durationDiffMs` 仍是 null，重新搜索一次才会刷新。另外本条又动了
+    Android 上的正则，按第 12 条的教训需真机确认类初始化不抛 `PatternSyntaxException`。
+26. **上传后当前会话仍看不到字幕轨的真正根因修复**（2026-11-09 用户按第 24 条加的
+    `AppLog.tag("SubSideload")` 诊断日志回传 logcat 后定位）：日志显示 `replaceMediaItem` 后 BUFFERING → READY
+    确实发生了，但 8 秒里一次 `onTracksChanged` 都没有、`currentTracks` 文本组始终 0；
+    退出重播则 `setMediaItems` 后立刻 `onTracksChanged：总组=3，文本组=1`。
+    即**在已 READY 的播放器上原地 `replaceMediaItem` 不会把新的 `SubtitleConfiguration` 应用上**，
+    重开播放走的 `setMediaItems` 才会。现把 `PlayerViewModel.reloadCurrentItemWithExternalSubtitle()`
+    改为：重新取一次服务器媒体源里刚索引好的外挂字幕（`PlaylistManager.getExternalSubtitles()`，
+    与构造 `PlayerItem` 共用同一套 MediaStream 映射），更新当前 `PlayerItem` 后用
+    `setMediaItems(列表, 当前 index, 当前位置)` 重建播放列表并保住播放状态；服务器还没索引好时
+    才注入本地侧载文件，且两者不叠加，避免轨道列表里出现两条一样的字幕。
+    `awaitSubtitleTrack()` 的判据同时改为「文本组数量增加或 label 命中」
+    （服务器字幕轨的 label 可能为空）。**验收**：上传后菜单里的「选择字幕轨 / 字幕设置」
+    应从置灰变为可用（菜单按 `currentTracks` 里 isSupported 的文本组判断），无需重播。
+27. **2026-11-09 工作区审核修正**：第 26 条的「服务器还没索引好才注入本地侧载」原判据写成
+    `serverSubtitles.isEmpty()`，但影片自带外挂字幕时服务器列表非空却不含刚上传的那条，
+    兜底永不生效；现按「服务器外挂字幕数比上传前变多」判断是否已索引，重取失败时保留
+    播放会话原有列表（不再用空表覆盖，否则原有外挂字幕会一起丢失）。对照「应用」路径在
+    `awaitSubtitleTrack()` 超时时原先仍无条件 `compareCache.clear()`，会删掉还没读完的侧载
+    文件、重现第 24 条的 bug；现超时保留整份快照并调用
+    `SubtitleDownloadController.invalidateCompareBatch()` 结束本批，下一轮 `prepareCompare()`
+    因关联作废重新落盘。此外时间行规范化原先只吃箭头右侧空白，标准 SRT / VTT 会被改成
+    双空格并整份重编码，现两侧空白一起归一，合规字幕直接返回原字节；`SubtitleCueParser`
+    识别时间行也补上「至少两个时间戳」判据，避免台词里的 `->` 抢走时间行。诊断日志统一
+    走 `AppLog.tag("SubSideload")`，logcat 按 `torahLog/SubSideload` 过滤即可。

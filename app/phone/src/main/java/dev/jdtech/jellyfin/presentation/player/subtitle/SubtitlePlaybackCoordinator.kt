@@ -5,6 +5,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.core.presentation.subtitle.labelRes
@@ -65,8 +66,8 @@ class SubtitlePlaybackCoordinator(
 ) {
 
     companion object {
-        /** 重载后等播放器就绪的最长时间；超时也照样清缓存（继续等下去只会卡住界面）。 */
-        private const val AWAIT_READY_TIMEOUT_MS = 8_000L
+        /** 等侧载字幕轨出现的最长时间；超时保留侧载文件，交给缓存回收。 */
+        private const val AWAIT_SUBTITLE_TRACK_TIMEOUT_MS = 8_000L
 
         /** 对照面板的重算间隔（ms）：100~200ms 之间，肉眼跟得上又不会太费。 */
         private const val COMPARE_REFRESH_INTERVAL_MS = 150L
@@ -148,6 +149,7 @@ class SubtitlePlaybackCoordinator(
 
     /** 弹窗关闭（含点弹窗外）：关闭弹窗并中断进行中的下载。 */
     fun dismissDialog() {
+        AppLog.tag("SubSideload").d("下载弹窗 dismissDialog 被调用（会 cancel 上传任务）")
         _isDialogShowing.value = false
         subtitleController.cancel()
     }
@@ -159,7 +161,10 @@ class SubtitlePlaybackCoordinator(
 
     /** 收集字幕下载状态机的事件（上传 / 失败 / 快照就绪），转成界面反馈。 */
     suspend fun observeSubtitleEvents() {
-        subtitleController.events.collect(::handleSubtitleEvent)
+        subtitleController.events.collect { event ->
+            AppLog.tag("SubSideload").d("播放页收到事件：%s", event.javaClass.simpleName)
+            handleSubtitleEvent(event)
+        }
     }
 
     /**
@@ -286,6 +291,11 @@ class SubtitlePlaybackCoordinator(
     private fun handleSubtitleEvent(event: SubtitleDownloadEvent) {
         when (event) {
             is SubtitleDownloadEvent.Uploaded -> {
+                AppLog.tag("SubSideload").d(
+                    "处理 Uploaded：title=%s，language=%s",
+                    event.subtitle.candidate.title,
+                    event.language,
+                )
                 Toast.makeText(
                         context,
                         getStringWithLanguage(CoreR.string.subtitle_uploaded, event.language),
@@ -377,8 +387,8 @@ class SubtitlePlaybackCoordinator(
     /**
      * 上传选中的那条字幕并切成当前字幕轨。
      *
-     * 成功路径的顺序是有意的：切轨 → 关面板 → 等播放器就绪 → 清缓存。
-     * 清缓存必须在切轨之后：ExoPlayer 是异步读取侧载的字幕文件，先删就读不到了。
+     * 成功路径的顺序是有意的：切轨 → 关面板 → 等新字幕轨出现 → 清缓存。
+     * 清快照会把侧载的字幕文件一起删掉，必须等播放器解析完这份字幕之后再清，否则轨根本不会出现。
      * 失败时留在面板、缓存保留，用户可重试或改选别的（不必重新下载）。
      */
     private fun applyCompareEntry(entry: SubtitleCompareEntry) {
@@ -402,7 +412,7 @@ class SubtitlePlaybackCoordinator(
                     language = entry.language.jellyfinLanguage,
                     format = entry.format,
                 )
-                AppLog.d("对照字幕已上传到服务器，开始切轨")
+                AppLog.tag("SubSideload").d("对照字幕已上传到服务器，开始切轨")
                 switchSubtitleTo(
                     file = entry.file,
                     title = entry.title,
@@ -410,9 +420,20 @@ class SubtitlePlaybackCoordinator(
                 )
                 compareManager.hide()
                 subtitleAdjustManager.setRealSubtitleVisible(true)
-                awaitPlaybackReady(AWAIT_READY_TIMEOUT_MS)
+                val appeared =
+                    awaitSubtitleTrack(entry.title, AWAIT_SUBTITLE_TRACK_TIMEOUT_MS)
+                AppLog.tag("SubSideload").d("对照路径等待轨道结果：appeared=%b", appeared)
                 logTextTracks()
-                compareCache.clear(itemId)
+                // 用户已选定一条字幕，本批对照到此结束，剩余候选不再补进这份快照
+                subtitleController.invalidateCompareBatch()
+                if (appeared) {
+                    // 轨已出现说明播放器读完了字幕，这时清理才不会把侧载文件删掉
+                    compareCache.clear(itemId)
+                } else {
+                    // clear 会删掉 entry.file，等不到轨时删了就再也读不到；
+                    // 下一轮 prepareCompare 会因关联作废重新落盘，退出播放页由 clearAsync 回收
+                    AppLog.tag("SubSideload").w("侧载字幕轨迟迟未出现，保留快照供播放器继续读取：%s", entry.file)
+                }
                 Toast.makeText(
                         context,
                         getStringWithLanguage(CoreR.string.subtitle_uploaded, entry.language),
@@ -444,11 +465,8 @@ class SubtitlePlaybackCoordinator(
      * 失败只记日志、不打断播放：字幕已经在服务器上了，下次播放照样会有这条轨。
      */
     private fun applyUploadedSubtitle(event: SubtitleDownloadEvent.Uploaded) {
-        AppLog.d(
-            "上传完成，立即侧载到当前播放器：%s（%s）",
-            event.subtitle.candidate.title,
-            event.language,
-        )
+        val title = event.subtitle.candidate.title
+        AppLog.tag("SubSideload").d("上传完成，立即侧载到当前播放器：%s（%s）", title, event.language)
         scope.launch {
             val file =
                 try {
@@ -459,14 +477,26 @@ class SubtitlePlaybackCoordinator(
                     AppLog.w(e, "写出侧载字幕文件失败，本次不切换字幕轨")
                     return@launch
                 }
+            AppLog.tag("SubSideload").d(
+                "侧载文件就绪：%s，存在=%b，大小=%d",
+                file,
+                file.isFile,
+                file.length(),
+            )
             switchSubtitleTo(
                 file = file,
-                title = event.subtitle.candidate.title,
+                title = title,
                 language = event.language.jellyfinLanguage,
             )
-            // ExoPlayer 异步读取侧载文件，等就绪再删；删不掉也无妨，cacheDir 由系统回收
-            awaitPlaybackReady(AWAIT_READY_TIMEOUT_MS)
+            // 等播放器认出这条轨再删文件：注入是异步的，早删会读不到字幕，
+            // 「选择字幕轨」里就永远没有它。等不到时保留文件交给缓存回收，别再帮倒忙
+            val appeared = awaitSubtitleTrack(title, AWAIT_SUBTITLE_TRACK_TIMEOUT_MS)
+            AppLog.tag("SubSideload").d("等待轨道结果：appeared=%b", appeared)
             logTextTracks()
+            if (!appeared) {
+                AppLog.tag("SubSideload").w("侧载字幕轨迟迟未出现，保留文件供缓存回收：%s", file)
+                return@launch
+            }
             if (!file.delete()) {
                 AppLog.d("侧载字幕文件暂时未删除，留给缓存回收：%s", file)
             }
@@ -476,19 +506,23 @@ class SubtitlePlaybackCoordinator(
     /**
      * 打印当前播放器里的字幕轨清单。
      *
-     * 「选择字幕轨」直接读 `player.currentTracks`，所以这份日志等于用户菜单里会看到的内容；
-     * 侧载完还看不到新轨时，一眼就能判断是没注入还是播放器没识别。
+     * 「选择字幕轨」读的是 `player.currentTracks` 里 isSupported 的文本组，
+     * 日志按同一口径标出可用 / 选中状态；侧载完还看不到新轨时，
+     * 一眼就能判断是没注入、轨不被支持，还是播放器没识别。
      */
     private fun logTextTracks() {
         val groups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-        AppLog.d(
-            "当前字幕轨共 %d 组：%s",
+        AppLog.tag("SubSideload").d(
+            "当前字幕轨共 %d 组（可用 %d 组）：%s",
             groups.size,
+            groups.count { it.isSupported },
             groups.joinToString(" | ") { group ->
-                (0 until group.length).joinToString(",") { index ->
-                    val format = group.getTrackFormat(index)
-                    "${format.label}/${format.language}"
-                }
+                val formats =
+                    (0 until group.length).joinToString(",") { index ->
+                        val format = group.getTrackFormat(index)
+                        "${format.label}/${format.language}"
+                    }
+                "$formats[supported=${group.isSupported}, selected=${group.isSelected}]"
             },
         )
     }
@@ -496,7 +530,13 @@ class SubtitlePlaybackCoordinator(
     /** 用本地缓存文件切到该字幕（不等服务器把新字幕流发回来，两条后端各走各的 API）。 */
     private fun switchSubtitleTo(file: File, title: String, language: String) {
         val uri = Uri.fromFile(file)
-        AppLog.d("切到侧载字幕：%s（后端 %s）", uri, if (player is MPVPlayer) "mpv" else "exoplayer")
+        val backend = if (player is MPVPlayer) "mpv" else "exoplayer"
+        AppLog.tag("SubSideload").d(
+            "开始注入：uri=%s，后端=%s，文件存在=%b",
+            uri,
+            backend,
+            file.isFile,
+        )
         if (player is MPVPlayer) {
             player.addExternalSubtitle(uri, title, language)
         } else {
@@ -504,24 +544,66 @@ class SubtitlePlaybackCoordinator(
         }
     }
 
-    /** 等播放器回到就绪（重载完成）；超时返回 false，调用方照常收尾。 */
-    private suspend fun awaitPlaybackReady(timeoutMs: Long): Boolean =
-        withTimeoutOrNull(timeoutMs) {
-            if (player.playbackState == Player.STATE_READY) return@withTimeoutOrNull true
-            suspendCancellableCoroutine { continuation ->
-                val listener =
-                    object : Player.Listener {
-                        override fun onPlaybackStateChanged(playbackState: Int) {
-                            if (playbackState == Player.STATE_READY) {
-                                player.removeListener(this)
-                                continuation.resume(true)
+    /**
+     * 等 [label] 这条侧载字幕轨真正出现在播放器轨道列表里。
+     *
+     * 不能只等 `playbackState == STATE_READY`：注入侧载字幕走 `setMediaItems` 重建（ExoPlayer）
+     * 或 `sub-add`（mpv），都是异步的，调用刚返回时播放器往往还停在旧的 READY。
+     * 那时继续往下走会打印旧轨清单、并删掉还没被读取的字幕文件，
+     * 结果「选择字幕轨」里始终没有新轨。轨道变化回调到来才说明这份字幕已被解析完。
+     */
+    private suspend fun awaitSubtitleTrack(label: String, timeoutMs: Long): Boolean {
+        val baseline = textGroupCount(player.currentTracks)
+        AppLog.tag("SubSideload").d("开始等轨道：label=%s，起始文本组=%d", label, baseline)
+        val appeared =
+            withTimeoutOrNull(timeoutMs) {
+                if (isTrackVisible(player.currentTracks, label, baseline)) {
+                    return@withTimeoutOrNull true
+                }
+                suspendCancellableCoroutine { continuation ->
+                    val listener =
+                        object : Player.Listener {
+                            override fun onTracksChanged(tracks: Tracks) {
+                                val hit = isTrackVisible(tracks, label, baseline)
+                                AppLog.tag("SubSideload").d(
+                                    "onTracksChanged：文本组=%d（起始 %d），命中=%b",
+                                    textGroupCount(tracks),
+                                    baseline,
+                                    hit,
+                                )
+                                if (hit) {
+                                    player.removeListener(this)
+                                    continuation.resume(true)
+                                }
                             }
                         }
-                    }
-                player.addListener(listener)
-                continuation.invokeOnCancellation { player.removeListener(listener) }
-            }
-        } ?: false
+                    player.addListener(listener)
+                    continuation.invokeOnCancellation { player.removeListener(listener) }
+                }
+            } ?: false
+        AppLog.tag("SubSideload").d(
+            "等待结束：appeared=%b，最终文本组=%d",
+            appeared,
+            textGroupCount(player.currentTracks),
+        )
+        return appeared
+    }
+
+    /** 服务器给的字幕轨 label 可能为空，所以除按标签找，也认「文本组数量变多」。 */
+    private fun isTrackVisible(tracks: Tracks, label: String, baseline: Int): Boolean =
+        textGroupCount(tracks) > baseline || hasSubtitleTrack(tracks, label)
+
+    /** 文本轨组数，诊断日志用：区分「没注入」与「注入了但被 isSupported 过滤」。 */
+    private fun textGroupCount(tracks: Tracks): Int =
+        tracks.groups.count { it.type == C.TRACK_TYPE_TEXT }
+
+    /** 与「选择字幕轨」同一口径：只认 isSupported 的文本组，按轨道标签找刚侧载的那条。 */
+    private fun hasSubtitleTrack(tracks: Tracks, label: String): Boolean =
+        tracks.groups.any { group ->
+            group.type == C.TRACK_TYPE_TEXT &&
+                group.isSupported &&
+                (0 until group.length).any { group.getTrackFormat(it).label == label }
+        }
 
     /**
      * 带语言名的提示文案；文案资源与格式化都走宿主 [context]。

@@ -1,31 +1,15 @@
 package dev.jdtech.jellyfin.core.subtitle
 
 import dev.jdtech.jellyfin.logging.AppLog
-import java.nio.ByteBuffer
-import java.nio.charset.CharacterCodingException
-import java.nio.charset.Charset
-import java.nio.charset.CodingErrorAction
 
 /**
  * 把 SRT / VTT 字幕正文解析成按时间排序的 [SubtitleCue] 列表，供播放页的对照面板逐句取用。
  *
  * 只做「取句」这一件事，不参与上传与时长判断（时长判断见 [SubtitleTiming]）：
  * 一边播放一边按播放位置查当前是哪一句，解析结果整段缓存在内存里。
+ * 编码兜底复用 [SubtitleTextDecoder]，与时间戳判断、时间行规范化保持同一份文本。
  */
 object SubtitleCueParser {
-
-    /**
-     * 编码兜底顺序：站点给的字幕多为 UTF-8，但日系片源常见 GBK（简中）与 Big5（繁中）。
-     *
-     * 用「严格解码」逐个试：UTF-8 遇到非法字节会报错，才轮到 GBK / Big5。
-     * 全部失败时返回 null（由调用方按「解码失败」处理：行文本留空但仍可上传）。
-     */
-    private val CHARSETS: List<Charset> =
-        listOfNotNull(
-            Charsets.UTF_8,
-            runCatching { Charset.forName("GBK") }.getOrNull(),
-            runCatching { Charset.forName("Big5") }.getOrNull(),
-        )
 
     private const val BOM = '\uFEFF'
 
@@ -49,7 +33,7 @@ object SubtitleCueParser {
 
     /** 解析 [bytes]，编码全都解不出文本时返回空表（调用方按「无文本」处理）。 */
     fun parse(bytes: ByteArray): List<SubtitleCue> {
-        val decoded = decode(bytes)
+        val decoded = SubtitleTextDecoder.decode(bytes)
         if (decoded == null) {
             AppLog.w("字幕解析失败：%d 字节，UTF-8 / GBK / Big5 均无法解码", bytes.size)
             return emptyList()
@@ -59,7 +43,7 @@ object SubtitleCueParser {
         if (cues.isEmpty()) {
             AppLog.w(
                 "字幕解析出 0 条 cue：编码 %s，%d 字节，开头为「%s」",
-                decoded.charsetName,
+                decoded.charset.name(),
                 bytes.size,
                 decoded.text.take(SNIPPET_LENGTH).replace("\n", "\\n"),
             )
@@ -67,7 +51,7 @@ object SubtitleCueParser {
         }
         AppLog.d(
             "字幕解析成功：编码 %s，%d 字节 → %d 条 cue（%d ~ %d ms），首条「%s」",
-            decoded.charsetName,
+            decoded.charset.name(),
             bytes.size,
             cues.size,
             cues.first().startMs,
@@ -77,7 +61,7 @@ object SubtitleCueParser {
         return cues
     }
 
-    /** 解析已经解码好的正文：按空行切块，只认带 `-->` 时间行的块（自动跳过 VTT 的头部 / NOTE / STYLE）。 */
+    /** 解析已经解码好的正文：按空行切块，只认带箭头时间行的块（自动跳过 VTT 的头部 / NOTE / STYLE）。 */
     fun parse(text: String): List<SubtitleCue> =
         text.replace("\r\n", "\n")
             .replace('\r', '\n')
@@ -86,32 +70,14 @@ object SubtitleCueParser {
             .mapNotNull(::parseBlock)
             .sortedBy { it.startMs }
 
-    /** 带编码名的解码结果，解析日志要能看出最终用的是哪种编码。 */
-    private class Decoded(val charsetName: String, val text: String)
-
-    /** 严格解码：任一种编码能无错解出整段字节就采用它。 */
-    private fun decode(bytes: ByteArray): Decoded? {
-        CHARSETS.forEach { charset ->
-            val decoder =
-                charset
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-            try {
-                return Decoded(
-                    charsetName = charset.name(),
-                    text = decoder.decode(ByteBuffer.wrap(bytes)).toString(),
-                )
-            } catch (_: CharacterCodingException) {
-                // 换下一种编码继续试
-            }
-        }
-        return null
-    }
-
     private fun parseBlock(block: String): SubtitleCue? {
         val lines = block.lines().map { it.trimEnd().removePrefix(BOM.toString()) }
-        val timingIndex = lines.indexOfFirst { it.contains("-->") }
+        // 站点变体会把箭头写成 `->`；台词里也可能有 `->`，所以还要求同一行至少有两个时间戳，
+        // 与时间行规范化（SubtitleTiming.normalizeTimingLines）保持同一判据
+        val timingIndex =
+            lines.indexOfFirst { line ->
+                line.contains("->") && SubtitleTiming.TIMESTAMP.findAll(line).count() >= 2
+            }
         if (timingIndex < 0) return null
         val timestamps = SubtitleTiming.TIMESTAMP.findAll(lines[timingIndex]).toList()
         if (timestamps.size < 2) return null

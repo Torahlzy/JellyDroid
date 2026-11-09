@@ -423,7 +423,11 @@ class SubtitleAdjustManager(
             id.isNotEmpty() && runCatching { UUID.fromString(id) }.isSuccess
         }
 
-    /** 白字 + 黑色包边，字体不透明度可调；背景与窗口色保持透明。 */
+    /**
+     * 白字与黑色包边共用同一个 alpha；背景与窗口色保持透明。
+     *
+     * media3 的描边单独取 edgeColor，若用不透明黑，字体淡出后黑色包边仍是实心。
+     */
     private fun captionStyle(textOpacityPercent: Int): CaptionStyleCompat {
         val alpha = textOpacityPercent.coerceIn(0, 100) * 0xFF / 100
         return CaptionStyleCompat(
@@ -431,7 +435,7 @@ class SubtitleAdjustManager(
             /* backgroundColor = */ Color.TRANSPARENT,
             /* windowColor = */ Color.TRANSPARENT,
             /* edgeType = */ CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-            /* edgeColor = */ Color.BLACK,
+            /* edgeColor = */ Color.argb(alpha, 0, 0, 0),
             /* typeface = */ null,
         )
     }

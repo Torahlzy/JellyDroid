@@ -8,6 +8,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.DialogFragment
 import androidx.media3.common.C
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.player.local.R
 import dev.jdtech.jellyfin.player.local.domain.getTrackNames
 import dev.jdtech.jellyfin.player.local.presentation.PlayerViewModel
@@ -24,8 +25,16 @@ class TrackSelectionDialogFragment(
                 C.TRACK_TYPE_TEXT -> R.string.select_subtitle_track
                 else -> throw IllegalStateException("TrackType must be AUDIO or TEXT")
             }
-        val tracksGroups =
-            viewModel.player.currentTracks.groups.filter { it.type == type && it.isSupported }
+        val allGroups = viewModel.player.currentTracks.groups.filter { it.type == type }
+        val tracksGroups = allGroups.filter { it.isSupported }
+        AppLog.tag("SubSideload").d(
+            "打开轨道弹窗：type=%d，全部组=%d，可用组=%d，名称=%s，选中项=%d",
+            type,
+            allGroups.size,
+            tracksGroups.size,
+            tracksGroups.getTrackNames().joinToString(" | "),
+            tracksGroups.indexOfFirst { it.isSelected } + 1,
+        )
         return activity?.let { activity ->
             val builder = MaterialAlertDialogBuilder(activity)
             builder.setTitle(getString(titleResource)).setSingleChoiceItems(

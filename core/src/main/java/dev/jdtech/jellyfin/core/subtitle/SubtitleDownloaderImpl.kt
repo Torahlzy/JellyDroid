@@ -48,7 +48,9 @@ constructor(private val scraper: SubtitleScraper) : SubtitleDownloader {
             AppLog.d("候选页没有可用的中英文字幕：%s", candidate.pageUrl)
             return SubtitleCandidateResult.Unavailable(candidate)
         }
-        val bytes = fetch(subtitle) ?: return SubtitleCandidateResult.Unavailable(candidate)
+        val rawBytes = fetch(subtitle) ?: return SubtitleCandidateResult.Unavailable(candidate)
+        // 时间行未必标准，先统一成 SRT / VTT 再用于时长判断、落盘、上传与侧载
+        val bytes = SubtitleTiming.normalizeTimingLines(rawBytes, subtitle.format)
         val diffMs = durationDiffMs(bytes, videoDurationMs)
         AppLog.d(
             "候选可用：%s（%s），与视频时长差 %s ms",
@@ -109,7 +111,9 @@ constructor(private val scraper: SubtitleScraper) : SubtitleDownloader {
      */
     private fun durationDiffMs(bytes: ByteArray, videoDurationMs: Long): Long? {
         if (videoDurationMs <= 0) return null
-        val text = String(bytes, Charsets.UTF_8)
+        // 时间行可能带全角冒号等非 ASCII 字符，必须按字幕实际编码解码后再找时间戳；
+        // 三种编码都解不出时时间戳同样不可信，直接按「时长未知」处理
+        val text = SubtitleTextDecoder.decode(bytes)?.text ?: return null
         val upperBoundMs = videoDurationMs + MAX_TOLERANCE_MS
         val endMs = SubtitleTiming.lastTimestampMillis(text, upperBoundMs) ?: return null
         val rawEndMs = SubtitleTiming.lastTimestampMillis(text)
