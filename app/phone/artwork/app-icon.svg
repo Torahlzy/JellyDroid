@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 100 100">
+  <title>JAV 播放器图标</title>
+  <defs>
+    <path id="js-path-j" d="M33 27V61C33 70.4 30.8 74 25.3 74C20.5 74 18 71.2 18 66"/>
+    <path id="js-joined-a" d="M33 27L76.4 48.7Q79 50 76.18 49.33L33 39M49.56 35.28V42.96"/>
+    <path id="js-joined-v" d="M33 60L76.07 50.64Q79 50 76.26 51.23L30.05 72"/>
+    <linearGradient id="js-gradient-j" gradientUnits="userSpaceOnUse" x1="27" y1="27" x2="27" y2="74">
+      <stop offset="0" stop-color="#B09CCF"/>
+      <stop offset="1" stop-color="#9E89BE"/>
+    </linearGradient>
+    <linearGradient id="js-gradient-a" gradientUnits="userSpaceOnUse" x1="33" y1="27" x2="79" y2="50">
+      <stop offset="0" stop-color="#D49AAF"/>
+      <stop offset="1" stop-color="#C78BA4"/>
+    </linearGradient>
+    <linearGradient id="js-gradient-v" gradientUnits="userSpaceOnUse" x1="33" y1="72" x2="79" y2="50">
+      <stop offset="0" stop-color="#8EA3CF"/>
+      <stop offset="1" stop-color="#A29FD0"/>
+    </linearGradient>
+    <filter id="js-soft-junctions" x="10" y="20" width="76" height="62" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.65" result="soft-alpha"/>
+      <feComponentTransfer in="soft-alpha" result="rounded-alpha">
+        <feFuncA type="linear" slope="12" intercept="-5.5"/>
+      </feComponentTransfer>
+    </filter>
+    <g id="js-silhouette" fill="none" stroke="white" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round">
+      <use href="#js-joined-a"/>
+      <use href="#js-joined-v"/>
+      <use href="#js-path-j"/>
+    </g>
+    <mask id="js-rounded-mask" x="10" y="20" width="76" height="62" maskUnits="userSpaceOnUse" style="mask-type:alpha">
+      <use href="#js-silhouette" filter="url(#js-soft-junctions)"/>
+    </mask>
+    <g id="js-mark" fill="none" stroke-width="7.8" stroke-linecap="round" stroke-linejoin="round" mask="url(#js-rounded-mask)">
+      <use href="#js-joined-a" stroke="url(#js-gradient-a)"/>
+      <use href="#js-joined-v" stroke="url(#js-gradient-v)"/>
+      <use href="#js-path-j" stroke="url(#js-gradient-j)"/>
+    </g>
+  </defs>
+  <!-- 商店图标保留方形底色，桌面图标的圆角与圆形由系统蒙版裁切。 -->
+  <rect id="icon-background" width="100" height="100" fill="#1D1C23"/>
+  <use href="#js-mark"/>
+</svg>
