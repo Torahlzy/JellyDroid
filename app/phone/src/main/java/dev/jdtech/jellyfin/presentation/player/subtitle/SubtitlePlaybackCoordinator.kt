@@ -66,7 +66,7 @@ class SubtitlePlaybackCoordinator(
 ) {
 
     companion object {
-        /** 等侧载字幕轨出现的最长时间；超时保留侧载文件，交给缓存回收。 */
+        /** 诊断用：等侧载字幕轨出现的最长时间；超时也只记日志，文件留到播放页销毁才回收。 */
         private const val AWAIT_SUBTITLE_TRACK_TIMEOUT_MS = 8_000L
 
         /** 对照面板的重算间隔（ms）：100~200ms 之间，肉眼跟得上又不会太费。 */
@@ -278,13 +278,13 @@ class SubtitlePlaybackCoordinator(
         }
     }
 
-    /** 播放页销毁：清掉本页的下载状态，并把对照快照交给缓存自己的作用域删除。 */
+    /** 播放页销毁：清掉本页的下载状态，并把对照快照与侧载字幕交给缓存自己的作用域删除。 */
     fun release() {
         // 离开播放页时把本页那份字幕下载状态清掉（候选字节只在内存里）
         subtitleController.clear()
-        // 对照快照只服务当前这次播放：面板可能还开着（顶栏返回直接 finish，不走关闭逻辑），
-        // 此时页面 scope 已被取消，交给 cache 自己的作用域删，否则残留的快照会在
-        // 下一轮对比时被按行号合并进面板
+        // 侧载字幕只在本次播放会话内有效，播放器此时也要销毁，才到这里回收；
+        // 快照同理：面板可能还开着（顶栏返回直接 finish，不走关闭逻辑），页面 scope 已取消，
+        // 交给 cache 自己的作用域删，否则残留的快照会在下一轮对比时被按行号合并进面板
         compareCache.clearAsync(compareManager.currentItemId() ?: playedItemId)
     }
 
@@ -387,8 +387,9 @@ class SubtitlePlaybackCoordinator(
     /**
      * 上传选中的那条字幕并切成当前字幕轨。
      *
-     * 成功路径的顺序是有意的：切轨 → 关面板 → 等新字幕轨出现 → 清缓存。
-     * 清快照会把侧载的字幕文件一起删掉，必须等播放器解析完这份字幕之后再清，否则轨根本不会出现。
+     * 成功路径的顺序是有意的：切轨 → 关面板 → 等新字幕轨出现 → 清快照。
+     * 清快照会删掉候选自己的文件，所以侧载必须用 [SubtitleCompareCache.stageForPlayback]
+     * 写出的独立副本；副本要活到播放页销毁，快进快退后文本轨仍会读它。
      * 失败时留在面板、缓存保留，用户可重试或改选别的（不必重新下载）。
      */
     private fun applyCompareEntry(entry: SubtitleCompareEntry) {
@@ -413,8 +414,16 @@ class SubtitlePlaybackCoordinator(
                     format = entry.format,
                 )
                 AppLog.tag("SubSideload").d("对照字幕已上传到服务器，开始切轨")
+                // 快照会在切轨完成后被整目录清掉，播放器不能引用快照里的文件
+                val sideloadFile =
+                    compareCache.stageForPlayback(
+                        itemId = itemId,
+                        nameHint = entry.title,
+                        format = entry.format,
+                        bytes = bytes,
+                    )
                 switchSubtitleTo(
-                    file = entry.file,
+                    file = sideloadFile,
                     title = entry.title,
                     language = entry.language.jellyfinLanguage,
                 )
@@ -427,12 +436,12 @@ class SubtitlePlaybackCoordinator(
                 // 用户已选定一条字幕，本批对照到此结束，剩余候选不再补进这份快照
                 subtitleController.invalidateCompareBatch()
                 if (appeared) {
-                    // 轨已出现说明播放器读完了字幕，这时清理才不会把侧载文件删掉
+                    // 轨已出现，本批对照结束；侧载副本不在快照目录里，不会被 clear 波及
                     compareCache.clear(itemId)
                 } else {
-                    // clear 会删掉 entry.file，等不到轨时删了就再也读不到；
+                    // clear 会删掉快照里的候选文件，等不到轨时先留着，用户可留在面板里重试；
                     // 下一轮 prepareCompare 会因关联作废重新落盘，退出播放页由 clearAsync 回收
-                    AppLog.tag("SubSideload").w("侧载字幕轨迟迟未出现，保留快照供播放器继续读取：%s", entry.file)
+                    AppLog.tag("SubSideload").w("侧载字幕轨迟迟未出现，保留对照快照：%s", entry.file)
                 }
                 Toast.makeText(
                         context,
@@ -462,6 +471,8 @@ class SubtitlePlaybackCoordinator(
     /**
      * 上传成功后把这份字幕立即挂到当前播放器上（两条后端各走各的 API）。
      *
+     * 侧载文件一直留到播放页销毁：注入是异步的，轨道刚出现在列表里不代表播放器此后不再读它，
+     * 快进快退会让文本轨重新向这个 Uri 取数据，提前删掉就会整场没有字幕。
      * 失败只记日志、不打断播放：字幕已经在服务器上了，下次播放照样会有这条轨。
      */
     private fun applyUploadedSubtitle(event: SubtitleDownloadEvent.Uploaded) {
@@ -470,7 +481,12 @@ class SubtitlePlaybackCoordinator(
         scope.launch {
             val file =
                 try {
-                    compareCache.stageForPlayback(targetItemId(), event.subtitle)
+                    compareCache.stageForPlayback(
+                        itemId = targetItemId(),
+                        nameHint = event.subtitle.candidate.pageUrl,
+                        format = event.subtitle.subtitle.format,
+                        bytes = event.subtitle.bytes,
+                    )
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -488,17 +504,12 @@ class SubtitlePlaybackCoordinator(
                 title = title,
                 language = event.language.jellyfinLanguage,
             )
-            // 等播放器认出这条轨再删文件：注入是异步的，早删会读不到字幕，
-            // 「选择字幕轨」里就永远没有它。等不到时保留文件交给缓存回收，别再帮倒忙
+            // 只为诊断：等不到轨时打印当前轨道清单，便于区分「没注入」与「轨不被支持」
             val appeared = awaitSubtitleTrack(title, AWAIT_SUBTITLE_TRACK_TIMEOUT_MS)
             AppLog.tag("SubSideload").d("等待轨道结果：appeared=%b", appeared)
             logTextTracks()
             if (!appeared) {
-                AppLog.tag("SubSideload").w("侧载字幕轨迟迟未出现，保留文件供缓存回收：%s", file)
-                return@launch
-            }
-            if (!file.delete()) {
-                AppLog.d("侧载字幕文件暂时未删除，留给缓存回收：%s", file)
+                AppLog.tag("SubSideload").w("侧载字幕轨迟迟未出现，保留文件供播放器继续读取：%s", file)
             }
         }
     }
@@ -545,12 +556,12 @@ class SubtitlePlaybackCoordinator(
     }
 
     /**
-     * 等 [label] 这条侧载字幕轨真正出现在播放器轨道列表里。
+     * 等 [label] 这条侧载字幕轨出现在播放器轨道列表里（仅用于诊断日志）。
      *
      * 不能只等 `playbackState == STATE_READY`：注入侧载字幕走 `setMediaItems` 重建（ExoPlayer）
-     * 或 `sub-add`（mpv），都是异步的，调用刚返回时播放器往往还停在旧的 READY。
-     * 那时继续往下走会打印旧轨清单、并删掉还没被读取的字幕文件，
-     * 结果「选择字幕轨」里始终没有新轨。轨道变化回调到来才说明这份字幕已被解析完。
+     * 或 `sub-add`（mpv），都是异步的，调用刚返回时播放器往往还停在旧的 READY，
+     * 那时打印的是上一份轨道清单。轨道变化回调到来才说明这份字幕已被识别。
+     * 侧载文件的存亡不依赖这里的结果，快进快退后播放器仍会读它。
      */
     private suspend fun awaitSubtitleTrack(label: String, timeoutMs: Long): Boolean {
         val baseline = textGroupCount(player.currentTracks)

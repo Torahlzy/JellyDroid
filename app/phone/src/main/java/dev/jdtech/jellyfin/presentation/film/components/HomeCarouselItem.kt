@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +42,8 @@ fun HomeCarouselItem(item: FindroidItem, onAction: (HomeAction) -> Unit, height:
             0.5f to Color.Black.copy(alpha = 0.5f),
             1f to Color.Black.copy(alpha = 0.6f),
         )
+    // 与卡片、详情页头部共用取图兜底链：服务器只给了海报没给背景图时，banner 不至于整块空白
+    val imageUri = item.coverUri(Direction.HORIZONTAL)
 
     Box(
         modifier =
@@ -51,16 +52,16 @@ fun HomeCarouselItem(item: FindroidItem, onAction: (HomeAction) -> Unit, height:
                 .clickable { onAction(HomeAction.OnItemClick(item, heroKey = heroKey)) }
     ) {
         AsyncImage(
-            model = item.images.backdrop,
+            model = imageUri,
             placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceContainer),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             // 与电影详情页头部共用来源 key，避免命中继续观看里的同影片卡片
             modifier =
                 if (heroKey != null) {
-                    Modifier.fillMaxWidth().heroSharedBounds(key = heroKey)
+                    Modifier.fillMaxSize().heroSharedBounds(key = heroKey)
                 } else {
-                    Modifier.fillMaxWidth()
+                    Modifier.fillMaxSize()
                 },
         )
         Canvas(modifier = Modifier.fillMaxSize()) {

@@ -32,6 +32,10 @@ import org.json.JSONObject
  *
  * 是 `@Singleton`：面板打开期间剩余候选还在下载，每下完一条都要补进同一份快照，
  * 详情页与播放页必须看到同一个实例的写入与 [updates] 通知。
+ *
+ * 上传 / 应用后侧载给播放器的字幕另放 `cacheDir/subtitle_sideload/<itemId>/`：
+ * 快照会被 [clear] 整目录删掉（关面板、新一轮对比、应用成功都可能触发），而侧载文件
+ * 必须活到播放会话结束——ExoPlayer 在快进快退后会重新向这个 Uri 取数据。
  */
 @Singleton
 class SubtitleCompareCache @Inject constructor(private val application: Application) {
@@ -173,28 +177,44 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
      *
      * 与 [upsert] 分开：**不写进 manifest**，所以不会出现在对照面板里，只是给播放器一个
      * 可直接读取的本地文件（上传成功后立即切轨用，比等服务器重新索引确定得多）。
-     * 文件名带 `manual-` 前缀，和快照条目的 hash 名区分开。
+     * 文件名带 `manual-` 前缀，和快照条目的 hash 名区分开；目录也与快照分开，
+     * [clear] 删快照时不会连带删掉播放器还在读的文件。
      */
-    suspend fun stageForPlayback(itemId: UUID, downloaded: DownloadedSubtitle): File =
+    suspend fun stageForPlayback(
+        itemId: UUID,
+        nameHint: String,
+        format: String,
+        bytes: ByteArray,
+    ): File =
         withContext(Dispatchers.IO) {
-            val dir = itemDir(itemId)
+            val dir = sideloadDir(itemId)
             if (!dir.isDirectory && !dir.mkdirs()) {
-                throw IllegalStateException("无法创建字幕缓存目录：$dir")
+                throw IllegalStateException("无法创建字幕侧载目录：$dir")
             }
-            val hash = Integer.toHexString(downloaded.candidate.pageUrl.hashCode())
-            val file = File(dir, "manual-$hash.${downloaded.subtitle.format}")
-            writeAtomically(file, downloaded.bytes)
+            val hash = Integer.toHexString(nameHint.hashCode())
+            val file = File(dir, "manual-$hash.$format")
+            writeAtomically(file, bytes)
             AppLog.d("侧载字幕文件已就绪：%s", file)
             file
         }
 
-    /** 删掉 [itemId] 的整份快照（切轨完成或退出对照后调用）；同时递增批次令牌，作废在途的追加写入。 */
-    suspend fun clear(itemId: UUID) {
+    /**
+     * 删掉 [itemId] 的整份快照（切轨完成或退出对照后调用）；同时递增批次令牌，作废在途的追加写入。
+     *
+     * 侧载字幕不在这里删：播放器在 seek 后仍会读它，只有播放页销毁时的 [clearAsync] 才回收。
+     */
+    suspend fun clear(itemId: UUID, includeSideload: Boolean = false) {
         withContext(Dispatchers.IO) {
             generations[itemId] = (generations[itemId] ?: 0L) + 1
             val dir = itemDir(itemId)
             if (dir.exists() && !dir.deleteRecursively()) {
                 AppLog.w("清理字幕对照缓存失败：%s", dir)
+            }
+            if (includeSideload) {
+                val sideloaded = sideloadDir(itemId)
+                if (sideloaded.exists() && !sideloaded.deleteRecursively()) {
+                    AppLog.w("清理字幕侧载缓存失败：%s", sideloaded)
+                }
             }
         }
     }
@@ -204,10 +224,11 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
      *
      * 快照只对当前这次播放有意义，页面销毁后留着只会在下一轮对比时被当成本批候选合并进来，
      * 因此宁可交给内部作用域在后台删掉，也不跟着临死的 `lifecycleScope` 一起被取消。
+     * 播放器此时也要销毁，侧载字幕一并回收。
      */
     fun clearAsync(itemId: UUID) {
-        AppLog.d("后台清理字幕对照快照：%s", itemId)
-        cleanupScope.launch { clear(itemId) }
+        AppLog.d("后台清理字幕对照快照与侧载字幕：%s", itemId)
+        cleanupScope.launch { clear(itemId, includeSideload = true) }
     }
 
     /**
@@ -230,6 +251,9 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
 
     private fun itemDir(itemId: UUID): File =
         File(File(application.cacheDir, ROOT_DIR), itemId.toString())
+
+    private fun sideloadDir(itemId: UUID): File =
+        File(File(application.cacheDir, SIDELOAD_DIR), itemId.toString())
 
     private fun fileName(downloaded: DownloadedSubtitle): String {
         val hash = Integer.toHexString(downloaded.candidate.pageUrl.hashCode())
@@ -281,6 +305,7 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
 
     private companion object {
         const val ROOT_DIR = "subtitle_compare"
+        const val SIDELOAD_DIR = "subtitle_sideload"
         const val MANIFEST_FILE = "manifest.json"
 
         /** 快照更新事件的缓冲：面板关闭 / 未订阅时不阻塞写入方，漏了就漏了（下次 load 会补上）。 */

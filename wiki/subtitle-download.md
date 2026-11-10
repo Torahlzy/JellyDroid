@@ -549,3 +549,13 @@
     双空格并整份重编码，现两侧空白一起归一，合规字幕直接返回原字节；`SubtitleCueParser`
     识别时间行也补上「至少两个时间戳」判据，避免台词里的 `->` 抢走时间行。诊断日志统一
     走 `AppLog.tag("SubSideload")`，logcat 按 `torahLog/SubSideload` 过滤即可。
+28. **快进快退后字幕全部消失的修复**（2026-11-10 用户反馈）：上传后黑一下仍有，那是第 26 条
+    `setMediaItems` 重建播放列表的已知代价。但本次会话的字幕是 `cacheDir` 临时文件侧载，
+    第 24 条的 `awaitSubtitleTrack()` 只等到「轨道清单出现」就 `file.delete()` / `clear()` 删文件；
+    `onTracksChanged` 不代表播放器此后不再读这个 Uri，seek 会让文本轨重新取数据，
+    文件已不在 → 字幕全无。退出重播走服务器上已索引好的持久 URL，不依赖临时文件，所以正常。
+    现把侧载文件移到独立的 `cacheDir/subtitle_sideload/<itemId>/`，弹窗「上传」与对照「应用」
+    两条路径都用 `stageForPlayback()` 写独立副本，播放会话内一律不删，只由 `release()` 的
+    `clearAsync()` 在播放页销毁时回收；`clear()` 只删对照快照，不再波及侧载文件。
+    `awaitSubtitleTrack()` 降级为纯诊断日志。**验收**：上传后快进 / 快退字幕仍在，
+    「选择字幕轨」里仍有该轨，退出重播仍正常。
