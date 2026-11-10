@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-11-09**
+**最后更新：2026-11-10**
 
 ---
 
@@ -445,8 +445,8 @@ else -> WelcomeRoute
 - **职责**：播放器内的字幕外观调节模式——调整字号（±5%，范围 50%–200%）、字体透明度（进度条）、垂直拖动字幕位置、字幕进度偏移（±0.3s / ±1s / ±5s / ±20s 档位 + 小输入框）；「应用」保存为全局设置，「重置」恢复全部预览默认值并把进度偏移清零，「关闭」（含调节模式下的系统返回键）丢弃修改。调节模式开着时覆盖层消费全部触摸，播放器手势不会穿透。字幕进度偏移按条目 id 记录并实时保存（下次播放同视频自动恢复），其余设置「应用」后才持久化。字号与位置按**屏幕高度（px）**分开记录（折叠屏两种尺寸互不影响），透明度全局一份。
 - **无路由 / 无 Screen / 无 ViewModel**：由 `PlayerActivity` 直接挂载的组件实现——
   - `PHONE/presentation/player/subtitle/SubtitleAdjustManager.kt`：状态与编排（State 数据类 + `MutableStateFlow`），监听视频尺寸变化计算默认位置（黑边放得下一行字幕时整条落进黑边、顶边贴视频底边；放不下时一半盖画面一半盖黑边、底边至少 15dp），把预览改动实时应用到两个后端，「应用 / 重置 / 关闭」的持久化语义也在这里。
-  - `PHONE/presentation/player/subtitle/SubtitleAdjustOverlay.kt`：调节模式的全屏 Compose 覆盖层（挂载于 `activity_player.xml` 的 `ComposeView`），按「设置卡 + 拖动手柄」整列高度计算垂直偏移，拖动时单独绘制字幕底边参考线；垂直拖动手柄排在设置卡右下方外侧，按住拖动改变字幕底边距。
-  - `PHONE/presentation/player/subtitle/SubtitleAdjustPanel.kt`：紧凑悬浮设置卡（非弹窗），依附当前字幕区域左侧、整列底边贴着字幕文字上方并随拖动跟随，调整时可同时看到字幕效果；垂直偏移由 `SubtitleAdjustOverlay.kt` 计算后经 modifier 传入；内容为字号 / 字体透明度 / 进度偏移 / 重置 / 关闭 / 应用。
+  - `PHONE/presentation/player/subtitle/SubtitleAdjustOverlay.kt`：调节模式的全屏 Compose 覆盖层（挂载于 `activity_player.xml` 的 `ComposeView`），使用深色主题，按「设置卡 + 拖动手柄」整列高度计算垂直偏移，并避让系统安全区域与键盘、限制面板宽高；拖动时单独绘制字幕底边参考线，带文字提示的胶囊手柄排在设置卡右下方外侧，按住拖动改变字幕底边距。
+  - `PHONE/presentation/player/subtitle/SubtitleAdjustPanel.kt`：圆角悬浮设置卡（非弹窗），依附当前字幕区域左侧、整列底边贴着字幕文字上方并随拖动跟随，调整时可同时看到字幕效果；垂直偏移由 `SubtitleAdjustOverlay.kt` 计算后经 modifier 传入。「外观」分区展示字号步进与透明度滑块，「字幕进度」分区展示偏移输入框和分两行排列的全部档位；标题栏可重置，底部固定关闭 / 应用，仅中间内容在高度不足时滚动。键盘弹出期间收起标题、分区切换和拖动手柄，为偏移输入框与底部操作保留空间。
   - `PHONE/presentation/player/subtitle/DelayedSubtitleView.kt`：字幕容器（内含真实 media3 `SubtitleView`；`SubtitleView` 是 final 不能继承），布局里刻意不放 `exo_subtitles` 让 `PlayerView` 跳过内部渲染，由 `SubtitleAdjustManager` 监听 `onCues` 转发进来、延迟 `setCues` 实现 ExoPlayer 后端的字幕延后；负偏移（提前）ExoPlayer 做不到，按 0 处理并提示。`isSuppressed` 为 true 时丢弃 cue 并清空画面（字幕对照模式打开时用）。
 - **后端差异**：ExoPlayer 走 `SubtitleView`（`setFractionalTextSize` / `CaptionStyleCompat` / `setBottomPaddingFraction` / 延迟 `setCues`）；mpv 由 `PLAYER/mpv/MPVPlayer.kt` 的 `setSubtitleScale` / `setSubtitleOpacity` / `setSubtitleBottomOffset` / `setSubtitleDelay` 写 libmpv 属性（`sub-scale` / `sub-color` / `sub-border-color` / `sub-pos` / `sub-delay`，字体色与包边色共用同一 alpha），内嵌 ASS 字幕的字号 / 颜色调整可能不生效，应用时弹 toast 提示。隐藏 / 恢复真实字幕轨与侧载新字幕也分两套：ExoPlayer 侧用 `DelayedSubtitleView.isSuppressed` 与 `setMediaItems` 重建播放列表（`PlayerViewModel.reloadCurrentItemWithExternalSubtitle`），mpv 侧写 `sub-visibility` 与 `sub-add <path> select <title> <lang>`（`MPVPlayer.setSubtitleVisible` / `MPVPlayer.addExternalSubtitle`）。
 - **持久化**：`SETTINGS/domain/models/SubtitleAppearance.kt`（外观 JSON 模型，目前仅字体不透明度）+ `SETTINGS/domain/AppPreferences.kt` 的 `subtitleAppearance` / `subtitleScales` / `subtitlePositions` / `subtitleOffsets` 四个偏好（后三个为 JSON map）。

@@ -31,6 +31,10 @@
     <string name="player_backdrop_frame_unavailable">视频画面尚未就绪，请稍后再试</string>
     <string name="player_menu_subtitle_adjust">字幕设置</string>
     <string name="player_menu_download_subtitle">下载字幕</string>
+    <string name="subtitle_adjust_appearance">外观</string>
+    <string name="subtitle_adjust_live_preview">在画面中实时预览</string>
+    <string name="subtitle_adjust_timing_saved">进度偏移按视频自动保存</string>
+    <string name="subtitle_adjust_seconds_unit">秒</string>
     <string name="subtitle_adjust_font_size">字号</string>
     <string name="subtitle_adjust_text_opacity">字体透明度</string>
     <string name="subtitle_adjust_offset">字幕进度</string>
