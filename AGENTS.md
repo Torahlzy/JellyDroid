@@ -79,7 +79,7 @@
 - 组件签名：可复用 `@Composable` 以 `modifier: Modifier = Modifier` 作为最后一个参数；Screen 级入口函数不接收 modifier，内部自行 `Modifier.fillMaxSize()`。
 - 尺寸与文案：间距一律 `MaterialTheme.spacings.*`，不硬编码 dp；字符串 / 图标一律 `stringResource` / `painterResource`，新字符串加到对应模块的 `res/values/strings.xml`（跨模块共用的放 `:core`）。**必须同步翻译**：`:core` 下新增 `<string>` 时，同一次改动里把中文翻译加进 `:core` 的 `res/values-zh-rCN/strings.xml` 和 `res/values-zh-rTW/strings.xml`（其他语言目录不管）。中文目录按 key 排序位置就近插入即可，不必与英文文件逐行对齐；漏加的后果是中文界面显示英文——此问题已犯过两次，完成前用差集脚本核对（见「本地化核对命令」）。
 - 弹窗布局：删除、清空这类低频且不可逆的操作，不放进弹窗的常用操作列表，统一放弹窗**右上角**（与标题同一行），并用错误色等醒目样式提示风险；执行前必须再弹一次确认。例：更多操作弹窗的「删除全部」（`MoreMenuDialog.kt`）、编辑封面的「清理」（`EditItemImagesDialog.kt`）、编辑 nfo 的「清空」（`EditItemMetadataDialog.kt`）。
-- 界面设计：遵循 Android Material Design（Material 3），优先使用 Material3 通用控件（`AlertDialog`、`Dialog` + `Card`、`TextButton`、`OutlinedTextField`、`LazyVerticalGrid` 等）承载交互，不要手搓等效的自定义控件。
+- 界面设计：遵循 Android Material Design（Material 3）的整体风格，常用交互优先使用 Material3 通用控件（`AlertDialog`、`Dialog` + `Card`、`TextButton`、`OutlinedTextField`、`LazyVerticalGrid` 等）；当 M3 控件无法满足需求（如特殊交互形态、高度定制的外观或行为）时，可以选用或定制经典 / 自定义控件，不必强行套用 M3 通用控件，但视觉风格需与整体 M3 主题保持一致。
 - 导航：`NavigationRoot.kt` 中新增 `@Serializable` 路由类并注册 `composable<...>`，跳转走 `safeNavigate`。
 - Gradle 依赖用类型安全访问器：`implementation(projects.modes.film)`。
 - 格式化：ktfmt `kotlinLangStyle()`（缩进 4 空格）。**不要引入 detekt / ktlint / spotless / `.editorconfig`**，本仓库只认 ktfmt。

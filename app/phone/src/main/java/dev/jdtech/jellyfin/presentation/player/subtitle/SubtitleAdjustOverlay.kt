@@ -68,7 +68,7 @@ private val PanelMaxWidth = 360.dp
 private val DragHandleHeight = 48.dp
 private const val DraggedScale = 1.03f
 
-/** 字幕调节覆盖层：卡片跟随字幕定位，触摸由本层消费，避免触发播放器手势。 */
+/** 字幕调节覆盖层：卡片跟随字幕定位，仅面板区域拦截触摸，其余区域透传给播放器手势。 */
 @Composable
 fun SubtitleAdjustOverlay(
     manager: SubtitleAdjustManager,
@@ -93,15 +93,7 @@ fun SubtitleAdjustOverlay(
         var isHandleDragging by remember { mutableStateOf(false) }
         val bottomLineY = with(density) { (state.viewHeightPx - state.bottomOffsetPx).toDp() }
 
-        BoxWithConstraints(
-            modifier =
-                modifier.fillMaxSize().pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        currentEvent.changes.forEach { it.consume() }
-                    }
-                }
-        ) {
+        BoxWithConstraints(modifier = modifier.fillMaxSize()) {
             val panelWidth = (maxWidth - startPadding - endPadding).coerceIn(0.dp, PanelMaxWidth)
             val handleSpace = if (isKeyboardVisible) 0.dp else DragHandleHeight + edgePadding
             val panelMaxHeight =
@@ -126,7 +118,14 @@ fun SubtitleAdjustOverlay(
                 modifier =
                     Modifier.padding(start = startPadding)
                         .offset(y = panelOffsetY)
-                        .onSizeChanged { contentHeightPx = it.height },
+                        .onSizeChanged { contentHeightPx = it.height }
+                        // 只在弹窗（含拖动手柄）内吞掉触摸，弹窗外仍由播放器处理快进等手势
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                currentEvent.changes.forEach { it.consume() }
+                            }
+                        },
                 verticalArrangement = Arrangement.spacedBy(edgePadding),
             ) {
                 SubtitleAdjustPanel(

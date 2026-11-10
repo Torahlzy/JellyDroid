@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -12,26 +13,33 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSizeIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +50,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -50,6 +60,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.player.local.R as PlayerR
@@ -64,6 +75,11 @@ import kotlin.math.roundToLong
 private val StepButtonSize = 48.dp
 private val OffsetInputWidth = 128.dp
 private const val PressedScale = 0.96f
+
+// M3 1.4 默认滑杆是竖条手柄 + 16dp 粗轨道，这里沿用旧版的细横条与圆点尺寸。
+private val OpacityTrackHeight = 4.dp
+private val OpacityThumbSize = DpSize(20.dp, 20.dp)
+private val OpacityThumbRippleRadius = 20.dp
 
 // 当前 M3 1.4 的 MotionScheme 尚未公开；与播放器菜单沿用同一组空间 / 效果弹簧。
 private val SpatialSpec =
@@ -247,13 +263,60 @@ private fun SubtitleAppearanceSettings(
                 color = MaterialTheme.colorScheme.primary,
             )
         }
-        val opacityLabel = stringResource(PlayerR.string.subtitle_adjust_text_opacity)
-        Slider(
-            value = state.textOpacityPercent / 100f,
-            onValueChange = { onTextOpacityChanged((it * 100).roundToInt()) },
-            modifier = Modifier.weight(1f).semantics { contentDescription = opacityLabel },
+        SubtitleOpacitySlider(
+            percent = state.textOpacityPercent,
+            onPercentChanged = onTextOpacityChanged,
+            modifier = Modifier.weight(1f),
         )
     }
+}
+
+/**
+ * M3 1.4 的 Slider 默认是竖条手柄 + 粗轨道，按官方 LegacySliderSample 还原成细横条 + 圆点，
+ * 并补回自定义 Thumb 上缺失的按压波纹。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SubtitleOpacitySlider(
+    percent: Int,
+    onPercentChanged: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val opacityLabel = stringResource(PlayerR.string.subtitle_adjust_text_opacity)
+    Slider(
+        value = percent / 100f,
+        onValueChange = { onPercentChanged((it * 100).roundToInt()) },
+        modifier =
+            modifier
+                .requiredSizeIn(
+                    minWidth = OpacityThumbSize.width,
+                    minHeight = OpacityTrackHeight,
+                )
+                .semantics { contentDescription = opacityLabel },
+        interactionSource = interactionSource,
+        thumb = {
+            SliderDefaults.Thumb(
+                interactionSource = interactionSource,
+                modifier =
+                    Modifier.size(OpacityThumbSize)
+                        .shadow(1.dp, CircleShape, clip = false)
+                        .indication(
+                            interactionSource = interactionSource,
+                            indication = ripple(bounded = false, radius = OpacityThumbRippleRadius),
+                        ),
+            )
+        },
+        track = { sliderState ->
+            SliderDefaults.Track(
+                sliderState = sliderState,
+                modifier = Modifier.height(OpacityTrackHeight),
+                thumbTrackGapSize = 0.dp,
+                trackInsideCornerSize = 0.dp,
+                drawStopIndicator = null,
+            )
+        },
+    )
 }
 
 @Composable
@@ -376,7 +439,7 @@ private fun OffsetInputField(
             text = formatSeconds(state.offsetSeconds)
         }
     }
-    OutlinedTextField(
+    TextField(
         value = text,
         onValueChange = { input ->
             text = input
@@ -387,15 +450,22 @@ private fun OffsetInputField(
         label = { Text(text = stringResource(PlayerR.string.subtitle_adjust_offset)) },
         suffix = { Text(text = stringResource(PlayerR.string.subtitle_adjust_seconds_unit)) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        shape = MaterialTheme.shapes.medium,
+        // 填充容器改透明后只剩底部指示线，即下划线输入框
+        colors =
+            TextFieldDefaults.colors(
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                disabledContainerColor = Color.Transparent,
+                errorContainerColor = Color.Transparent,
+            ),
         textStyle = MaterialTheme.typography.bodyMedium,
     )
 }
 
-/** 偏移档位按钮按提前 / 延后分行。 */
+/** 偏移档位按钮按提前 / 延后分行，两行数值顺序一致，仅加减号相反。 */
 private val OFFSET_STEP_LABELS: List<Pair<String, Long>> =
     buildList {
-        for (stepMs in SubtitleAdjustManager.OFFSET_STEPS_MS.reversed()) {
+        for (stepMs in SubtitleAdjustManager.OFFSET_STEPS_MS) {
             add("-${formatOffsetLabel(stepMs)}" to -stepMs)
         }
         for (stepMs in SubtitleAdjustManager.OFFSET_STEPS_MS) {
