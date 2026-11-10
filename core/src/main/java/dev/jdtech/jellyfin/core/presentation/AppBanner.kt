@@ -18,10 +18,11 @@ import dev.jdtech.jellyfin.core.R
 import dev.jdtech.jellyfin.core.presentation.theme.Spacings
 
 /**
- * 应用横幅：水母 logo + 应用名文字。
+ * 应用横幅：logo + 应用名文字。
  *
- * 原 [R.drawable.ic_banner] 里 "Findroid" 字样是画在图里的文字轮廓，改名为 Jellydroid 后
- * 无法随应用名联动，因此图里只保留 logo，应用名改用真实文本（取 app_name 资源）绘制。
+ * 应用名改用真实文本（取 app_name 资源）绘制，避免图内文字轮廓无法随改名联动。
+ * logo 取 [R.drawable.ic_logo]，各 app 模块可用同名资源覆盖，手机版已覆盖为新版 JAV 图标；
+ * [R.drawable.ic_banner] 是旧版水母 logo，留给 TV 端横幅使用。
  */
 @Composable
 fun AppBanner(modifier: Modifier = Modifier) {
@@ -31,7 +32,7 @@ fun AppBanner(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Image(
-            painter = painterResource(R.drawable.ic_banner),
+            painter = painterResource(R.drawable.ic_logo),
             contentDescription = null,
             modifier = Modifier.size(56.dp),
         )
