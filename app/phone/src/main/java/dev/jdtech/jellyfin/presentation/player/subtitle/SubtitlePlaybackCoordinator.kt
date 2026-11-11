@@ -102,6 +102,9 @@ class SubtitlePlaybackCoordinator(
      */
     private lateinit var playedItemId: UUID
 
+    /** 侧载字幕可能在切回上一集时再次读取，统一留到整个播放会话结束再回收。 */
+    private val playbackItemIds = mutableSetOf<UUID>()
+
     /** 上一次观察到的播放条目。 */
     private var observedItemId: UUID? = null
 
@@ -144,6 +147,7 @@ class SubtitlePlaybackCoordinator(
      * 换了一部影片（`onNewIntent`）也要走这里：关键词与目标条目都得跟着换。
      */
     fun onPlaybackStarted(itemId: UUID, openSubtitleCompare: Boolean) {
+        playbackItemIds.add(itemId)
         if (this::playedItemId.isInitialized) {
             onPlaybackItemChanged(itemId, force = true)
         } else {
@@ -356,7 +360,9 @@ class SubtitlePlaybackCoordinator(
         // 侧载字幕只在本次播放会话内有效，播放器此时也要销毁，才到这里回收；
         // 快照同理：面板可能还开着（顶栏返回直接 finish，不走关闭逻辑），页面 scope 已取消，
         // 交给 cache 自己的作用域删，否则残留的快照会在下一轮对比时被按行号合并进面板
-        compareCache.clearAsync(compareManager.currentItemId() ?: playedItemId)
+        val itemIds = playbackItemIds + listOfNotNull(compareManager.currentItemId())
+        itemIds.forEach { compareCache.clearAsync(it) }
+        playbackItemIds.clear()
     }
 
     private fun handleSubtitleEvent(event: SubtitleDownloadEvent) {
@@ -405,6 +411,7 @@ class SubtitlePlaybackCoordinator(
      */
     private fun onPlaybackItemChanged(itemId: UUID, force: Boolean = false) {
         if (itemId == playedItemId && !force) return
+        playbackItemIds.add(itemId)
         AppLog.d("播放条目已切换：%s → %s", playedItemId, itemId)
         subtitleController.clear()
         applyJob?.cancel()

@@ -45,7 +45,6 @@ constructor(
             val mainState =
                 MainState(
                     isLoading = false,
-                    isDynamicColors = checkIsDynamicColors(),
                     hasServers = checkHasServers(),
                     hasCurrentServer = checkHasCurrentServer(),
                     hasCurrentUser = checkHasCurrentUser(),
@@ -81,10 +80,6 @@ constructor(
         return appPreferences.getValue(appPreferences.currentServer)?.let {
             database.getServerCurrentUser(it) != null
         } == true
-    }
-
-    private fun checkIsDynamicColors(): Boolean {
-        return appPreferences.getValue(appPreferences.dynamicColors)
     }
 
     private fun checkIsOfflineMode(): Boolean {

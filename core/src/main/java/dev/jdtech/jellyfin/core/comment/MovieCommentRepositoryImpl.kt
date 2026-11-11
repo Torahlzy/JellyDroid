@@ -2,6 +2,7 @@ package dev.jdtech.jellyfin.core.comment
 
 import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
+import dev.jdtech.jellyfin.settings.domain.Constants
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,8 +35,7 @@ constructor(
 
         val useProxy = appPreferences.getValue(appPreferences.commentsUseProxy)
         val comments = source.load(trimmed, useProxy)
-        val maxBytes = appPreferences.getValue(appPreferences.commentCacheSize).megabytesToBytes()
-        cache.write(trimmed, comments, maxBytes)
+        cache.write(trimmed, comments)
         return comments
     }
 
@@ -43,16 +43,13 @@ constructor(
     private suspend fun readFreshCache(keyword: String): List<MovieComment>? {
         val trimmed = keyword.trim()
         if (trimmed.isEmpty()) return null
-        val validMillis = appPreferences.getValue(appPreferences.commentCacheDays).daysToMillis()
+        val validMillis = Constants.COMMENT_CACHE_DEFAULT_DAYS.daysToMillis()
         return cache.read(trimmed, validMillis)
     }
 
     private fun Int.daysToMillis(): Long = this.coerceAtLeast(0).toLong() * MILLIS_PER_DAY
 
-    private fun Int.megabytesToBytes(): Long = this.coerceAtLeast(0).toLong() * BYTES_PER_MB
-
     private companion object {
         const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
-        const val BYTES_PER_MB = 1024L * 1024
     }
 }

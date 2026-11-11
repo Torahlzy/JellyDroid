@@ -679,7 +679,7 @@ class JellyfinRepositoryImpl(
                 try {
                     val sources = File(context.filesDir, "trickplay/$itemId").listFiles()
                     if (sources != null) {
-                        return@withContext File(sources.first(), index.toString()).readBytes()
+                        File(sources.first(), index.toString()).takeIf { it.isFile }?.let { return@withContext it.readBytes() }
                     }
                 } catch (_: Exception) {}
 

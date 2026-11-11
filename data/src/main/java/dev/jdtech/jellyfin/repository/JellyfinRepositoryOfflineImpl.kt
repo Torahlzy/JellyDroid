@@ -260,7 +260,7 @@ class JellyfinRepositoryOfflineImpl(
                 val sources =
                     File(context.filesDir, "trickplay/$itemId").listFiles()
                         ?: return@withContext null
-                File(sources.first(), index.toString()).readBytes()
+                File(sources.first(), index.toString()).takeIf { it.isFile }?.readBytes()
             } catch (_: Exception) {
                 null
             }

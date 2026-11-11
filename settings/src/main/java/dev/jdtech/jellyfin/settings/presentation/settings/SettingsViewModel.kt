@@ -51,171 +51,47 @@ constructor(
     private val topLevelPreferences =
         listOf(
             PreferenceGroup(
-                preferences =
-                    listOf(
-                        PreferenceSwitch(
-                            nameStringResource = R.string.offline_mode,
-                            descriptionStringRes = R.string.offline_mode_summary,
-                            iconDrawableId = R.drawable.ic_server_off,
-                            supportedDeviceTypes = listOf(DeviceType.PHONE),
-                            onClick = {
-                                viewModelScope.launch {
-                                    eventsChannel.send(SettingsEvent.RestartActivity)
-                                }
-                            },
-                            backendPreference = appPreferences.offlineMode,
-                        )
-                    )
-            ),
-            PreferenceGroup(
-                preferences =
-                    listOf(
-                        PreferenceCategory(
-                            nameStringResource = R.string.settings_category_language,
-                            iconDrawableId = R.drawable.ic_languages,
-                            onClick = {
-                                viewModelScope.launch {
-                                    eventsChannel.send(
-                                        SettingsEvent.NavigateToSettings(
-                                            intArrayOf(it.nameStringResource)
-                                        )
+                preferences = listOf(
+                    PreferenceCategory(
+                        nameStringResource = R.string.settings_category_accounts,
+                        iconDrawableId = R.drawable.ic_server,
+                        onClick = {
+                            viewModelScope.launch {
+                                eventsChannel.send(
+                                    SettingsEvent.NavigateToSettings(
+                                        intArrayOf(R.string.settings_category_accounts)
                                     )
-                                }
-                            },
-                            nestedPreferenceGroups =
-                                listOf(
-                                    PreferenceGroup(
-                                        preferences =
-                                            listOf(
-                                                PreferenceAppLanguage(
-                                                    nameStringResource = R.string.app_language,
-                                                    iconDrawableId = R.drawable.ic_languages,
-                                                    enabled =
-                                                        Build.VERSION.SDK_INT >=
-                                                            Build.VERSION_CODES.TIRAMISU,
-                                                )
-                                            )
-                                    ),
-                                    PreferenceGroup(
-                                        preferences =
-                                            listOf(
-                                                PreferenceSelect(
-                                                    nameStringResource =
-                                                        R.string.settings_preferred_audio_language,
-                                                    iconDrawableId = R.drawable.ic_speaker,
-                                                    backendPreference =
-                                                        appPreferences.preferredAudioLanguage,
-                                                    options = R.array.languages,
-                                                    optionValues = R.array.languages_values,
-                                                    optionsIncludeNull = true,
-                                                ),
-                                                PreferenceSelect(
-                                                    nameStringResource =
-                                                        R.string
-                                                            .settings_preferred_subtitle_language,
-                                                    iconDrawableId = R.drawable.ic_closed_caption,
-                                                    backendPreference =
-                                                        appPreferences.preferredSubtitleLanguage,
-                                                    options = R.array.languages,
-                                                    optionValues = R.array.languages_values,
-                                                    optionsIncludeNull = true,
-                                                ),
-                                            )
+                                )
+                            }
+                        },
+                        nestedPreferenceGroups = listOf(
+                            PreferenceGroup(
+                                preferences = listOf(
+                                    PreferenceSwitch(
+                                        nameStringResource = R.string.offline_mode,
+                                        descriptionStringRes = R.string.offline_mode_summary,
+                                        backendPreference = appPreferences.offlineMode,
+                                        onClick = {
+                                            viewModelScope.launch {
+                                                eventsChannel.send(SettingsEvent.RestartActivity)
+                                            }
+                                        },
                                     ),
                                 ),
-                        )
-                    )
-            ),
-            PreferenceGroup(
-                preferences =
-                    listOf(
-                        PreferenceCategory(
-                            nameStringResource = R.string.settings_category_interface,
-                            iconDrawableId = R.drawable.ic_layout_dashboard,
-                            onClick = {
-                                viewModelScope.launch {
-                                    eventsChannel.send(
-                                        SettingsEvent.NavigateToSettings(
-                                            intArrayOf(it.nameStringResource)
-                                        )
-                                    )
-                                }
-                            },
-                            nestedPreferenceGroups =
-                                listOf(
-                                    PreferenceGroup(
-                                        nameStringResource = R.string.settings_category_appearance,
-                                        preferences =
-                                            listOf(
-                                                PreferenceSelect(
-                                                    nameStringResource = R.string.theme,
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
-                                                    backendPreference = appPreferences.theme,
-                                                    onUpdate = { value ->
-                                                        viewModelScope.launch {
-                                                            eventsChannel.send(
-                                                                SettingsEvent.UpdateTheme(
-                                                                    value ?: "system"
-                                                                )
-                                                            )
-                                                        }
-                                                    },
-                                                    options = R.array.theme,
-                                                    optionValues = R.array.theme_values,
-                                                ),
-                                                PreferenceSwitch(
-                                                    nameStringResource = R.string.dynamic_colors,
-                                                    descriptionStringRes =
-                                                        R.string.dynamic_colors_summary,
-                                                    enabled =
-                                                        Build.VERSION.SDK_INT >=
-                                                            Build.VERSION_CODES.S,
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
-                                                    backendPreference =
-                                                        appPreferences.dynamicColors,
-                                                ),
-                                            ),
-                                    ),
-                                    PreferenceGroup(
-                                        nameStringResource = R.string.home,
-                                        preferences =
-                                            listOf(
-                                                PreferenceSwitch(
-                                                    nameStringResource = R.string.home_suggestions,
-                                                    backendPreference =
-                                                        appPreferences.homeSuggestions,
-                                                ),
-                                                PreferenceSwitch(
-                                                    nameStringResource =
-                                                        R.string.home_continue_watching,
-                                                    backendPreference =
-                                                        appPreferences.homeContinueWatching,
-                                                ),
-                                                PreferenceSwitch(
-                                                    nameStringResource = R.string.home_next_up,
-                                                    backendPreference = appPreferences.homeNextUp,
-                                                ),
-                                                PreferenceSwitch(
-                                                    nameStringResource = R.string.home_latest,
-                                                    backendPreference = appPreferences.homeLatest,
-                                                ),
-                                            ),
-                                    ),
-                                    PreferenceGroup(
-                                        preferences =
-                                            listOf(
-                                                PreferenceSwitch(
-                                                    nameStringResource = R.string.extra_info,
-                                                    descriptionStringRes =
-                                                        R.string.extra_info_summary,
-                                                    backendPreference =
-                                                        appPreferences.displayExtraInfo,
-                                                )
-                                            )
+                            ),
+                            PreferenceGroup(
+                                preferences = listOf(
+                                    // 登录后短评请求会带上会话，站点才可能返回更多评论。
+                                    PreferenceAction(
+                                        nameStringResource = R.string.settings_javdb_account,
+                                        descriptionStringRes = R.string.settings_javdb_account_summary,
+                                        onClick = { viewModelScope.launch { openJavDbLogin() } },
                                     ),
                                 ),
-                        )
-                    )
+                            ),
+                        ),
+                    ),
+                ),
             ),
             PreferenceGroup(
                 preferences =
@@ -422,31 +298,6 @@ constructor(
                                                 ),
                                                 PreferenceSwitch(
                                                     nameStringResource =
-                                                        R.string.player_gestures_chapter_skip,
-                                                    descriptionStringRes =
-                                                        R.string
-                                                            .player_gestures_chapter_skip_summary,
-                                                    dependencies =
-                                                        listOf(appPreferences.playerGestures),
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
-                                                    backendPreference =
-                                                        appPreferences.playerGesturesChapterSkip,
-                                                ),
-                                                PreferenceSwitch(
-                                                    nameStringResource =
-                                                        R.string.player_brightness_remember,
-                                                    dependencies =
-                                                        listOf(
-                                                            appPreferences.playerGestures,
-                                                            appPreferences.playerGesturesVB,
-                                                        ),
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
-                                                    backendPreference =
-                                                        appPreferences
-                                                            .playerGesturesBrightnessRemember,
-                                                ),
-                                                PreferenceSwitch(
-                                                    nameStringResource =
                                                         R.string.player_start_maximized,
                                                     descriptionStringRes =
                                                         R.string.player_start_maximized_summary,
@@ -636,37 +487,8 @@ constructor(
                 preferences =
                     listOf(
                         PreferenceCategory(
-                            nameStringResource = R.string.users,
-                            iconDrawableId = R.drawable.ic_user,
-                            onClick = {
-                                viewModelScope.launch {
-                                    eventsChannel.send(SettingsEvent.NavigateToUsers)
-                                }
-                            },
-                        )
-                    )
-            ),
-            PreferenceGroup(
-                preferences =
-                    listOf(
-                        PreferenceCategory(
-                            nameStringResource = R.string.settings_category_servers,
-                            iconDrawableId = R.drawable.ic_server,
-                            onClick = {
-                                viewModelScope.launch {
-                                    eventsChannel.send(SettingsEvent.NavigateToServers)
-                                }
-                            },
-                        )
-                    )
-            ),
-            PreferenceGroup(
-                preferences =
-                    listOf(
-                        PreferenceCategory(
-                            nameStringResource = R.string.title_download,
-                            iconDrawableId = R.drawable.ic_download,
-                            supportedDeviceTypes = listOf(DeviceType.PHONE),
+                            nameStringResource = R.string.settings_category_download_network,
+                            iconDrawableId = R.drawable.ic_network,
                             onClick = {
                                 viewModelScope.launch {
                                     eventsChannel.send(
@@ -699,29 +521,9 @@ constructor(
                                                         appPreferences.downloadWhenRoaming,
                                                 ),
                                             )
-                                    )
-                                ),
-                        )
-                    )
-            ),
-            PreferenceGroup(
-                preferences =
-                    listOf(
-                        PreferenceCategory(
-                            nameStringResource = R.string.settings_category_network,
-                            iconDrawableId = R.drawable.ic_network,
-                            onClick = {
-                                viewModelScope.launch {
-                                    eventsChannel.send(
-                                        SettingsEvent.NavigateToSettings(
-                                            intArrayOf(it.nameStringResource)
-                                        )
-                                    )
-                                }
-                            },
-                            nestedPreferenceGroups =
-                                listOf(
+                                    ),
                                     PreferenceGroup(
+                                        nameStringResource = R.string.settings_group_connection,
                                         preferences =
                                             listOf(
                                                 PreferenceLongInput(
@@ -780,43 +582,67 @@ constructor(
                                                     backendPreference =
                                                         appPreferences.scrapeProxy,
                                                 ),
-                                                // 站点账号：登录后短评请求会带上会话，站点才可能给出更多条
-                                                PreferenceAction(
-                                                    nameStringResource =
-                                                        R.string.settings_javdb_account,
-                                                    descriptionStringRes =
-                                                        R.string.settings_javdb_account_summary,
-                                                    dependencies =
-                                                        listOf(appPreferences.commentsEnabled),
-                                                    onClick = {
+                                            )
+                                    ),
+                                ),
+                        )
+                    )
+            ),
+            PreferenceGroup(
+                preferences = listOf(
+                    PreferenceCategory(
+                        nameStringResource = R.string.settings_category_cache,
+                        iconDrawableId = R.drawable.ic_hard_drive,
+                        onClick = {
+                            viewModelScope.launch {
+                                eventsChannel.send(
+                                    SettingsEvent.NavigateToSettings(
+                                        intArrayOf(R.string.settings_category_cache)
+                                    )
+                                )
+                            }
+                        },
+                    ),
+                ),
+            ),
+            PreferenceGroup(
+                preferences =
+                    listOf(
+                        PreferenceCategory(
+                            nameStringResource = R.string.settings_category_interface,
+                            iconDrawableId = R.drawable.ic_layout_dashboard,
+                            onClick = {
+                                viewModelScope.launch {
+                                    eventsChannel.send(
+                                        SettingsEvent.NavigateToSettings(
+                                            intArrayOf(it.nameStringResource)
+                                        )
+                                    )
+                                }
+                            },
+                            nestedPreferenceGroups =
+                                listOf(
+                                    PreferenceGroup(
+                                        nameStringResource = R.string.settings_category_appearance,
+                                        preferences =
+                                            listOf(
+                                                PreferenceSelect(
+                                                    nameStringResource = R.string.theme,
+                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
+                                                    backendPreference = appPreferences.theme,
+                                                    onUpdate = { value ->
                                                         viewModelScope.launch {
-                                                            openJavDbLogin()
+                                                            eventsChannel.send(
+                                                                SettingsEvent.UpdateTheme(
+                                                                    value ?: "system"
+                                                                )
+                                                            )
                                                         }
                                                     },
+                                                    options = R.array.theme,
+                                                    optionValues = R.array.theme_values,
                                                 ),
-                                                PreferenceIntInput(
-                                                    nameStringResource =
-                                                        R.string.settings_comments_cache_size,
-                                                    descriptionStringRes =
-                                                        R.string.settings_comments_cache_size_summary,
-                                                    dependencies =
-                                                        listOf(appPreferences.commentsEnabled),
-                                                    backendPreference =
-                                                        appPreferences.commentCacheSize,
-                                                    suffixRes = R.string.mb,
-                                                ),
-                                                PreferenceIntInput(
-                                                    nameStringResource =
-                                                        R.string.settings_comments_cache_days,
-                                                    descriptionStringRes =
-                                                        R.string.settings_comments_cache_days_summary,
-                                                    dependencies =
-                                                        listOf(appPreferences.commentsEnabled),
-                                                    backendPreference =
-                                                        appPreferences.commentCacheDays,
-                                                    suffixRes = R.string.days,
-                                                ),
-                                            )
+                                            ),
                                     ),
                                 ),
                         )
@@ -826,8 +652,8 @@ constructor(
                 preferences =
                     listOf(
                         PreferenceCategory(
-                            nameStringResource = R.string.settings_category_cache,
-                            iconDrawableId = R.drawable.ic_hard_drive,
+                            nameStringResource = R.string.settings_category_language,
+                            iconDrawableId = R.drawable.ic_languages,
                             onClick = {
                                 viewModelScope.launch {
                                     eventsChannel.send(
@@ -842,26 +668,41 @@ constructor(
                                     PreferenceGroup(
                                         preferences =
                                             listOf(
-                                                PreferenceSwitch(
+                                                PreferenceAppLanguage(
+                                                    nameStringResource = R.string.app_language,
+                                                    iconDrawableId = R.drawable.ic_languages,
+                                                    enabled =
+                                                        Build.VERSION.SDK_INT >=
+                                                            Build.VERSION_CODES.TIRAMISU,
+                                                )
+                                            )
+                                    ),
+                                    PreferenceGroup(
+                                        preferences =
+                                            listOf(
+                                                PreferenceSelect(
                                                     nameStringResource =
-                                                        R.string.settings_use_cache_title,
-                                                    descriptionStringRes =
-                                                        R.string.settings_use_cache_summary,
-                                                    backendPreference = appPreferences.imageCache,
-                                                ),
-                                                PreferenceIntInput(
-                                                    nameStringResource =
-                                                        R.string.settings_cache_size,
-                                                    descriptionStringRes =
-                                                        R.string.settings_cache_size_message,
-                                                    dependencies =
-                                                        listOf(appPreferences.imageCache),
+                                                        R.string.settings_preferred_audio_language,
+                                                    iconDrawableId = R.drawable.ic_speaker,
                                                     backendPreference =
-                                                        appPreferences.imageCacheSize,
-                                                    suffixRes = R.string.mb,
+                                                        appPreferences.preferredAudioLanguage,
+                                                    options = R.array.languages,
+                                                    optionValues = R.array.languages_values,
+                                                    optionsIncludeNull = true,
+                                                ),
+                                                PreferenceSelect(
+                                                    nameStringResource =
+                                                        R.string
+                                                            .settings_preferred_subtitle_language,
+                                                    iconDrawableId = R.drawable.ic_closed_caption,
+                                                    backendPreference =
+                                                        appPreferences.preferredSubtitleLanguage,
+                                                    options = R.array.languages,
+                                                    optionValues = R.array.languages_values,
+                                                    optionsIncludeNull = true,
                                                 ),
                                             )
-                                    )
+                                    ),
                                 ),
                         )
                     )
@@ -888,9 +729,9 @@ constructor(
         viewModelScope.launch {
             var preferences = topLevelPreferences
 
-            // Show preferences based on the name of the parent
+            // 按父分类定位当前页面的偏好组
             for (index in indexes) {
-                // If index is root (Settings) don't search for category
+                // 设置首页无需继续搜索子分类
                 if (index == R.string.title_settings) {
                     break
                 }
@@ -904,7 +745,7 @@ constructor(
                 }
             }
 
-            // Update all (visible) preferences with there current values
+            // 按当前偏好值与依赖刷新可见条目
             preferences =
                 preferences
                     .map { preferenceGroup ->

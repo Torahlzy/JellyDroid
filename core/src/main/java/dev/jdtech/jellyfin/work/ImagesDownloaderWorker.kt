@@ -1,6 +1,7 @@
 package dev.jdtech.jellyfin.work
 
 import android.content.Context
+import dev.jdtech.jellyfin.cache.CacheManager
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -9,6 +10,7 @@ import dagger.assisted.AssistedInject
 import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import java.io.File
+import java.io.Closeable
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -25,14 +27,17 @@ constructor(
     @Assisted private val appContext: Context,
     @Assisted private val params: WorkerParameters,
     private val repository: JellyfinRepository,
+    private val cacheManager: CacheManager,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val itemId = inputData.getString(KEY_ITEM_ID)?.let(UUID::fromString)
             ?: return@withContext Result.failure()
+        var lease: Closeable? = null
         try {
             repository.initialize()
             val item = repository.getItem(itemId) ?: return@withContext Result.failure()
             val baseDir = File(appContext.filesDir, "images/${item.id}")
+            lease = cacheManager.protect(baseDir)
             check(baseDir.isDirectory || baseDir.mkdirs()) { "无法创建封面目录" }
             val client = OkHttpClient()
             val uris = mapOf("primary" to item.images.primary, "backdrop" to item.images.backdrop)
@@ -54,7 +59,11 @@ constructor(
                             temporary.outputStream().use { output -> input.copyTo(output) }
                         }
                         currentCoroutineContext().ensureActive()
-                        check(temporary.length() > 0L && temporary.renameTo(target)) { "封面写入失败" }
+                        cacheManager.access {
+                            check(temporary.length() > 0L && temporary.renameTo(target)) { "封面写入失败" }
+                            cacheManager.touch(baseDir)
+                            cacheManager.trim()
+                        }
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -71,6 +80,8 @@ constructor(
         } catch (e: Exception) {
             AppLog.w("封面预下载失败，错误类型：%s", e.javaClass.simpleName)
             Result.retry()
+        } finally {
+            lease?.close()
         }
     }
 

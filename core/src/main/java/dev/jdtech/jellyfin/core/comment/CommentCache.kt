@@ -1,9 +1,10 @@
 package dev.jdtech.jellyfin.core.comment
 
-import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.jdtech.jellyfin.logging.AppLog
+import dev.jdtech.jellyfin.cache.CacheCategory
+import dev.jdtech.jellyfin.cache.CacheManager
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,15 +19,15 @@ import org.json.JSONObject
  * 短评的磁盘缓存：一部影片一个 JSON 文件，放在 `cacheDir/comments` 下。
  *
  * 之所以放 `cacheDir` 而不是 `filesDir`：这是可以随时重建的纯缓存，交给系统在空间不足时回收。
- * 每次写入后按「总大小上限」淘汰最旧的文件（按最后修改时间），保证缓存不会无限增长。
+ * 写入后由共享缓存管理器统一回收，命中时更新最近访问时间。
  */
 @Singleton
 class CommentCache
 @Inject
-constructor(@ApplicationContext private val context: Context) {
+constructor(private val cacheManager: CacheManager) {
 
     private val directory: File
-        get() = File(context.cacheDir, CACHE_DIR_NAME)
+        get() = cacheManager.directory(CacheCategory.COMMENTS)
 
     /** 串行化读写与淘汰，避免并发写同一目录时统计到中间状态。 */
     private val mutex = Mutex()
@@ -39,24 +40,27 @@ constructor(@ApplicationContext private val context: Context) {
     suspend fun read(keyword: String, validMillis: Long): List<MovieComment>? =
         withContext(Dispatchers.IO) {
             mutex.withLock {
-                val file = fileFor(keyword)
-                if (!file.exists()) return@withLock null
-                val cached =
-                    runCatching { readFile(file) }.getOrElse { e ->
-                        AppLog.w(e, "短评缓存损坏，丢弃后重新请求：%s", file.name)
-                        null
+                cacheManager.access {
+                    val file = fileFor(keyword)
+                    if (!file.exists()) return@access null
+                    val cached =
+                        runCatching { readFile(file) }.getOrElse { e ->
+                            AppLog.w(e, "短评缓存损坏，丢弃后重新请求：%s", file.name)
+                            null
+                        }
+                    if (cached == null) {
+                        file.delete()
+                        return@access null
                     }
-                if (cached == null) {
-                    file.delete()
-                    return@withLock null
+                    val age = System.currentTimeMillis() - cached.savedAt
+                    if (validMillis <= 0 || age > validMillis) {
+                        AppLog.d("短评缓存已过期（%d ms），重新请求：%s", age, keyword)
+                        file.delete()
+                        return@access null
+                    }
+                    cacheManager.touch(file)
+                    cached.comments
                 }
-                val age = System.currentTimeMillis() - cached.savedAt
-                if (validMillis <= 0 || age > validMillis) {
-                    AppLog.d("短评缓存已过期（%d ms），重新请求：%s", age, keyword)
-                    file.delete()
-                    return@withLock null
-                }
-                cached.comments
             }
         }
 
@@ -69,40 +73,29 @@ constructor(@ApplicationContext private val context: Context) {
     suspend fun clear() =
         withContext(Dispatchers.IO) {
             mutex.withLock {
-                directory.listFiles()?.forEach { file -> file.delete() }
+                try {
+                    cacheManager.clear(CacheCategory.COMMENTS)
+                } catch (e: IOException) {
+                    AppLog.w(e, "清空短评缓存失败")
+                }
             }
         }
 
-    /** 写入缓存并按 [maxBytes] 淘汰最旧的文件。 */
-    suspend fun write(keyword: String, comments: List<MovieComment>, maxBytes: Long) =
+    /** 写入缓存并触发共享配额回收。 */
+    suspend fun write(keyword: String, comments: List<MovieComment>) =
         withContext(Dispatchers.IO) {
             mutex.withLock {
-                val file = fileFor(keyword)
-                runCatching {
-                        file.parentFile?.mkdirs()
-                        file.writeText(toJson(comments))
-                    }
-                    .onFailure { e -> AppLog.w(e, "写入短评缓存失败：%s", file.name) }
-                evictIfNeeded(maxBytes)
+                cacheManager.access {
+                    val file = fileFor(keyword)
+                    runCatching {
+                            file.parentFile?.mkdirs()
+                            file.writeText(toJson(comments))
+                        }
+                        .onFailure { e -> AppLog.w(e, "写入短评缓存失败：%s", file.name) }
+                    cacheManager.trim()
+                }
             }
         }
-
-    /** 超过上限时从最旧的文件开始删，至少要保留刚写入的那个（它是最新的）。 */
-    private fun evictIfNeeded(maxBytes: Long) {
-        if (maxBytes <= 0) return
-        val files = directory.listFiles()?.filter { it.isFile } ?: return
-        var total = files.sumOf { it.length() }
-        if (total <= maxBytes) return
-        val oldestFirst = files.sortedBy { it.lastModified() }
-        for (file in oldestFirst) {
-            if (total <= maxBytes) break
-            val length = file.length()
-            if (file.delete()) {
-                total -= length
-                AppLog.d("短评缓存超出上限，删除最旧文件：%s", file.name)
-            }
-        }
-    }
 
     private fun fileFor(keyword: String): File = File(directory, "${hash(keyword)}.json")
 
@@ -152,7 +145,6 @@ constructor(@ApplicationContext private val context: Context) {
     private data class CachedComments(val savedAt: Long, val comments: List<MovieComment>)
 
     private companion object {
-        const val CACHE_DIR_NAME = "comments"
         const val JSON_KEYS = "comments"
     }
 }

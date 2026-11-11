@@ -930,7 +930,7 @@ private fun MovieScreenLayout(
                     Spacer(Modifier.height(MaterialTheme.spacings.small))
                     // 媒体信息 / 服务器路径 / 简介 / 类型 / 标签：依次入场的第 4 组
                     AppearingSection(index = 3, visible = entranceStarted) {
-                        if (state.displayExtraInfo && state.videoMetadata != null) {
+                        if (state.videoMetadata != null) {
                             // 入库时间紧跟大小行展示；离线库没有该字段，为 null 时不显示
                             ExtraInfoText(
                                 videoMetadata = state.videoMetadata!!,

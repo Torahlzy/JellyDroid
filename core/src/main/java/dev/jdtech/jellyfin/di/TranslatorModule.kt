@@ -25,7 +25,7 @@ abstract class TranslatorModule {
     @Singleton
     abstract fun bindMetadataTranslator(impl: MetadataTranslatorImpl): MetadataTranslator
 
-    /** 分类 / 标签的翻译器：词典优先、引擎兜底，译文缓存到本地偏好。 */
+    /** 分类 / 标签的翻译器：词典优先、引擎兜底，译文纳入共享磁盘缓存。 */
     @Binds
     @Singleton
     abstract fun bindTagTranslator(impl: TagTranslatorImpl): TagTranslator

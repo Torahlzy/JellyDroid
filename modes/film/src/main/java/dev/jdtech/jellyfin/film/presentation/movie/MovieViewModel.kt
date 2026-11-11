@@ -159,7 +159,6 @@ constructor(
                 val director = getDirector(movie)
                 val writers = getWriters(movie)
                 logMetadata(movie, actors)
-                val displayExtraInfo = appPreferences.getValue(appPreferences.displayExtraInfo)
                 val newState =
                     _state.value.copy(
                         movie = movie,
@@ -167,7 +166,6 @@ constructor(
                         actors = actors,
                         director = director,
                         writers = writers,
-                        displayExtraInfo = displayExtraInfo,
                         playbackSources = playbackSources,
                         defaultScrapeKeyword = recognizeKeyword(movie, playbackSources),
                         scrapeProxy = appPreferences.getValue(appPreferences.scrapeProxy),

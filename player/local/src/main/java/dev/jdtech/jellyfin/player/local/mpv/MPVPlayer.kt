@@ -1,6 +1,8 @@
 package dev.jdtech.jellyfin.player.local.mpv
 
 import android.content.Context
+import dev.jdtech.jellyfin.cache.CacheManager
+import java.io.Closeable
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Handler
@@ -58,7 +60,10 @@ class MPVPlayer(
     videoOutput: String = "gpu-next",
     audioOutput: String = "aaudio",
     hwDec: String = "mediacodec",
+    private val cacheManager: CacheManager? = null,
 ) : BasePlayer(), MPVLib.EventObserver, AudioManager.OnAudioFocusChangeListener {
+    private var cacheLease: Closeable? = null
+    private var fontLease: Closeable? = null
     private val mpvLib: MPVLib
     private val audioManager: AudioManager by lazy { context.getSystemService()!! }
     private var audioFocusCallback: () -> Unit = {}
@@ -79,9 +84,15 @@ class MPVPlayer(
         videoOutput = builder.videoOutput,
         audioOutput = builder.audioOutput,
         hwDec = builder.hwDec,
+        cacheManager = builder.cacheManager,
     )
 
     class Builder(val context: Context) {
+        var cacheManager: CacheManager? = null
+            private set
+
+        fun setCacheManager(manager: CacheManager) = apply { cacheManager = manager }
+
         var audioAttributes: AudioAttributes = AudioAttributes.DEFAULT
             private set
 
@@ -145,100 +156,108 @@ class MPVPlayer(
         val configDir = File(context.filesDir, "mpv")
         val cacheDir = File(context.cacheDir, "mpv")
 
-        setupDirectories(context, configDir, cacheDir)
+        try {
+            cacheLease = cacheManager?.protect(cacheDir)
+            fontLease = cacheManager?.protect(File(context.cacheDir, "fontconfig"))
+            setupDirectories(context, configDir, cacheDir)
 
-        mpvLib =
-            MPVLib.create(context) ?: throw IllegalStateException("MPVLib.create() returned null")
+            mpvLib =
+                MPVLib.create(context) ?: throw IllegalStateException("MPVLib.create() returned null")
 
-        // General
-        mpvLib.setOptionString("config", "yes")
-        mpvLib.setOptionString("config-dir", configDir.path)
-        for (opt in arrayOf("gpu-shader-cache-dir", "icc-cache-dir")) mpvLib.setOptionString(
-            opt,
-            cacheDir.path,
-        )
-        mpvLib.setOptionString("profile", "fast")
-        mpvLib.setOptionString("vo", videoOutput)
-        mpvLib.setOptionString("ao", audioOutput)
-        mpvLib.setOptionString("gpu-context", "android")
-        mpvLib.setOptionString("opengl-es", "yes")
-
-        // Hardware video decoding
-        mpvLib.setOptionString("hwdec", hwDec)
-        mpvLib.setOptionString("hwdec-codecs", "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1")
-
-        // TLS
-        mpvLib.setOptionString("tls-verify", "yes")
-
-        // Cache
-        mpvLib.setOptionString("cache", "yes")
-        mpvLib.setOptionString("cache-pause-initial", "yes")
-        mpvLib.setOptionString("demuxer-max-bytes", "64MiB")
-        mpvLib.setOptionString("demuxer-max-back-bytes", "32MiB")
-
-        // Subs
-        mpvLib.setOptionString("sub-scale-with-window", "yes")
-        mpvLib.setOptionString("sub-use-margins", "no")
-
-        // Language
-        // Split on "-" and use last part because media3 does some weird mapping
-        // See
-        // https://github.com/androidx/media/blob/1.4.0/libraries/common/src/main/java/androidx/media3/common/util/Util.java#L3742
-        trackSelectionParameters.preferredAudioLanguages.firstOrNull()?.let {
-            mpvLib.setOptionString("alang", it.split("-").last())
-        }
-        trackSelectionParameters.preferredTextLanguages.firstOrNull()?.let {
-            mpvLib.setOptionString("slang", it.split("-").last())
-        }
-        // 初始参数里禁用了文本轨（记住的"手动关闭字幕"选择）时不选字幕；
-        // 运行中的切换由 setTrackSelectionParameters 处理，这里只覆盖初始化场景
-        if (C.TRACK_TYPE_TEXT in trackSelectionParameters.disabledTrackTypes) {
-            mpvLib.setOptionString("sid", "no")
-        }
-
-        // Other options
-        mpvLib.setOptionString("force-window", "no")
-        mpvLib.setOptionString("keep-open", "always")
-        mpvLib.setOptionString("save-position-on-quit", "no")
-        mpvLib.setOptionString("ytdl", "no")
-        mpvLib.setOptionString("audio-set-media-role", "yes")
-
-        mpvLib.init()
-
-        mpvLib.addObserver(this)
-
-        // Observe properties
-        data class Property(val name: String, val format: Int)
-        arrayOf(
-                Property("track-list", MpvFormat.MPV_FORMAT_STRING),
-                Property("paused-for-cache", MpvFormat.MPV_FORMAT_FLAG),
-                Property("eof-reached", MpvFormat.MPV_FORMAT_FLAG),
-                Property("seekable", MpvFormat.MPV_FORMAT_FLAG),
-                Property("time-pos", MpvFormat.MPV_FORMAT_INT64),
-                Property("duration", MpvFormat.MPV_FORMAT_INT64),
-                Property("demuxer-cache-time", MpvFormat.MPV_FORMAT_INT64),
-                Property("speed", MpvFormat.MPV_FORMAT_DOUBLE),
-                Property("playlist-count", MpvFormat.MPV_FORMAT_INT64),
-                Property("playlist-current-pos", MpvFormat.MPV_FORMAT_INT64),
+            // General
+            mpvLib.setOptionString("config", "yes")
+            mpvLib.setOptionString("config-dir", configDir.path)
+            for (opt in arrayOf("gpu-shader-cache-dir", "icc-cache-dir")) mpvLib.setOptionString(
+                opt,
+                cacheDir.path,
             )
-            .forEach { (name, format) -> mpvLib.observeProperty(name, format) }
+            mpvLib.setOptionString("profile", "fast")
+            mpvLib.setOptionString("vo", videoOutput)
+            mpvLib.setOptionString("ao", audioOutput)
+            mpvLib.setOptionString("gpu-context", "android")
+            mpvLib.setOptionString("opengl-es", "yes")
 
-        val audioSessionId = audioManager.generateAudioSessionId()
-        if (audioSessionId != AudioManager.ERROR) {
-            mpvLib.setPropertyInt("audiotrack-session-id", audioSessionId)
-            mpvLib.setPropertyInt("aaudio-session-id", audioSessionId)
-        }
+            // Hardware video decoding
+            mpvLib.setOptionString("hwdec", hwDec)
+            mpvLib.setOptionString("hwdec-codecs", "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1")
 
-        if (handleAudioFocus) {
-            audioFocusRequest =
-                AudioFocusRequestCompat.Builder(AudioManagerCompat.AUDIOFOCUS_GAIN)
-                    .setAudioAttributes(audioAttributes)
-                    .setOnAudioFocusChangeListener(this)
-                    .build()
-            val res = AudioManagerCompat.requestAudioFocus(audioManager, audioFocusRequest)
-            if (res != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-                mpvLib.setPropertyBoolean("pause", true)
+            // TLS
+            mpvLib.setOptionString("tls-verify", "yes")
+
+            // Cache
+            mpvLib.setOptionString("cache", "yes")
+            mpvLib.setOptionString("cache-pause-initial", "yes")
+            mpvLib.setOptionString("demuxer-max-bytes", "64MiB")
+            mpvLib.setOptionString("demuxer-max-back-bytes", "32MiB")
+
+            // Subs
+            mpvLib.setOptionString("sub-scale-with-window", "yes")
+            mpvLib.setOptionString("sub-use-margins", "no")
+
+            // Language
+            // Split on "-" and use last part because media3 does some weird mapping
+            // See
+            // https://github.com/androidx/media/blob/1.4.0/libraries/common/src/main/java/androidx/media3/common/util/Util.java#L3742
+            trackSelectionParameters.preferredAudioLanguages.firstOrNull()?.let {
+                mpvLib.setOptionString("alang", it.split("-").last())
             }
+            trackSelectionParameters.preferredTextLanguages.firstOrNull()?.let {
+                mpvLib.setOptionString("slang", it.split("-").last())
+            }
+            // 初始参数里禁用了文本轨（记住的"手动关闭字幕"选择）时不选字幕；
+            // 运行中的切换由 setTrackSelectionParameters 处理，这里只覆盖初始化场景
+            if (C.TRACK_TYPE_TEXT in trackSelectionParameters.disabledTrackTypes) {
+                mpvLib.setOptionString("sid", "no")
+            }
+
+            // Other options
+            mpvLib.setOptionString("force-window", "no")
+            mpvLib.setOptionString("keep-open", "always")
+            mpvLib.setOptionString("save-position-on-quit", "no")
+            mpvLib.setOptionString("ytdl", "no")
+            mpvLib.setOptionString("audio-set-media-role", "yes")
+
+            mpvLib.init()
+
+            mpvLib.addObserver(this)
+
+            // Observe properties
+            data class Property(val name: String, val format: Int)
+            arrayOf(
+                    Property("track-list", MpvFormat.MPV_FORMAT_STRING),
+                    Property("paused-for-cache", MpvFormat.MPV_FORMAT_FLAG),
+                    Property("eof-reached", MpvFormat.MPV_FORMAT_FLAG),
+                    Property("seekable", MpvFormat.MPV_FORMAT_FLAG),
+                    Property("time-pos", MpvFormat.MPV_FORMAT_INT64),
+                    Property("duration", MpvFormat.MPV_FORMAT_INT64),
+                    Property("demuxer-cache-time", MpvFormat.MPV_FORMAT_INT64),
+                    Property("speed", MpvFormat.MPV_FORMAT_DOUBLE),
+                    Property("playlist-count", MpvFormat.MPV_FORMAT_INT64),
+                    Property("playlist-current-pos", MpvFormat.MPV_FORMAT_INT64),
+                )
+                .forEach { (name, format) -> mpvLib.observeProperty(name, format) }
+
+            val audioSessionId = audioManager.generateAudioSessionId()
+            if (audioSessionId != AudioManager.ERROR) {
+                mpvLib.setPropertyInt("audiotrack-session-id", audioSessionId)
+                mpvLib.setPropertyInt("aaudio-session-id", audioSessionId)
+            }
+
+            if (handleAudioFocus) {
+                audioFocusRequest =
+                    AudioFocusRequestCompat.Builder(AudioManagerCompat.AUDIOFOCUS_GAIN)
+                        .setAudioAttributes(audioAttributes)
+                        .setOnAudioFocusChangeListener(this)
+                        .build()
+                val res = AudioManagerCompat.requestAudioFocus(audioManager, audioFocusRequest)
+                if (res != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    mpvLib.setPropertyBoolean("pause", true)
+                }
+            }
+        } catch (e: Throwable) {
+            cacheLease?.close()
+            fontLease?.close()
+            throw e
         }
     }
 
@@ -1188,12 +1207,17 @@ class MPVPlayer(
      * player must not be used after calling this method.
      */
     override fun release() {
-        if (handleAudioFocus) {
-            AudioManagerCompat.abandonAudioFocusRequest(audioManager, audioFocusRequest)
+        try {
+            if (handleAudioFocus) {
+                AudioManagerCompat.abandonAudioFocusRequest(audioManager, audioFocusRequest)
+            }
+            resetInternalState()
+            mpvLib.removeObserver(this)
+            mpvLib.destroy()
+        } finally {
+            cacheLease?.close()
+            fontLease?.close()
         }
-        resetInternalState()
-        mpvLib.removeObserver(this)
-        mpvLib.destroy()
     }
 
     override fun getCurrentTracks(): Tracks {

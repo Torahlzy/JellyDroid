@@ -15,12 +15,15 @@ fun SettingsBaseCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    val interaction = settingsInteraction(preference.enabled)
     val contentColor =
         contentColorFor(MaterialTheme.colorScheme.surface)
             .copy(alpha = if (preference.enabled) 1.0f else 0.38f)
     Surface(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.then(interaction.modifier),
+        interactionSource = interaction.source,
+        tonalElevation = interaction.tonalElevation,
         enabled = preference.enabled,
         color = Color.Transparent,
         contentColor = contentColor,

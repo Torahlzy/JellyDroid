@@ -23,8 +23,8 @@
     <string name="settings_comments_enabled_summary">Show a short-review section at the bottom of the movie details page, fetched from the scraping sites.</string>
     <string name="settings_comments_use_proxy">Use proxy for comments</string>
     <string name="settings_comments_use_proxy_summary">Same proxy as the nfo scraping proxy. Turn off to request directly.</string>
-    <string name="settings_comments_proxy">Proxy address</string>
-    <string name="settings_comments_proxy_summary">Shared with the nfo scraping proxy, leave empty to connect directly.</string>
+    <string name="settings_comments_proxy">Scraping proxy address</string>
+    <string name="settings_comments_proxy_summary">Shared by metadata, subtitle scraping, and proxied comments. Does not affect Jellyfin connections or video downloads. Leave empty to connect directly.</string>
     <string name="settings_comments_cache_size">Comment cache size</string>
     <string name="settings_comments_cache_size_summary">Total size limit of the comment cache, oldest entries are removed first.</string>
     <string name="settings_comments_cache_days">Comment cache lifetime</string>
@@ -131,4 +131,7 @@
     <string name="advanced">Advanced</string>
     <string name="discard_changes_dialog_title">Discard changes?</string>
     <string name="discard_changes_dialog_text">You have unsaved changes.</string>
+    <string name="settings_category_accounts">Users and servers</string>
+    <string name="settings_category_download_network">Downloads and network</string>
+    <string name="settings_group_connection">Connection parameters</string>
 </resources>

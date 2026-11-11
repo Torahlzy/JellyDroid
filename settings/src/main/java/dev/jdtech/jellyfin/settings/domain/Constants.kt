@@ -18,7 +18,6 @@ object Constants {
     const val NETWORK_DEFAULT_SOCKET_TIMEOUT = 10_000L
 
     // 外网评论缓存
-    const val COMMENT_CACHE_DEFAULT_SIZE_MB = 800
     const val COMMENT_CACHE_DEFAULT_DAYS = 30
 
     // 字幕抓取站：不参与 nfo / 封面 / 头像抓取，因此不放进 ScraperSite 枚举

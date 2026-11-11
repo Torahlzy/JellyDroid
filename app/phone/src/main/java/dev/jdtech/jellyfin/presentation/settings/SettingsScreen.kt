@@ -51,7 +51,7 @@ import dev.jdtech.jellyfin.settings.presentation.settings.SettingsState
 import dev.jdtech.jellyfin.settings.presentation.settings.SettingsViewModel
 import dev.jdtech.jellyfin.utils.ObserveAsEvents
 import dev.jdtech.jellyfin.utils.restart
-import timber.log.Timber
+import dev.jdtech.jellyfin.logging.AppLog
 
 @Composable
 fun SettingsScreen(
@@ -61,6 +61,8 @@ fun SettingsScreen(
     navigateToServers: () -> Unit,
     navigateToUsers: () -> Unit,
     navigateToAbout: () -> Unit,
+    navigateToAccounts: () -> Unit,
+    navigateToCache: () -> Unit,
     navigateBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -72,7 +74,11 @@ fun SettingsScreen(
 
     ObserveAsEvents(viewModel.events) { event ->
         when (event) {
-            is SettingsEvent.NavigateToSettings -> navigateToSettings(event.indexes)
+            is SettingsEvent.NavigateToSettings -> when (event.indexes.firstOrNull()) {
+                SettingsR.string.settings_category_accounts -> navigateToAccounts()
+                SettingsR.string.settings_category_cache -> navigateToCache()
+                else -> navigateToSettings(event.indexes)
+            }
             is SettingsEvent.NavigateToSettingsFileEdit ->
                 navigateToSettingsFileEdit(event.filePath)
             is SettingsEvent.NavigateToUsers -> navigateToUsers()
@@ -110,19 +116,19 @@ fun SettingsScreen(
                 try {
                     context.startActivity(event.intent)
                 } catch (e: Exception) {
-                    Timber.e(e)
+                    AppLog.e(e)
                 }
             }
             is SettingsEvent.RestartActivity -> {
                 try {
                     (context as Activity).restart()
-                } catch (_: Exception) {}
+                } catch (e: Exception) { AppLog.e(e, "重启设置界面失败") }
             }
         }
     }
 
     SettingsScreenLayout(
-        title = indexes.last(),
+        title = indexes.lastOrNull() ?: CoreR.string.title_settings,
         state = state,
         onAction = { action ->
             when (action) {

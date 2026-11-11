@@ -15,10 +15,8 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.annotation.ExperimentalCoilApi
-import coil3.disk.DiskCache
 import coil3.network.cachecontrol.CacheControlCacheStrategy
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
-import coil3.request.CachePolicy
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -27,6 +25,13 @@ import com.google.android.material.color.DynamicColors
 import dagger.hilt.android.HiltAndroidApp
 import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.logging.TorahDebugTree
+import dev.jdtech.jellyfin.cache.CacheManager
+import dev.jdtech.jellyfin.cache.CacheCategory
+import dev.jdtech.jellyfin.presentation.settings.cache.SharedImageDiskCache
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.work.MpvCleanupWorker
 import dev.jdtech.jellyfin.work.SyncWorker
@@ -34,12 +39,13 @@ import dev.jdtech.jellyfin.work.UserDataSyncScheduler
 import javax.inject.Inject
 import kotlin.time.ExperimentalTime
 import okhttp3.OkHttpClient
-import okio.Path.Companion.toOkioPath
 import timber.log.Timber
 
 @HiltAndroidApp
 class BaseApplication : Application(), Configuration.Provider, SingletonImageLoader.Factory {
     @Inject lateinit var appPreferences: AppPreferences
+
+    @Inject lateinit var cacheManager: CacheManager
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
 
@@ -67,8 +73,23 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
             AppCompatDelegate.setDefaultNightMode(mode)
         }
 
-        if (appPreferences.getValue(appPreferences.dynamicColors)) {
-            DynamicColors.applyToActivitiesIfAvailable(this)
+        DynamicColors.applyToActivitiesIfAvailable(this)
+
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                cacheManager.access {
+                    val legacy = appPreferences.getValue(appPreferences.tagTranslateCache)
+                    val target = cacheManager.directory(CacheCategory.TRANSLATIONS).resolve("tags.json")
+                    if (legacy.isNotBlank() && !target.exists()) {
+                        check(target.parentFile?.mkdirs() == true || target.parentFile?.isDirectory == true)
+                        target.writeText(legacy)
+                    }
+                    appPreferences.sharedPreferences.edit().remove(appPreferences.tagTranslateCache.backendName).apply()
+                    cacheManager.trim()
+                }
+            } catch (e: Exception) {
+                AppLog.e(e, "初始化共享缓存失败")
+            }
         }
 
         val workManager = WorkManager.getInstance(applicationContext)
@@ -110,18 +131,7 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
                 )
                 add(SvgDecoder.Factory())
             }
-            .diskCachePolicy(
-                if (appPreferences.getValue(appPreferences.imageCache)) CachePolicy.ENABLED
-                else CachePolicy.DISABLED
-            )
-            .diskCache {
-                DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("image_cache").toOkioPath())
-                    .maxSizeBytes(
-                        appPreferences.getValue(appPreferences.imageCacheSize) * 1024L * 1024
-                    )
-                    .build()
-            }
+            .diskCache { SharedImageDiskCache(cacheManager) }
             .crossfade(true)
             // 异常消息与堆栈可能包含请求 URL，仅保留类型用于诊断
             .eventListener(

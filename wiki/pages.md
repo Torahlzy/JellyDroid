@@ -115,6 +115,8 @@ Select-String -Path wiki/pages.md -Pattern '\.kt:\d+' -AllMatches
 | 内容 | 标签 / 分级 / 年份列表 | `MetadataBrowseRoute` | `PHONE/presentation/film/FilterValueListScreen.kt` | `FILM/presentation/filtervalue/FilterValueListViewModel.kt` |
 | 内容 | 元数据筛选结果 | `ItemFilterRoute` | `PHONE/presentation/film/ItemFilterScreen.kt` | `FILM/presentation/itemfilter/ItemFilterViewModel.kt` |
 | 设置 | 设置 | `SettingsRoute` | `PHONE/presentation/settings/SettingsScreen.kt` | `SETTINGS/presentation/settings/SettingsViewModel.kt` |
+| 设置 | 用户与服务器 | `AccountsRoute` | `PHONE/presentation/settings/AccountsScreen.kt` | `SETUP/presentation/accounts/AccountsViewModel.kt` |
+| 设置 | 缓存 | `CacheRoute` | `PHONE/presentation/settings/cache/CacheScreen.kt` | `CORE/presentation/cache/CacheViewModel.kt` |
 | 设置 | 文件编辑 | `SettingsFileEditRoute` | `PHONE/presentation/settings/SettingsFileEditScreen.kt` | `SETTINGS/presentation/settings/SettingsFileEditViewModel.kt` |
 | 设置 | 关于 | `AboutRoute` | `PHONE/presentation/settings/AboutScreen.kt` | 无 |
 | 工具 | JavDB 过盾 | `JavDbUnblockRoute` | `PHONE/presentation/javdb/JavDbUnblockScreen.kt` | `PHONE/presentation/javdb/JavDbUnblockViewModel.kt` |
@@ -149,7 +151,7 @@ else -> WelcomeRoute
 - **ViewModel / State / Action**：`FILM/presentation/home/HomeViewModel.kt`、`FILM/presentation/home/HomeState.kt`、`FILM/presentation/home/HomeAction.kt`。
 - **State 字段**：`server`、`suggestionsSection`、`resumeSection`、`nextUpSection`、`views`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadData(refreshSuggestions)`；`OnItemClick`（可带共享元素来源 `heroKey`）、`OnLibraryClick`、`OnRetryClick`、`OnRefresh`、`OnSearchClick`、`OnManageServers`。
-- **数据来源**：`getSuggestions()`、`getResumeItems()`、`getNextUp()`、`getUserViews()` + `getLatestMedia(view.id)`（`HomeViewModel.kt`）；每个 section 分别受 `AppPreferences` 的 `homeSuggestions` / `homeContinueWatching` / `homeNextUp` / `homeLatest` 开关控制，为空则不渲染。banner（推荐轮播）只在首次进入与下拉刷新 / 切换服务器（`OnRefresh`）时拉取，从详情页返回首页不重新请求，避免轮播被重建；返回首页若共享元素转场仍在执行，等转场结束后再刷新其它分区，继续观看条目的增删与排序变化使用 LazyRow 条目动画。
+- **数据来源**：`getSuggestions()`、`getResumeItems()`、`getNextUp()`、`getUserViews()` + `getLatestMedia(view.id)`（`HomeViewModel.kt`）；各 section 有内容时自动展示，为空则不渲染，不再提供单独开关。banner（推荐轮播）只在首次进入与下拉刷新 / 切换服务器（`OnRefresh`）时拉取，从详情页返回首页不重新请求，避免轮播被重建；返回首页若共享元素转场仍在执行，等转场结束后再刷新其它分区，继续观看条目的增删与排序变化使用 LazyRow 条目动画。
 - **入口**：启动路由 / 底部「首页」标签 / 各详情页的 `navigateHome`。离线模式下页面不可达（首页数据全来自服务器），落地页与 `navigateHome` 的目标改为下载页。
 
 ### MediaScreen — 媒体库总览
@@ -217,7 +219,7 @@ else -> WelcomeRoute
 - **加载错误**：加载失败停止等待动画，使用 `PHONE/presentation/film/components/DetailLoadError.kt` 显示错误详情和重试入口；重试调用本页原有 load 方法，已有内容继续保留，返回操作可用。
 - **路由**：`MovieRoute(movieId, heroKey?)`，定义并注册于 `PHONE/NavigationRoot.kt`；`heroKey` 记录点击来源，普通列表为空时使用默认卡片 key。
 - **进场动画**：列表封面与详情页头部之间是共享元素 morph（普通卡片 key 为 `movie-hero-<movieId>`，首页 Banner / 继续观看 / 接下来 / 最新添加分别使用带来源的 key，避免同一电影同时出现在多个分区时互相抢占；经 `PHONE/presentation/utils/SharedTransition.kt` 的 `heroSharedBounds` 建立，两个转场作用域由 `PHONE/NavigationRoot.kt` 的 `SharedTransitionNavHost` / `SharedElementHost` 经 CompositionLocal 下发）；加载态为居中转圈，内容区块等进场转场（morph）结束后才组合并让标题 / 信息行 / 按钮栏 / 简介 / 演员行依次入场（`AppearingSection`），避免转场中途组合整页内容抢帧卡顿；详情页进入为淡入 + 轻微放大、返回反向收缩，转场参数在 `PHONE/NavigationRoot.kt`（全局 token 镜像在 `PHONE/presentation/theme/Motion.kt`）。
-- **评论区（外网短评）**：最下方为 `MovieCommentsSection.kt`，支持加载、失败重试、JavDB 登录态提示。数据访问与磁盘缓存位于 `CORE/comment/`；开关、代理和缓存策略来自设置页「网络 → 外网」。访客可见条数受站点账号权益限制，评论失败不影响详情页其它内容。失败原因是被站点拦截（Cloudflare，`ScraperException.SiteBlocked`，State 字段 `isCommentsSiteBlocked`）时额外提供「打开网页过盾」按钮，经 `NavigationRoot.kt` 的 `navigateToUnblock` 跳转 `JavDbUnblockRoute`。
+- **评论区（外网短评）**：最下方为 `MovieCommentsSection.kt`，支持加载、失败重试、JavDB 登录态提示。数据访问与磁盘缓存位于 `CORE/comment/`；开关和代理来自设置页「下载与网络 → 外网」，缓存空间由「缓存」统一管理。访客可见条数受站点账号权益限制，评论失败不影响详情页其它内容。失败原因是被站点拦截（Cloudflare，`ScraperException.SiteBlocked`，State 字段 `isCommentsSiteBlocked`）时额外提供「打开网页过盾」按钮，经 `NavigationRoot.kt` 的 `navigateToUnblock` 跳转 `JavDbUnblockRoute`。
 - **Screen**：`PHONE/presentation/film/MovieScreen.kt`；弹窗与小组件都在 `PHONE/presentation/film/components/` 下：
   - `ItemPlayButton.kt`：封面上的悬浮播放按钮。未滚动时浮在封面中央并跟随内容一起滚动，点击直接播放（`MovieAction.Play(startFromBeginning = false)`，与按钮栏的播放一致）；封面滑出超过一半后收起，用弹簧动画飞到顶栏「回到首页」按钮后方（尺寸与收起锚点按 `ItemTopBar` 的按钮对齐）。悬浮层铺满全屏但不消费触摸，只有按钮圆形区域可点，`headerHeightPx` 由 `MovieScreen.kt` 测量封面后传入。
   - `FilePathText.kt`：副标题下方的文件路径，本地优先于服务器、各自去重拼接、可点击展开；服务端路径用 `ic_cloud`、本地已下载用 `ic_folder`。
@@ -342,7 +344,7 @@ else -> WelcomeRoute
 
 ### SettingsScreen — 设置主页
 
-- **职责**：按 `indexes` 展示分组偏好并处理嵌套导航。网络分类的「外网」组管理评论开关、代理、缓存与 JavDB 站点账号；文本输入和登录组件位于 `PHONE/presentation/settings/components/`，会话实现见 `CORE/scraper/JavDbSessionImpl.kt`。登录 / 退出会清理短评缓存，可见短评数量受站点账号权益限制。
+- **职责**：按 `indexes` 展示分组偏好并处理嵌套导航。首页只有「用户与服务器」「播放器」「下载与网络」「缓存」「界面」「语言」「关于」七个入口。界面页仅保留跟随系统 / 浅色 / 深色主题；动态色彩在系统支持时自动启用。下载与网络页管理下载约束、连接超时、评论开关及抓取代理，账号与缓存分别进入专属页面。文本输入和登录组件位于 `PHONE/presentation/settings/components/`。播放器固定记忆手动调节的亮度，不再提供独立开关。
 - **路由**：`SettingsRoute(indexes: IntArray)`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/settings/SettingsScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETTINGS/presentation/settings/SettingsViewModel.kt`、`SETTINGS/presentation/settings/SettingsState.kt`、`SETTINGS/presentation/settings/SettingsAction.kt`、`SETTINGS/presentation/settings/SettingsEvent.kt`。
@@ -350,6 +352,24 @@ else -> WelcomeRoute
 - **主要方法 / Action**：`loadPreferences(indexes, deviceType)`、`onAction()`；`OnBackClick`、`OnUpdate`。
 - **Event**：`NavigateToUsers`、`NavigateToServers`、`NavigateToAbout`、`NavigateToSettings`、`NavigateToSettingsFileEdit`、`UpdateTheme`、`LaunchIntent`、`RestartActivity`。
 - **入口**：底部「设置」标签（`PHONE/NavigationRoot.kt`）。
+
+### AccountsScreen — 用户与服务器
+
+- **职责**：同页展示已保存服务器、当前服务器的用户、离线模式与 JavDB 账号。服务器和用户可切换、添加或移除，地址编辑与登录沿用既有页面。添加服务器后回到本页，页面恢复时刷新列表与连接状态；新用户登录成功后重启界面。移除只影响本地记录，必须确认；身份切换后重启界面以释放旧服务器 / 用户的页面状态。
+- **路由**：`AccountsRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/settings/AccountsScreen.kt`。
+- **ViewModel / State / Action / Event**：`SETUP/presentation/accounts/AccountsViewModel.kt`、`SETUP/presentation/accounts/AccountsState.kt`、`SETUP/presentation/accounts/AccountsAction.kt`、`SETUP/presentation/accounts/AccountsEvent.kt`。本地列表加载后即可操作，公共用户另行异步加载；切换服务器时取消旧请求，迟到结果不回填。离线开关与站点登录复用 `SETTINGS/presentation/settings/SettingsViewModel.kt`。
+- **入口**：设置首页「用户与服务器」。站点登录 / 退出会作废评论缓存，站点会话实现见 `CORE/scraper/JavDbSessionImpl.kt`。
+
+### CacheScreen — 缓存空间管理
+
+- **职责**：显示本地视频与各类缓存的实际磁盘占用，设置共享配额并按类别确认清理。默认配额为 2048 MB，图片、评论、字幕临时文件、播放器、翻译及网页响应缓存共用；没有独立类别上限。评论固定保鲜 30 天。
+- **路由**：`CacheRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/settings/cache/CacheScreen.kt`。
+- **ViewModel / State / Action**：`CORE/presentation/cache/CacheViewModel.kt`、`CORE/presentation/cache/CacheState.kt`、`CORE/presentation/cache/CacheAction.kt`。
+- **存储实现**：`data/src/main/java/dev/jdtech/jellyfin/cache/CacheManager.kt`、`data/src/main/java/dev/jdtech/jellyfin/cache/FileCacheManager.kt`；DI 见 `core/src/main/java/dev/jdtech/jellyfin/di/CacheModule.kt`。图片磁盘适配见 `PHONE/presentation/settings/cache/SharedImageDiskCache.kt`，按条目原子发布并保护快照和编辑中的文件。
+- **边界**：所有存储卷的 `downloads` 目录只统计，不回收，包含下载中临时文件与配套字幕。`filesDir/images` 与 `filesDir/trickplay` 计入图片缓存，清掉后离线可能缺图。正在读取 / 写入的图片、使用中的字幕及 mpv 缓存暂时保护，释放后合并触发后台回收；因此活动文件可能使占用暂时超过配额。配置、数据库、Cookie 和登录状态不参与回收。WebView 不再持久缓存新的响应，保留登录所需的 Cookie / DOM 状态。
+- **入口**：设置首页「缓存」。
 
 ### SettingsFileEditScreen — 设置文件编辑
 
@@ -469,7 +489,7 @@ else -> WelcomeRoute
   - `CORE/subtitle/SubtitleCueParser.kt`：解析 SRT / VTT 为按时间排序的 `SubtitleCue`，编码按 UTF-8 → GBK → Big5 严格解码兜底；时间戳正则复用 `CORE/subtitle/SubtitleTiming.kt`（Android 的 ICU 正则里花括号必须写成 `[{]` / `[}]`，否则类初始化直接抛异常）。
 - **两个入口**：A 详情页下载字幕弹窗底部的「播放视频时对比」（落盘后带 Intent extra `openSubtitleCompare` 进播放器）；B 播放页菜单「下载字幕」打开同一个弹窗后再点「播放视频时对比」。已在播放同一部影片时只开面板、不重开视频。
 - **目标约束**：候选固定绑定服务器、用户、条目与下载代次；上传、侧载和切轨同时校验播放会话，切集或重新开播清理候选与异步任务，旧事件不能应用到新播放。
-- **生命周期**：进画中画隐藏面板并恢复真实字幕轨，退出小窗后重新打开（缓存保留）；关闭面板、应用成功、播放器内部切集、退出播放页都会删除对应条目的快照。上传成功（含一期弹窗里的「上传」）会立即侧载到当前播放器并切轨，不必等服务器重新索引。
+- **生命周期**：进画中画隐藏面板并恢复真实字幕轨，退出小窗后重新打开（缓存保留）；关闭面板、应用成功、播放器内部切集、退出播放页都会删除对应条目的快照。侧载字幕在切集后继续保留，支持切回上一集；退出播放页时回收本次会话经过的所有条目的侧载文件与保护租约。上传成功（含一期弹窗里的「上传」）会立即侧载到当前播放器并切轨，不必等服务器重新索引。
 
 ---
 

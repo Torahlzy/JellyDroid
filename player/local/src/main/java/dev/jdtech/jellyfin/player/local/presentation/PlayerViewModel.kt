@@ -1,6 +1,7 @@
 package dev.jdtech.jellyfin.player.local.presentation
 
 import android.app.Application
+import dev.jdtech.jellyfin.cache.CacheManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -62,6 +63,7 @@ constructor(
     private val repository: JellyfinRepository,
     private val appPreferences: AppPreferences,
     private val savedStateHandle: SavedStateHandle,
+    private val cacheManager: CacheManager,
 ) : ViewModel(), Player.Listener {
     val player: Player
 
@@ -189,6 +191,7 @@ constructor(
                 }
                 "mpv" -> {
                     MPVPlayer.Builder(application)
+                        .setCacheManager(cacheManager)
                         .setAudioAttributes(audioAttributes, true)
                         .setTrackSelectionParameters(trackSelector.parameters)
                         .setSeekBackIncrementMs(

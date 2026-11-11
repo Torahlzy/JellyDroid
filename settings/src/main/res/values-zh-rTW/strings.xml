@@ -38,10 +38,10 @@
     <string name="settings_group_external">外網</string>
     <string name="settings_comments_enabled">開啟外網評論</string>
     <string name="settings_comments_enabled_summary">在電影詳情頁底部顯示短評區塊，內容來自擷取站點。</string>
-    <string name="settings_comments_use_proxy">外網使用代理</string>
+    <string name="settings_comments_use_proxy">評論使用代理</string>
     <string name="settings_comments_use_proxy_summary">與編輯 nfo 擷取使用的代理相同，關閉後直連。</string>
-    <string name="settings_comments_proxy">代理位址</string>
-    <string name="settings_comments_proxy_summary">與編輯 nfo 的擷取代理共用，留空表示直連。</string>
+    <string name="settings_comments_proxy">擷取代理位址</string>
+    <string name="settings_comments_proxy_summary">中繼資料、字幕擷取和啟用代理的評論共用，不影響 Jellyfin 連線及影片下載。留空表示直接連線。</string>
     <string name="settings_comments_cache_size">快取檔案大小</string>
     <string name="settings_comments_cache_size_summary">評論快取的總大小上限，超出後先刪除最舊的快取。</string>
     <string name="settings_comments_cache_days">快取有效期</string>
@@ -130,4 +130,7 @@
     <string name="advanced">進階</string>
     <string name="discard_changes_dialog_title">捨棄變更？</string>
     <string name="discard_changes_dialog_text">你有尚未儲存的變更。</string>
+    <string name="settings_category_accounts">使用者與伺服器</string>
+    <string name="settings_category_download_network">下載與網路</string>
+    <string name="settings_group_connection">連線參數</string>
 </resources>

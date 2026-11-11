@@ -133,11 +133,6 @@ constructor(
 
     private suspend fun loadSuggestions(refreshSuggestions: Boolean) {
         AppLog.i("Loading suggestions")
-        if (!appPreferences.getValue(appPreferences.homeSuggestions)) {
-            _state.emit(_state.value.copy(suggestionsSection = null))
-            return
-        }
-
         // banner 只在首次进入与下拉刷新时拉取：每次从详情页返回首页都重拉会重建轮播、
         // 重新加载封面图，观感上像整页被刷新了一遍
         if (!refreshSuggestions && _state.value.suggestionsSection != null) {
@@ -158,11 +153,6 @@ constructor(
 
     private suspend fun loadResumeItems() {
         AppLog.i("Loading resume items")
-        if (!appPreferences.getValue(appPreferences.homeContinueWatching)) {
-            _state.emit(_state.value.copy(resumeSection = null))
-            return
-        }
-
         val resumeItems = repository.getResumeItems()
 
         val section =
@@ -179,11 +169,6 @@ constructor(
 
     private suspend fun loadNextUpItems() {
         AppLog.i("Loading next up items")
-        if (!appPreferences.getValue(appPreferences.homeNextUp)) {
-            _state.emit(_state.value.copy(nextUpSection = null))
-            return
-        }
-
         val nextUpItems = repository.getNextUp()
 
         val section =
@@ -199,8 +184,7 @@ constructor(
     private suspend fun loadViews() {
         AppLog.i("Loading views")
         val items =
-            if (appPreferences.getValue(appPreferences.homeLatest)) {
-                repository
+            repository
                     .getUserViews()
                     .filter { view ->
                         CollectionType.fromString(view.collectionType?.serialName) in
@@ -210,9 +194,6 @@ constructor(
                     .filter { (_, latest) -> latest.isNotEmpty() }
                     .map { (view, latest) -> view.toView(latest) }
                     .map { HomeItem.ViewItem(it) }
-            } else {
-                emptyList()
-            }
 
         _state.emit(_state.value.copy(views = items))
     }

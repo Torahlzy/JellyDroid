@@ -124,6 +124,8 @@ private fun JavDbUnblockScreenLayout(
                         WebView(ctx)
                             .apply {
                                 // Cloudflare 的质询脚本是 JS，验证状态存在 DOM storage 里，两者都必须开
+                                settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                                clearCache(true)
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
                                 // 刻意不改 UA：cf_clearance 要和过盾时的 UA 绑定，后续抓取请求复用的是

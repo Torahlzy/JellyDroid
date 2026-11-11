@@ -1,6 +1,7 @@
 package dev.jdtech.jellyfin.di
 
 import android.app.Application
+import dev.jdtech.jellyfin.cache.CacheManager
 import androidx.work.WorkManager
 import dagger.Module
 import dagger.Provides
@@ -24,6 +25,7 @@ object DownloaderModule {
         jellyfinRepository: JellyfinRepository,
         appPreferences: AppPreferences,
         workManager: WorkManager,
+        cacheManager: CacheManager,
     ): Downloader {
         return DownloaderImpl(
             application,
@@ -31,6 +33,7 @@ object DownloaderModule {
             jellyfinRepository,
             appPreferences,
             workManager,
+            cacheManager,
         )
     }
 }

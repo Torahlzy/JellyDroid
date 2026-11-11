@@ -1,5 +1,6 @@
 package dev.jdtech.jellyfin
 
+import android.app.Activity
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -33,9 +34,11 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavOptions
@@ -75,6 +78,8 @@ import dev.jdtech.jellyfin.presentation.film.ShowScreen
 import dev.jdtech.jellyfin.presentation.javdb.JavDbUnblockScreen
 import dev.jdtech.jellyfin.presentation.settings.AboutScreen
 import dev.jdtech.jellyfin.presentation.settings.SettingsFileEditScreen
+import dev.jdtech.jellyfin.presentation.settings.AccountsScreen
+import dev.jdtech.jellyfin.presentation.settings.cache.CacheScreen
 import dev.jdtech.jellyfin.presentation.settings.SettingsScreen
 import dev.jdtech.jellyfin.presentation.setup.addresses.ServerAddressesScreen
 import dev.jdtech.jellyfin.presentation.setup.addserver.AddServerScreen
@@ -87,6 +92,7 @@ import dev.jdtech.jellyfin.presentation.theme.Motion
 import dev.jdtech.jellyfin.presentation.utils.LocalNavAnimatedVisibilityScope
 import dev.jdtech.jellyfin.presentation.utils.LocalOfflineMode
 import dev.jdtech.jellyfin.presentation.utils.LocalSharedTransitionScope
+import dev.jdtech.jellyfin.utils.restart
 import java.util.UUID
 import kotlinx.serialization.Serializable
 
@@ -141,6 +147,12 @@ data class ItemFilterRoute(val facet: MetadataFacet, val key: String, val title:
 
 @Serializable data class SettingsRoute(val indexes: IntArray)
 
+/** 合并管理服务器、用户与站点账号。 */
+@Serializable data object AccountsRoute
+
+/** 查看空间占用并管理共享缓存配额。 */
+@Serializable data object CacheRoute
+
 @Serializable data class SettingsFileEditRoute(val filePath: String)
 
 /** JavDB 被 Cloudflare 拦截时的过盾页：内置 WebView 手动通过人机验证，Cookie/UA 自动同步回抓取。 */
@@ -187,6 +199,7 @@ fun NavigationRoot(
     hasCurrentUser: Boolean,
 ) {
     val isOfflineMode = LocalOfflineMode.current
+    val context = LocalContext.current
 
     // 离线模式连不上服务器，首页（推荐 / 继续观看 / 最新）与「我的媒体」（媒体库、我喜欢、浏览
     // 维度）都要读服务器，进去只剩空页；真正可用的只有本地已下载的条目，所以离线时首页那一格换成
@@ -271,7 +284,13 @@ fun NavigationRoot(
             }
             composable<AddServerRoute> {
                 AddServerScreen(
-                    onSuccess = { navController.safeNavigate(UsersRoute) },
+                    onSuccess = {
+                        if (navController.previousBackStackEntry?.destination?.hasRoute<AccountsRoute>() == true) {
+                            navController.safePopBackStack()
+                        } else {
+                            navController.safeNavigate(UsersRoute)
+                        }
+                    },
                     onBackClick = { navController.safePopBackStack() },
                 )
             }
@@ -303,15 +322,23 @@ fun NavigationRoot(
                 val route: LoginRoute = backStackEntry.toRoute()
                 LoginScreen(
                     onSuccess = {
-                        navController.safeNavigate(HomeRoute) {
-                            popUpTo(0)
-                            launchSingleTop = true
+                        if (navController.previousBackStackEntry?.destination?.hasRoute<AccountsRoute>() == true) {
+                            (context as? Activity)?.restart()
+                        } else {
+                            navController.safeNavigate(HomeRoute) {
+                                popUpTo(0)
+                                launchSingleTop = true
+                            }
                         }
                     },
                     onChangeServerClick = {
-                        navController.safeNavigate(ServersRoute) {
-                            popUpTo(ServersRoute) { inclusive = false }
-                            launchSingleTop = true
+                        if (navController.previousBackStackEntry?.destination?.hasRoute<AccountsRoute>() == true) {
+                            navController.safePopBackStack()
+                        } else {
+                            navController.safeNavigate(ServersRoute) {
+                                popUpTo(ServersRoute) { inclusive = false }
+                                launchSingleTop = true
+                            }
                         }
                     },
                     onBackClick = { navController.safePopBackStack() },
@@ -602,8 +629,21 @@ fun NavigationRoot(
                     navigateToServers = { navController.safeNavigate(ServersRoute) },
                     navigateToUsers = { navController.safeNavigate(UsersRoute) },
                     navigateToAbout = { navController.safeNavigate(AboutRoute) },
+                    navigateToAccounts = { navController.safeNavigate(AccountsRoute) },
+                    navigateToCache = { navController.safeNavigate(CacheRoute) },
                     navigateBack = { navController.safePopBackStack() },
                 )
+            }
+            composable<AccountsRoute> {
+                AccountsScreen(
+                    navigateBack = { navController.safePopBackStack() },
+                    navigateToAddServer = { navController.safeNavigate(AddServerRoute) },
+                    navigateToAddresses = { navController.safeNavigate(ServerAddressesRoute(it)) },
+                    navigateToLogin = { navController.safeNavigate(LoginRoute(username = it)) },
+                )
+            }
+            composable<CacheRoute> {
+                CacheScreen(navigateBack = { navController.safePopBackStack() })
             }
             composable<SettingsFileEditRoute> { backStackEntry ->
                 val route: SettingsFileEditRoute = backStackEntry.toRoute()

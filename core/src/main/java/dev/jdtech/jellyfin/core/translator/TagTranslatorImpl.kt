@@ -2,7 +2,8 @@ package dev.jdtech.jellyfin.core.translator
 
 import dev.jdtech.jellyfin.core.scraper.MetadataTagNormalizer
 import dev.jdtech.jellyfin.logging.AppLog
-import dev.jdtech.jellyfin.settings.domain.AppPreferences
+import dev.jdtech.jellyfin.cache.CacheCategory
+import dev.jdtech.jellyfin.cache.CacheManager
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -13,18 +14,17 @@ import org.json.JSONObject
 /**
  * 词典 + 大模型两段式的分类 / 标签翻译器。
  *
- * 译文缓存在本地偏好里（`原值 → 译文` 的 json），跨会话复用：同一批领域词在每部影片上都会
+ * 译文缓存在共享磁盘缓存里（`原值 → 译文` 的 json），跨会话复用：同一批领域词在每部影片上都会
  * 出现，缓存命中后不再请求模型。词典命中的结果不落缓存——它是代码里写死的，不必占空间。
  */
 class TagTranslatorImpl
 @Inject
 constructor(
     private val translator: MetadataTranslator,
-    private val appPreferences: AppPreferences,
+    private val cacheManager: CacheManager,
 ) : TagTranslator {
 
-    /** 已解析的缓存；首次使用时从偏好里读，之后只在写回时更新。 */
-    private var cache: MutableMap<String, String>? = null
+    private val cacheFile get() = cacheManager.directory(CacheCategory.TRANSLATIONS).resolve("tags.json")
 
     override fun needsTranslation(value: String): Boolean {
         val trimmed = value.trim()
@@ -35,11 +35,21 @@ constructor(
     }
 
     override suspend fun translate(values: Collection<String>): TagTranslationResult =
-        // 整段放到 IO：缓存是本地偏好里的一串 json，读写与解析都不该占主线程
+        // 整段放到 IO：缓存是磁盘中的一串 json，读写与解析都不该占主线程
         withContext(Dispatchers.IO) {
             val result = linkedMapOf<String, String>()
             val pending = linkedSetOf<String>()
-            val cached = loadCache()
+            var cacheError: Exception? = null
+            val cached =
+                try {
+                    loadCache()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLog.w(e, "读取分类/标签翻译缓存失败，继续翻译")
+                    cacheError = e
+                    emptyMap()
+                }
             for (raw in values) {
                 val value = raw.trim()
                 if (value.isEmpty() || value in result) continue
@@ -58,7 +68,7 @@ constructor(
                 // 词典与缓存都没命中：只剩含假名的日文值值得交给模型
                 if (MetadataTagNormalizer.containsKana(value)) pending += value
             }
-            if (pending.isEmpty()) return@withContext TagTranslationResult(result)
+            if (pending.isEmpty()) return@withContext TagTranslationResult(result, cacheError)
 
             // 一次请求翻完整批：键用下标，值里带引号 / 换行也破坏不了 json 结构
             val requested =
@@ -85,13 +95,22 @@ constructor(
                 result[value] = simplified
                 newEntries[value] = simplified
             }
-            if (newEntries.isNotEmpty()) saveCache(newEntries)
-            TagTranslationResult(result)
+            if (newEntries.isNotEmpty()) {
+                try {
+                    saveCache(newEntries)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // 缓存可重建，落盘失败不能丢掉已经取得的译文。
+                    AppLog.w(e, "保存分类/标签翻译缓存失败，保留本次译文")
+                    cacheError = cacheError ?: e
+                }
+            }
+            TagTranslationResult(result, cacheError)
         }
 
-    private fun loadCache(): Map<String, String> = synchronized(CACHE_LOCK) {
-        cache?.let { return it }
-        val raw = appPreferences.getValue(appPreferences.tagTranslateCache)
+    private fun loadCache(): Map<String, String> = cacheManager.access {
+        val raw = if (cacheFile.isFile) cacheFile.readText() else ""
         val parsed = mutableMapOf<String, String>()
         if (raw.isNotBlank()) {
             try {
@@ -105,20 +124,19 @@ constructor(
                 AppLog.w("分类/标签翻译缓存无法解析，已重置：%s", e.message.orEmpty())
             }
         }
-        cache = parsed
+        cacheManager.touch(cacheFile)
         parsed
     }
 
-    private fun saveCache(entries: Map<String, String>) = synchronized(CACHE_LOCK) {
+    private fun saveCache(entries: Map<String, String>) = cacheManager.access {
         val merged = loadCache().toMutableMap().apply { putAll(entries) }
-        cache = merged
         val json = JSONObject()
         merged.forEach { (key, value) -> json.put(key, value) }
-        appPreferences.setValue(appPreferences.tagTranslateCache, json.toString())
+        check(cacheFile.parentFile?.mkdirs() == true || cacheFile.parentFile?.isDirectory == true)
+        val staging = cacheFile.resolveSibling("tags.tmp")
+        staging.writeText(json.toString())
+        check(staging.renameTo(cacheFile))
+        cacheManager.trim()
     }
 
-    private companion object {
-        /** 缓存文件读写与实例状态共用一个锁：翻译是并发的（每个站点一条协程）。 */
-        val CACHE_LOCK = Any()
-    }
 }

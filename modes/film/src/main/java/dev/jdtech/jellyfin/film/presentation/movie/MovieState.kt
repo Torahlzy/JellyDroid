@@ -20,7 +20,6 @@ data class MovieState(
     val actors: List<FindroidItemPerson> = emptyList(),
     val director: FindroidItemPerson? = null,
     val writers: List<FindroidItemPerson> = emptyList(),
-    val displayExtraInfo: Boolean = false,
     /** 服务器上该条目的图片，在「编辑封面」弹窗里作为「当前服务器使用」列出。 */
     val itemImages: List<FindroidItemImage> = emptyList(),
     val isLoadingItemImages: Boolean = false,

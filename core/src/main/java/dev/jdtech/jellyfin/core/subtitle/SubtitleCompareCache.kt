@@ -1,6 +1,8 @@
 package dev.jdtech.jellyfin.core.subtitle
 
 import android.app.Application
+import dev.jdtech.jellyfin.cache.CacheManager
+import java.io.Closeable
 import dev.jdtech.jellyfin.logging.AppLog
 import java.io.File
 import java.util.UUID
@@ -26,7 +28,7 @@ import org.json.JSONObject
  *
  * 为什么要有它：一期把下载到的字节只放在 ViewModel 内存里，选中即传；二期要「进播放页边看边比」，
  * 字节必须跨页面存活，所以写进 `cacheDir/subtitle_compare/<itemId>/`（`cacheDir` 由系统回收，
- * 不做全局定时清理）。
+ * 参与共享磁盘配额回收）。
  *
  * 文件名用候选 `pageUrl` 的短 hash，**不用序号**：序号随搜索顺序 / 取消重下变化，
  * 拿序号当文件名很容易把 A 的字节当成 B 的。另写一份 `manifest.json` 记录语言、格式、标题、
@@ -40,7 +42,7 @@ import org.json.JSONObject
  * 必须活到播放会话结束——ExoPlayer 在快进快退后会重新向这个 Uri 取数据。
  */
 @Singleton
-class SubtitleCompareCache @Inject constructor(private val application: Application) {
+class SubtitleCompareCache @Inject constructor(private val application: Application, private val cacheManager: CacheManager) {
 
     /**
      * 清理专用作用域，不挂在任何页面生命周期上。
@@ -63,11 +65,13 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
      * 线程安全：upsert 跑在 IO，clear / clearAsync 可能来自任意线程。
      */
     private val generations = ConcurrentHashMap<UUID, Long>()
+    private val compareLeases = ConcurrentHashMap<UUID, Closeable>()
+    private val sideloadLeases = ConcurrentHashMap<UUID, Closeable>()
     private val itemLocks = ConcurrentHashMap<UUID, Mutex>()
 
-    private suspend fun <T> withItemLock(itemId: UUID, block: suspend () -> T): T =
+    private suspend fun <T> withItemLock(itemId: UUID, block: () -> T): T =
         withContext(Dispatchers.IO) {
-            itemLocks.getOrPut(itemId) { Mutex() }.withLock { block() }
+            itemLocks.getOrPut(itemId) { Mutex() }.withLock { cacheManager.access(block) }
         }
 
     /** 当前批次令牌；从没 clear 过的条目为 0。调用方必须在 clear 之后读取才是本批的令牌。 */
@@ -108,6 +112,7 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
             // 校验与文件发布必须处于同一保护区，clear 不能插进两者之间。
             check(this.batchToken(itemId) == batchToken) { "字幕对照快照批次已过期" }
             val dir = itemDir(itemId)
+            compareLeases.getOrPut(itemId) { cacheManager.protect(dir) }
             if (!dir.isDirectory && !dir.mkdirs()) {
                 throw IllegalStateException("无法创建字幕对照缓存目录：$dir")
             }
@@ -139,6 +144,8 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
                 entries.size,
                 entries.joinToString(",") { it.order.toString() },
             )
+            cacheManager.touch(dir)
+            cacheManager.trim()
             _updates.tryEmit(itemId)
             entries
         }
@@ -152,7 +159,10 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
     suspend fun load(itemId: UUID): List<SubtitleCompareEntry> =
         withItemLock(itemId) {
             try {
-                readEntries(itemDir(itemId))
+                val dir = itemDir(itemId)
+                compareLeases.getOrPut(itemId) { cacheManager.protect(dir) }
+                cacheManager.touch(dir)
+                readEntries(dir)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -191,13 +201,16 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
     ): File =
         withItemLock(itemId) {
             val dir = sideloadDir(itemId)
+            sideloadLeases.getOrPut(itemId) { cacheManager.protect(dir) }
             if (!dir.isDirectory && !dir.mkdirs()) {
                 throw IllegalStateException("无法创建字幕侧载目录：$dir")
             }
             val hash = Integer.toHexString(nameHint.hashCode())
             val file = File(dir, "manual-$hash.$format")
             writeAtomically(file, bytes)
-            AppLog.d("侧载字幕文件已就绪：%s", file)
+            cacheManager.touch(dir)
+            cacheManager.trim()
+            AppLog.d("侧载字幕文件已就绪")
             file
         }
 
@@ -214,12 +227,15 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
             if (dir.exists() && !dir.deleteRecursively()) {
                 AppLog.w("清理字幕对照缓存失败：%s", dir)
             }
+            compareLeases.remove(itemId)?.close()
             if (includeSideload) {
+                sideloadLeases.remove(itemId)?.close()
                 val sideloaded = sideloadDir(itemId)
                 if (sideloaded.exists() && !sideloaded.deleteRecursively()) {
                     AppLog.w("清理字幕侧载缓存失败：%s", sideloaded)
                 }
             }
+            cacheManager.trim()
             batchToken(itemId)
         }
 

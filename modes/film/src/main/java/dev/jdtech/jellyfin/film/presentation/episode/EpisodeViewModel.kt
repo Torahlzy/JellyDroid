@@ -39,13 +39,11 @@ constructor(
                 val episode = repository.getEpisode(episodeId)
                 val videoMetadata = videoMetadataParser.parse(episode.sources.first())
                 val actors = getActors(episode)
-                val displayExtraInfo = appPreferences.getValue(appPreferences.displayExtraInfo)
                 _state.emit(
                     _state.value.copy(
                         episode = episode,
                         videoMetadata = videoMetadata,
                         actors = actors,
-                        displayExtraInfo = displayExtraInfo,
                     )
                 )
             } catch (e: CancellationException) {

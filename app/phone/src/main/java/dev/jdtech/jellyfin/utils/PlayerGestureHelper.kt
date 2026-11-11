@@ -479,12 +479,10 @@ class PlayerGestureHelper(
     }
 
     /**
-     * 亮度手势与「记住亮度」两项都开启时才跨会话保存 / 恢复亮度。
-     * 关闭任一开关后亮度跟随系统，不再写入已记录的亮度值。
+     * 启用亮度手势后始终跨会话保存 / 恢复亮度，关闭手势时跟随系统。
      */
     private fun shouldRememberBrightness(): Boolean =
-        appPreferences.getValue(appPreferences.playerGesturesVB) &&
-            appPreferences.getValue(appPreferences.playerGesturesBrightnessRemember)
+        appPreferences.getValue(appPreferences.playerGesturesVB)
 
     private fun saveBrightness() {
         if (!shouldRememberBrightness()) return

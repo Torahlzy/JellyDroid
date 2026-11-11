@@ -40,6 +40,7 @@ import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.work.DownloadWorker
 import dev.jdtech.jellyfin.work.ImagesDownloaderWorker
+import dev.jdtech.jellyfin.cache.CacheManager
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -109,6 +110,7 @@ class DownloaderImpl(
     private val jellyfinRepository: JellyfinRepository,
     private val appPreferences: AppPreferences,
     private val workManager: WorkManager,
+    private val cacheManager: CacheManager,
 ) : Downloader {
     private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
     private val preparationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -604,10 +606,14 @@ class DownloaderImpl(
     ) {
         val basePath = "trickplay/$itemId/$sourceId"
         database.insertTrickplayInfo(trickplayInfo.toFindroidTrickplayInfoDto(sourceId))
-        File(context.filesDir, basePath).mkdirs()
-        for ((i, byteArray) in byteArrays.withIndex()) {
-            val file = File(context.filesDir, "$basePath/$i")
-            file.writeBytes(byteArray)
+        cacheManager.access {
+            val directory = File(context.filesDir, basePath)
+            check(directory.isDirectory || directory.mkdirs())
+            for ((i, byteArray) in byteArrays.withIndex()) {
+                File(directory, i.toString()).writeBytes(byteArray)
+            }
+            cacheManager.touch(directory.parentFile ?: directory)
+            cacheManager.trim()
         }
     }
 

@@ -1,6 +1,9 @@
 package dev.jdtech.jellyfin.presentation.theme
 
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.SpringSpec
+import androidx.compose.animation.core.spring
 
 /**
  * M3 动效 token 的项目内镜像。
@@ -10,6 +13,14 @@ import androidx.compose.animation.core.CubicBezierEasing
  * 取值与 material3 内部 token 一致，升级依赖时可对照更新。
  */
 object Motion {
+    /** 空间变化允许回弹，颜色与色调仰角使用无回弹的效果弹簧。 */
+    fun <T> spatialSpec(): SpringSpec<T> = spring(
+        dampingRatio = Spring.DampingRatioLowBouncy,
+        stiffness = Spring.StiffnessLow,
+    )
+
+    fun <T> effectsSpec(): SpringSpec<T> = spring(dampingRatio = Spring.DampingRatioNoBouncy)
+
     /** 微交互 / 图标切换（150ms）。 */
     const val DurationShort3 = 150
 

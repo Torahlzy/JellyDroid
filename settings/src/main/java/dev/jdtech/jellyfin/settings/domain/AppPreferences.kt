@@ -18,12 +18,6 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
 
     // Interface
     val theme = Preference("pref_theme", "system")
-    val dynamicColors = Preference("pref_dynamic_colors", true)
-    val homeSuggestions = Preference<Boolean>("home_suggestions", true)
-    val homeContinueWatching = Preference<Boolean>("home_continue_watching", true)
-    val homeNextUp = Preference<Boolean>("home_next_up", true)
-    val homeLatest = Preference<Boolean>("home_latest", true)
-    val displayExtraInfo = Preference("pref_display_extra_info", false)
 
     // Player
     val playerBackend = Preference("pref_player_backend", "exoplayer")
@@ -66,7 +60,6 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     val playerGesturesSeek = Preference("pref_player_gestures_seek", true)
     val playerGesturesSeekTrickplay = Preference("pref_player_gestures_seek_trickplay", true)
     val playerGesturesChapterSkip = Preference("pref_player_gestures_chapter_skip", true)
-    val playerGesturesBrightnessRemember = Preference("pref_player_brightness_remember", true)
     val playerGesturesStartMaximized = Preference("pref_player_start_maximized", false)
 
     // Player - seeking
@@ -128,13 +121,6 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     /** 短评请求是否复用 [scrapeProxy]；关掉后即使填了代理也直连。 */
     val commentsUseProxy = Preference("pref_comments_use_proxy", true)
 
-    /** 短评缓存文件总大小上限（MB），超出后按最后写入时间淘汰最旧的文件。 */
-    val commentCacheSize =
-        Preference("pref_comment_cache_size", Constants.COMMENT_CACHE_DEFAULT_SIZE_MB)
-
-    /** 短评缓存有效期（天），未过期时重复打开影片不再请求站点。 */
-    val commentCacheDays =
-        Preference("pref_comment_cache_days", Constants.COMMENT_CACHE_DEFAULT_DAYS)
 
     /** 站点登录时用过的账号名（只用于回填输入框，密码不落盘）。 */
     val javdbAccount = Preference("pref_javdb_account", "")
@@ -200,6 +186,10 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     val tagTranslateCache = Preference("pref_tag_translate_cache", "")
 
     // Cache
+    /** 所有可重建磁盘缓存共用的配额，单位为 MB。 */
+    val cacheQuotaMb = Preference("pref_cache_quota_mb", 2048)
+
+    // TV 仍使用旧图片加载器，兼容字段不用于手机版缓存策略。
     val imageCache = Preference("pref_image_cache", true)
     val imageCacheSize = Preference("pref_image_cache_size", 900)
 
