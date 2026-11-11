@@ -300,11 +300,11 @@
     <string name="cache_preset_gb">%1$d GB</string>
     <string name="accounts_title">使用者與伺服器</string>
     <string name="accounts_servers">伺服器</string>
-    <string name="accounts_users">目前伺服器的使用者</string>
+    <string name="accounts_users">目前伺服器的帳號</string>
     <string name="accounts_add_server">新增伺服器</string>
-    <string name="accounts_add_user">新增登入</string>
+    <string name="accounts_add_user">新增帳號</string>
     <string name="accounts_addresses">管理位址</string>
-    <string name="accounts_login_required">點擊登入此使用者</string>
+    <string name="accounts_login_required">點擊登入此帳號</string>
     <string name="accounts_operation_failed">部分帳號資訊載入或更新失敗，請重試。</string>
     <string name="accounts_remove_title">移除本機儲存的帳號或伺服器？</string>
     <string name="accounts_remove_message">僅移除本機儲存的連線或登入資訊，不會刪除伺服器上的媒體檔案。</string>

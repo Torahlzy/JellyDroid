@@ -24,12 +24,26 @@ class AccountsViewModel @Inject constructor(
     private val repository: SetupRepository,
     private val preferences: AppPreferences,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(AccountsState())
+    private val _state =
+        MutableStateFlow(AccountsState(offlineMode = preferences.getValue(preferences.offlineMode)))
     val state = _state.asStateFlow()
     private val eventsChannel = Channel<AccountsEvent>()
     val events = eventsChannel.receiveAsFlow()
     private val initialServerId = preferences.getValue(preferences.currentServer)
     private var publicUsersJob: Job? = null
+
+    init {
+        // 服务器与用户都在本地 Room，进场立即读取，不等界面 ON_RESUME，避免首帧空白
+        onAction(AccountsAction.Refresh)
+    }
+
+    /**
+     * 页面恢复时补刷，覆盖从添加服务器 / 管理地址 / 登录页返回后的数据变化。
+     * 首次进场若 init 的加载尚未结束，onAction 的 isLoading 守卫会合并重复请求。
+     */
+    fun onResume() {
+        onAction(AccountsAction.Refresh)
+    }
 
     fun onAction(action: AccountsAction) {
         if (action == AccountsAction.Back) {
@@ -39,6 +53,10 @@ class AccountsViewModel @Inject constructor(
             }
             return
         }
+        if (action == AccountsAction.ToggleOfflineMode) {
+            toggleOfflineMode()
+            return
+        }
         if (_state.value.isLoading) return
         publicUsersJob?.cancel()
         viewModelScope.launch {
@@ -46,6 +64,8 @@ class AccountsViewModel @Inject constructor(
             try {
                 when (action) {
                     AccountsAction.Back -> Unit
+                    // 上面已提前处理，这里只补全密封分支
+                    AccountsAction.ToggleOfflineMode -> Unit
                     AccountsAction.Refresh -> load()
                     is AccountsAction.SelectServer -> {
                         _state.emit(_state.value.copy(hasChangedServer = true))
@@ -78,6 +98,16 @@ class AccountsViewModel @Inject constructor(
             } finally {
                 _state.emit(_state.value.copy(isLoading = false))
             }
+        }
+    }
+
+    /** 离线模式决定全局 Repository 与底栏，切换后必须重启界面才能生效。 */
+    private fun toggleOfflineMode() {
+        val enabled = !_state.value.offlineMode
+        preferences.setValue(preferences.offlineMode, enabled)
+        viewModelScope.launch {
+            _state.emit(_state.value.copy(offlineMode = enabled))
+            eventsChannel.send(AccountsEvent.Restart)
         }
     }
 

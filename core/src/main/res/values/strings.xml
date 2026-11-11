@@ -300,9 +300,9 @@
     <string name="cache_preset_gb">%1$d GB</string>
     <string name="accounts_title">Users and servers</string>
     <string name="accounts_servers">Servers</string>
-    <string name="accounts_users">Users on this server</string>
+    <string name="accounts_users">Accounts on this server</string>
     <string name="accounts_add_server">Add server</string>
-    <string name="accounts_add_user">Add sign-in</string>
+    <string name="accounts_add_user">Add account</string>
     <string name="accounts_addresses">Addresses</string>
     <string name="accounts_login_required">Sign in to use this account</string>
     <string name="accounts_operation_failed">Could not load or update all account information. Please try again.</string>

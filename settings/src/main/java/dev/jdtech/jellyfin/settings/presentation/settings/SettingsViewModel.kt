@@ -48,6 +48,66 @@ constructor(
 
     private val topLevelPreferences =
         listOf(
+            // 语言置顶：切换界面语言是首次使用最常找的入口
+            PreferenceGroup(
+                preferences =
+                    listOf(
+                        PreferenceCategory(
+                            nameStringResource = R.string.settings_category_language,
+                            iconDrawableId = R.drawable.ic_languages,
+                            onClick = {
+                                viewModelScope.launch {
+                                    eventsChannel.send(
+                                        SettingsEvent.NavigateToSettings(
+                                            intArrayOf(it.nameStringResource)
+                                        )
+                                    )
+                                }
+                            },
+                            nestedPreferenceGroups =
+                                listOf(
+                                    PreferenceGroup(
+                                        preferences =
+                                            listOf(
+                                                PreferenceAppLanguage(
+                                                    nameStringResource = R.string.app_language,
+                                                    iconDrawableId = R.drawable.ic_languages,
+                                                    enabled =
+                                                        Build.VERSION.SDK_INT >=
+                                                            Build.VERSION_CODES.TIRAMISU,
+                                                )
+                                            )
+                                    ),
+                                    PreferenceGroup(
+                                        preferences =
+                                            listOf(
+                                                PreferenceSelect(
+                                                    nameStringResource =
+                                                        R.string.settings_preferred_audio_language,
+                                                    iconDrawableId = R.drawable.ic_speaker,
+                                                    backendPreference =
+                                                        appPreferences.preferredAudioLanguage,
+                                                    options = R.array.languages,
+                                                    optionValues = R.array.languages_values,
+                                                    optionsIncludeNull = true,
+                                                ),
+                                                PreferenceSelect(
+                                                    nameStringResource =
+                                                        R.string
+                                                            .settings_preferred_subtitle_language,
+                                                    iconDrawableId = R.drawable.ic_closed_caption,
+                                                    backendPreference =
+                                                        appPreferences.preferredSubtitleLanguage,
+                                                    options = R.array.languages,
+                                                    optionValues = R.array.languages_values,
+                                                    optionsIncludeNull = true,
+                                                ),
+                                            )
+                                    ),
+                                ),
+                        )
+                    )
+            ),
             PreferenceGroup(
                 preferences = listOf(
                     PreferenceCategory(
@@ -62,32 +122,6 @@ constructor(
                                 )
                             }
                         },
-                        nestedPreferenceGroups = listOf(
-                            PreferenceGroup(
-                                preferences = listOf(
-                                    PreferenceSwitch(
-                                        nameStringResource = R.string.offline_mode,
-                                        descriptionStringRes = R.string.offline_mode_summary,
-                                        backendPreference = appPreferences.offlineMode,
-                                        onClick = {
-                                            viewModelScope.launch {
-                                                eventsChannel.send(SettingsEvent.RestartActivity)
-                                            }
-                                        },
-                                    ),
-                                ),
-                            ),
-                            PreferenceGroup(
-                                preferences = listOf(
-                                    // 登录后短评请求会带上会话，站点才可能返回更多评论。
-                                    PreferenceAction(
-                                        nameStringResource = R.string.settings_javdb_account,
-                                        descriptionStringRes = R.string.settings_javdb_account_summary,
-                                        onClick = { viewModelScope.launch { openJavDbLogin() } },
-                                    ),
-                                ),
-                            ),
-                        ),
                     ),
                 ),
             ),
@@ -550,6 +584,16 @@ constructor(
                                                     backendPreference =
                                                         appPreferences.commentsEnabled,
                                                 ),
+                                                // 站点登录影响短评可见条数，紧跟评论开关
+                                                PreferenceAction(
+                                                    nameStringResource =
+                                                        R.string.settings_javdb_account,
+                                                    descriptionStringRes =
+                                                        R.string.settings_javdb_account_summary,
+                                                    onClick = {
+                                                        viewModelScope.launch { openJavDbLogin() }
+                                                    },
+                                                ),
                                                 PreferenceSwitch(
                                                     nameStringResource =
                                                         R.string.settings_comments_use_proxy,
@@ -630,65 +674,6 @@ constructor(
                                                     optionValues = R.array.theme_values,
                                                 ),
                                             ),
-                                    ),
-                                ),
-                        )
-                    )
-            ),
-            PreferenceGroup(
-                preferences =
-                    listOf(
-                        PreferenceCategory(
-                            nameStringResource = R.string.settings_category_language,
-                            iconDrawableId = R.drawable.ic_languages,
-                            onClick = {
-                                viewModelScope.launch {
-                                    eventsChannel.send(
-                                        SettingsEvent.NavigateToSettings(
-                                            intArrayOf(it.nameStringResource)
-                                        )
-                                    )
-                                }
-                            },
-                            nestedPreferenceGroups =
-                                listOf(
-                                    PreferenceGroup(
-                                        preferences =
-                                            listOf(
-                                                PreferenceAppLanguage(
-                                                    nameStringResource = R.string.app_language,
-                                                    iconDrawableId = R.drawable.ic_languages,
-                                                    enabled =
-                                                        Build.VERSION.SDK_INT >=
-                                                            Build.VERSION_CODES.TIRAMISU,
-                                                )
-                                            )
-                                    ),
-                                    PreferenceGroup(
-                                        preferences =
-                                            listOf(
-                                                PreferenceSelect(
-                                                    nameStringResource =
-                                                        R.string.settings_preferred_audio_language,
-                                                    iconDrawableId = R.drawable.ic_speaker,
-                                                    backendPreference =
-                                                        appPreferences.preferredAudioLanguage,
-                                                    options = R.array.languages,
-                                                    optionValues = R.array.languages_values,
-                                                    optionsIncludeNull = true,
-                                                ),
-                                                PreferenceSelect(
-                                                    nameStringResource =
-                                                        R.string
-                                                            .settings_preferred_subtitle_language,
-                                                    iconDrawableId = R.drawable.ic_closed_caption,
-                                                    backendPreference =
-                                                        appPreferences.preferredSubtitleLanguage,
-                                                    options = R.array.languages,
-                                                    optionValues = R.array.languages_values,
-                                                    optionsIncludeNull = true,
-                                                ),
-                                            )
                                     ),
                                 ),
                         )

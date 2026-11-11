@@ -344,22 +344,22 @@ else -> WelcomeRoute
 
 ### SettingsScreen — 设置主页
 
-- **职责**：按 `indexes` 展示分组偏好并处理嵌套导航。首页只有「用户与服务器」「播放器」「下载与网络」「缓存」「界面」「语言」「关于」七个入口。界面页仅保留跟随系统 / 浅色 / 深色主题；动态色彩在系统支持时自动启用。下载与网络页管理下载约束、连接超时、评论开关及抓取代理，账号与缓存分别进入专属页面。文本输入和登录组件位于 `PHONE/presentation/settings/components/`。播放器固定记忆手动调节的亮度，不再提供独立开关。
+- **职责**：按 `indexes` 展示分组偏好并处理嵌套导航。首页七个入口按「语言」「用户与服务器」「播放器」「下载与网络」「缓存」「界面」「关于」排列，语言置顶便于首次使用切换。界面页仅保留跟随系统 / 浅色 / 深色主题；动态色彩在系统支持时自动启用。下载与网络页管理下载约束、连接超时与「外网」组（开启外网评论、站点账号登录、评论代理及抓取代理），缓存进入专属页面。文本输入和登录组件位于 `PHONE/presentation/settings/components/`；站点账号登录弹窗由设置页承载。播放器固定记忆手动调节的亮度，不再提供独立开关。
 - **路由**：`SettingsRoute(indexes: IntArray)`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/settings/SettingsScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETTINGS/presentation/settings/SettingsViewModel.kt`、`SETTINGS/presentation/settings/SettingsState.kt`、`SETTINGS/presentation/settings/SettingsAction.kt`、`SETTINGS/presentation/settings/SettingsEvent.kt`。
 - **State 字段**：`isLoading`、`preferenceGroups`。
 - **主要方法 / Action**：`loadPreferences(indexes)`、`onAction()`；`OnBackClick`、`OnUpdate`。
-- **Event**：`NavigateToUsers`、`NavigateToServers`、`NavigateToAbout`、`NavigateToSettings`、`NavigateToSettingsFileEdit`、`UpdateTheme`、`LaunchIntent`、`RestartActivity`。
+- **Event**：`NavigateToUsers`、`NavigateToServers`、`NavigateToAbout`、`NavigateToSettings`、`NavigateToSettingsFileEdit`、`UpdateTheme`、`LaunchIntent`。
 - **入口**：底部「设置」标签（`PHONE/NavigationRoot.kt`）。
 
 ### AccountsScreen — 用户与服务器
 
-- **职责**：同页展示已保存服务器、当前服务器的用户、离线模式与 JavDB 账号。服务器和用户可切换、添加或移除，地址编辑与登录沿用既有页面。添加服务器后回到本页，页面恢复时刷新列表与连接状态；新用户登录成功后重启界面。移除只影响本地记录，必须确认；身份切换后重启界面以释放旧服务器 / 用户的页面状态。
+- **职责**：同页展示已保存服务器与当前服务器的用户，离线模式开关固定在头部常驻（不随列表滚动）。服务器卡片按「名称 / 当前地址 / 管理地址 + 移除」三行排布。服务器和用户可切换、添加或移除，地址编辑与登录沿用既有页面；「添加账号」进入登录页。添加服务器后回到本页，页面恢复时刷新列表与连接状态；新用户登录成功后重启界面。移除只影响本地记录，必须确认；身份切换或切换离线模式后重启界面以释放旧服务器 / 用户的页面状态。
 - **路由**：`AccountsRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/settings/AccountsScreen.kt`。
-- **ViewModel / State / Action / Event**：`SETUP/presentation/accounts/AccountsViewModel.kt`、`SETUP/presentation/accounts/AccountsState.kt`、`SETUP/presentation/accounts/AccountsAction.kt`、`SETUP/presentation/accounts/AccountsEvent.kt`。本地列表加载后即可操作，公共用户另行异步加载；切换服务器时取消旧请求，迟到结果不回填。离线开关与站点登录复用 `SETTINGS/presentation/settings/SettingsViewModel.kt`。
-- **入口**：设置首页「用户与服务器」。站点登录 / 退出会作废评论缓存，站点会话实现见 `CORE/scraper/JavDbSessionImpl.kt`。
+- **ViewModel / State / Action / Event**：`SETUP/presentation/accounts/AccountsViewModel.kt`、`SETUP/presentation/accounts/AccountsState.kt`、`SETUP/presentation/accounts/AccountsAction.kt`、`SETUP/presentation/accounts/AccountsEvent.kt`。服务器与用户来自本地 Room，由 ViewModel 进场立即加载；离线模式值在构造时同步读取、首帧即可显示，公共用户另行异步加载；切换服务器时取消旧请求，迟到结果不回填。本页不再依赖 `SETTINGS/presentation/settings/SettingsViewModel.kt`。
+- **入口**：设置首页「用户与服务器」。站点账号登录已移至设置页「下载与网络 → 外网」，登录 / 退出会作废评论缓存，站点会话实现见 `CORE/scraper/JavDbSessionImpl.kt`。
 
 ### CacheScreen — 缓存空间管理
 
