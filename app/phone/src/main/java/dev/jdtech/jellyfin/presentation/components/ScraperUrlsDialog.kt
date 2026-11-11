@@ -1,4 +1,4 @@
-package dev.jdtech.jellyfin.presentation.film.components
+package dev.jdtech.jellyfin.presentation.components
 
 import android.net.Uri
 import androidx.compose.foundation.layout.Column
@@ -22,12 +22,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.core.scraper.ScraperSite
-import dev.jdtech.jellyfin.presentation.components.BaseDialog
 import dev.jdtech.jellyfin.presentation.theme.spacings
 
 /**
  * 抓取站点网址的输入弹窗：按 [urls] 的 key 顺序每个站点一个输入框，站点 key 由 [urls] 决定，
- * 同时作为输入框标签与偏好的存储 key；渲染不枚举站点，新增站点只需改 ViewModel 组装的 map。
+ * 同时作为输入框标签与偏好的存储 key；渲染不枚举站点，清单由 `:core` 的 `ScraperSite` 枚举统一给出，
+ * 新增站点只需加枚举项，设置页与详情页的回填 map 会一起更新。
+ * [urls] 传的是各站点当前实际生效的地址（含打包时配置的地址），打开即回显，免得看到空框以为没配置。
  *
  * 防呆只提示不拦人：网址归一化后解析不出 host、不是 http(s) 站点根地址（弹窗只收根地址，带其它
  * scheme 或路径 / 查询参数都会提示），或 nfo 站点的 host 里不含该站点的 key（可能把别的站点的网址
@@ -64,7 +65,10 @@ fun ScraperUrlsDialog(
             Spacer(Modifier.height(MaterialTheme.spacings.medium))
             urlInputs.keys.forEach { siteKey ->
                 val url = urlInputs[siteKey].orEmpty()
-                val isMismatch = isPossibleMismatch(siteKey, url)
+                // 已生效的回填值（含打包配置）不参与防呆，只提示用户本次输入可能写错，
+                // 否则打包域名不含站点 key 时一打开弹窗就一片「可能不匹配」
+                val isMismatch =
+                    url != urls[siteKey].orEmpty() && isPossibleMismatch(siteKey, url)
                 OutlinedTextField(
                     value = url,
                     onValueChange = { value -> urlInputs = urlInputs + (siteKey to value) },

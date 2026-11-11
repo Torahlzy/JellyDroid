@@ -43,12 +43,15 @@
     <string name="settings_request_timeout">请求超时</string>
     <string name="settings_connect_timeout">连接超时</string>
     <string name="settings_socket_timeout">Socket 超时</string>
-    <string name="settings_group_external">外网</string>
+    <string name="settings_group_external">评论</string>
+    <string name="settings_group_proxy">代理</string>
+    <string name="settings_scrape_urls">抓取网址</string>
+    <string name="settings_scrape_urls_summary">配置抓取图片、nfo、字幕的站点。</string>
     <string name="settings_comments_enabled">开启外网评论</string>
     <string name="settings_comments_enabled_summary">在电影详情页底部显示短评区块，内容来自抓取站点。</string>
     <string name="settings_comments_use_proxy">评论使用代理</string>
     <string name="settings_comments_use_proxy_summary">与编辑 nfo 抓取使用的代理相同，关闭后直连。</string>
-    <string name="settings_comments_proxy">抓取代理地址</string>
+    <string name="settings_comments_proxy">本地代理设置</string>
     <string name="settings_comments_proxy_summary">元数据、字幕抓取和启用代理的评论共用，不影响 Jellyfin 连接及视频下载。留空表示直连。</string>
     <string name="settings_comments_cache_size">缓存文件大小</string>
     <string name="settings_comments_cache_size_summary">评论缓存的总大小上限，超出后先删除最旧的缓存。</string>

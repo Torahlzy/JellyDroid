@@ -22,11 +22,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.presentation.components.BaseDialog
+import dev.jdtech.jellyfin.presentation.proxy.ProxyTestSection
 import dev.jdtech.jellyfin.presentation.theme.spacings
 
 /**
  * 抓取代理的输入框，抓取 nfo / 封面 / 演员头像共用。
- * 留空即直连。
+ * 留空即直连；「测试」只验证当前输入能否连通公网，不写入偏好。
  */
 @Composable
 fun ScrapeProxyDialog(
@@ -64,6 +65,7 @@ fun ScrapeProxyDialog(
                 keyboardActions = KeyboardActions(onDone = { onConfirm(address.trim()) }),
                 singleLine = true,
             )
+            ProxyTestSection(address = address)
         }
     }
 }

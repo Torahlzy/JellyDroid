@@ -15,6 +15,7 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.annotation.ExperimentalCoilApi
+import coil3.disk.DiskCache
 import coil3.network.cachecontrol.CacheControlCacheStrategy
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.ErrorResult
@@ -27,7 +28,6 @@ import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.logging.TorahDebugTree
 import dev.jdtech.jellyfin.cache.CacheManager
 import dev.jdtech.jellyfin.cache.CacheCategory
-import dev.jdtech.jellyfin.presentation.settings.cache.SharedImageDiskCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,9 +36,11 @@ import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.work.MpvCleanupWorker
 import dev.jdtech.jellyfin.work.SyncWorker
 import dev.jdtech.jellyfin.work.UserDataSyncScheduler
+import java.io.File
 import javax.inject.Inject
 import kotlin.time.ExperimentalTime
 import okhttp3.OkHttpClient
+import okio.Path.Companion.toOkioPath
 import timber.log.Timber
 
 @HiltAndroidApp
@@ -78,6 +80,11 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 cacheManager.access {
+                    // 旧版自建图片缓存的目录格式与框架磁盘缓存不兼容，升级后一次性删除，避免留下不计入统计的孤儿文件
+                    val legacyImages = File(cacheDir, LEGACY_IMAGE_CACHE_DIR)
+                    if (legacyImages.exists() && !legacyImages.deleteRecursively()) {
+                        AppLog.w("旧版图片缓存目录清理失败")
+                    }
                     val legacy = appPreferences.getValue(appPreferences.tagTranslateCache)
                     val target = cacheManager.directory(CacheCategory.TRANSLATIONS).resolve("tags.json")
                     if (legacy.isNotBlank() && !target.exists()) {
@@ -131,7 +138,16 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
                 )
                 add(SvgDecoder.Factory())
             }
-            .diskCache { SharedImageDiskCache(cacheManager) }
+            // 上限在创建时固定，设置页改动后由下次启动读取新值
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(File(cacheDir, CacheManager.IMAGE_CACHE_DIR).toOkioPath())
+                    .maxSizeBytes(
+                        appPreferences.getValue(appPreferences.imageCacheQuotaMb)
+                            .coerceAtLeast(1) * BYTES_PER_MB,
+                    )
+                    .build()
+            }
             .crossfade(true)
             // 异常消息与堆栈可能包含请求 URL，仅保留类型用于诊断
             .eventListener(
@@ -166,5 +182,10 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
             existingWorkPolicy = ExistingWorkPolicy.KEEP,
             request = cleanupRequest,
         )
+    }
+
+    private companion object {
+        const val BYTES_PER_MB = 1024L * 1024
+        const val LEGACY_IMAGE_CACHE_DIR = "shared_images"
     }
 }

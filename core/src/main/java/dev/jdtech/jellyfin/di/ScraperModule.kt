@@ -20,6 +20,7 @@ import dev.jdtech.jellyfin.core.subtitle.SubtitleDownloaderImpl
 import dev.jdtech.jellyfin.core.subtitle.SubtitleScraper
 import dev.jdtech.jellyfin.core.subtitle.SubtitlecatScraper
 import dev.jdtech.jellyfin.settings.domain.JavDbSession
+import dev.jdtech.jellyfin.settings.domain.ScrapeSiteUrlsProvider
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 import okhttp3.OkHttpClient
@@ -49,6 +50,10 @@ abstract class ScraperModule {
     @Binds
     @Singleton
     abstract fun bindScraperUrlProvider(impl: ScraperUrlProviderImpl): ScraperUrlProvider
+
+    @Binds
+    @Singleton
+    abstract fun bindScrapeSiteUrlsProvider(impl: ScraperUrlProviderImpl): ScrapeSiteUrlsProvider
 
     @Binds
     @Singleton

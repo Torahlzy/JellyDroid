@@ -60,6 +60,7 @@ fun CacheScreen(navigateBack: () -> Unit, viewModel: CacheViewModel = hiltViewMo
 private fun CacheScreenLayout(state: CacheState, onAction: (CacheAction) -> Unit, navigateBack: () -> Unit) {
     var selectedCategory by rememberSaveable { mutableStateOf<CacheCategory?>(null) }
     var showQuota by rememberSaveable { mutableStateOf(false) }
+    var showImageQuota by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     fun size(bytes: Long) = Formatter.formatFileSize(context, bytes)
     Scaffold(
@@ -90,8 +91,15 @@ private fun CacheScreenLayout(state: CacheState, onAction: (CacheAction) -> Unit
                 item {
                     CacheQuotaCard(
                         usage = usage,
-                        usedSize = size(usage.usedBytes),
-                        quotaSize = size(usage.quotaBytes),
+                        isImage = true,
+                        enabled = !state.isLoading,
+                        onClick = { showImageQuota = true },
+                    )
+                }
+                item {
+                    CacheQuotaCard(
+                        usage = usage,
+                        isImage = false,
                         enabled = !state.isLoading,
                         onClick = { showQuota = true },
                     )
@@ -124,19 +132,33 @@ private fun CacheScreenLayout(state: CacheState, onAction: (CacheAction) -> Unit
             dismissButton = { TextButton(onClick = { selectedCategory = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
-    if (showQuota) CacheQuotaDialog(state.usage?.quotaBytes?.div(1024 * 1024)?.toInt() ?: 2048,
-        onDismiss = { showQuota = false }, onSave = { showQuota = false; onAction(CacheAction.SetQuota(it)) })
+    if (showImageQuota) CacheQuotaDialog(
+        title = stringResource(R.string.cache_image_quota),
+        hint = stringResource(R.string.cache_image_quota_restart_hint),
+        current = state.usage?.imageQuotaBytes?.div(1024 * 1024)?.toInt() ?: 1024,
+        onDismiss = { showImageQuota = false },
+        onSave = { showImageQuota = false; onAction(CacheAction.SetImageQuota(it)) },
+    )
+    if (showQuota) CacheQuotaDialog(
+        title = stringResource(R.string.cache_shared_quota),
+        hint = null,
+        current = state.usage?.quotaBytes?.div(1024 * 1024)?.toInt() ?: 1024,
+        onDismiss = { showQuota = false },
+        onSave = { showQuota = false; onAction(CacheAction.SetQuota(it)) },
+    )
 }
 
 @Composable
 private fun CacheQuotaCard(
     usage: CacheUsage,
-    usedSize: String,
-    quotaSize: String,
+    isImage: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val usedBytes = if (isImage) usage.imageCacheBytes else usage.usedBytes
+    val quotaBytes = if (isImage) usage.imageQuotaBytes else usage.quotaBytes
     val interaction = settingsInteraction(enabled)
     Surface(
         onClick = onClick,
@@ -154,14 +176,24 @@ private fun CacheQuotaCard(
             modifier = Modifier.padding(MaterialTheme.spacings.default),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.small),
         ) {
-            Text(stringResource(R.string.cache_shared_quota), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(R.string.cache_usage_summary, usedSize, quotaSize))
+            Text(
+                stringResource(if (isImage) R.string.cache_image_quota else R.string.cache_shared_quota),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(stringResource(
+                R.string.cache_usage_summary,
+                Formatter.formatFileSize(context, usedBytes),
+                Formatter.formatFileSize(context, quotaBytes),
+            ))
             LinearProgressIndicator(
-                progress = { (usage.usedBytes.toFloat() / usage.quotaBytes).coerceIn(0f, 1f) },
+                progress = { (usedBytes.toFloat() / quotaBytes).coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text(stringResource(R.string.cache_quota_hint), style = MaterialTheme.typography.bodySmall)
-            if (usage.usedBytes > usage.quotaBytes) {
+            Text(
+                stringResource(if (isImage) R.string.cache_image_quota_hint else R.string.cache_quota_hint),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (!isImage && usedBytes > quotaBytes) {
                 Text(stringResource(R.string.cache_in_use_hint), color = MaterialTheme.colorScheme.error)
             }
         }
@@ -190,13 +222,20 @@ private fun CacheUsageCard(
 }
 
 @Composable
-private fun CacheQuotaDialog(current: Int, onDismiss: () -> Unit, onSave: (Int) -> Unit) {
+private fun CacheQuotaDialog(
+    title: String,
+    hint: String?,
+    current: Int,
+    onDismiss: () -> Unit,
+    onSave: (Int) -> Unit,
+) {
     var value by rememberSaveable { mutableStateOf(current.toString()) }
     val number = value.toIntOrNull()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.cache_shared_quota)) },
+        title = { Text(title) },
         text = { Column {
+            if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall)
             androidx.compose.foundation.layout.FlowRow { listOf(512, 1024, 2048, 4096, 8192).forEach { preset ->
                 TextButton(onClick = { value = preset.toString() }) { Text(if (preset < 1024) stringResource(R.string.cache_preset_mb, preset) else stringResource(R.string.cache_preset_gb, preset / 1024)) }
             } }
@@ -221,5 +260,20 @@ private fun CacheCategory.titleResource(): Int = when (this) {
 @PreviewScreenSizes
 @Composable
 private fun CacheScreenPreview() {
-    FindroidTheme { CacheScreenLayout(CacheState(usage = CacheUsage(2147483648, 0, emptyMap(), 0)), {}, {}) }
+    FindroidTheme {
+        CacheScreenLayout(
+            CacheState(
+                usage = CacheUsage(
+                    quotaBytes = 1073741824,
+                    imageQuotaBytes = 1073741824,
+                    imageCacheBytes = 268435456,
+                    downloadedBytes = 0,
+                    categories = emptyMap(),
+                    protectedBytes = 0,
+                ),
+            ),
+            {},
+            {},
+        )
+    }
 }

@@ -18,7 +18,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -128,9 +127,6 @@ private fun AccountsScreenLayout(
                 verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.medium),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (state.isLoading) item {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                }
                 if (state.error != null) item {
                     Column {
                         Text(

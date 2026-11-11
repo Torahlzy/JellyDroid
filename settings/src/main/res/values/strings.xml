@@ -18,12 +18,15 @@
     <string name="settings_request_timeout">Request timeout</string>
     <string name="settings_connect_timeout">Connect timeout</string>
     <string name="settings_socket_timeout">Socket timeout</string>
-    <string name="settings_group_external">External sources</string>
+    <string name="settings_group_external">Comments</string>
+    <string name="settings_group_proxy">Proxy</string>
+    <string name="settings_scrape_urls">Scraping site URLs</string>
+    <string name="settings_scrape_urls_summary">Configure the sites used for images, nfo and subtitles.</string>
     <string name="settings_comments_enabled">Load external comments</string>
     <string name="settings_comments_enabled_summary">Show a short-review section at the bottom of the movie details page, fetched from the scraping sites.</string>
     <string name="settings_comments_use_proxy">Use proxy for comments</string>
     <string name="settings_comments_use_proxy_summary">Same proxy as the nfo scraping proxy. Turn off to request directly.</string>
-    <string name="settings_comments_proxy">Scraping proxy address</string>
+    <string name="settings_comments_proxy">Local proxy</string>
     <string name="settings_comments_proxy_summary">Shared by metadata, subtitle scraping, and proxied comments. Does not affect Jellyfin connections or video downloads. Leave empty to connect directly.</string>
     <string name="settings_comments_cache_size">Comment cache size</string>
     <string name="settings_comments_cache_size_summary">Total size limit of the comment cache, oldest entries are removed first.</string>

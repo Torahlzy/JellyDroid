@@ -42,6 +42,7 @@ class CacheViewModel @Inject constructor(private val cache: CacheManager) : View
     private fun execute(action: CacheAction): CacheUsage = when (action) {
         CacheAction.Refresh -> { cache.trim(); cache.usage() }
         is CacheAction.SetQuota -> cache.setQuota(action.megabytes)
+        is CacheAction.SetImageQuota -> cache.setImageQuota(action.megabytes)
         is CacheAction.Clear -> cache.clear(action.category)
     }
 }

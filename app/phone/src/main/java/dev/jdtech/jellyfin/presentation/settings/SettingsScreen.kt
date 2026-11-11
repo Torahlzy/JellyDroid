@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.jdtech.jellyfin.core.R as CoreR
+import dev.jdtech.jellyfin.presentation.components.ScraperUrlsDialog
 import dev.jdtech.jellyfin.presentation.settings.components.JavDbLoginDialog
 import dev.jdtech.jellyfin.presentation.settings.components.SettingsGroupCard
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
@@ -194,6 +195,14 @@ private fun SettingsScreenLayout(
             },
             onLogout = { onAction(SettingsAction.JavDbLogout) },
             onDismiss = { onAction(SettingsAction.CloseJavDbLogin) },
+        )
+    }
+
+    if (state.showScrapeUrlsDialog) {
+        ScraperUrlsDialog(
+            urls = state.scrapeSiteUrls,
+            onConfirm = { urls -> onAction(SettingsAction.SaveScrapeUrls(urls = urls)) },
+            onDismiss = { onAction(SettingsAction.CloseScrapeUrls) },
         )
     }
 }

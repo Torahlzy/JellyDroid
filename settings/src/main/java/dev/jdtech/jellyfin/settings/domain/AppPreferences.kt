@@ -186,8 +186,11 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     val tagTranslateCache = Preference("pref_tag_translate_cache", "")
 
     // Cache
-    /** 所有可重建磁盘缓存共用的配额，单位为 MB。 */
-    val cacheQuotaMb = Preference("pref_cache_quota_mb", 2048)
+    /** 在线图片缓存的独立配额，单位为 MB；由图片加载框架自行淘汰，改动在下次启动生效。 */
+    val imageCacheQuotaMb = Preference("pref_image_cache_quota_mb", 1024)
+
+    /** 除在线图片缓存外，所有可重建磁盘缓存共用的配额，单位为 MB。 */
+    val cacheQuotaMb = Preference("pref_cache_quota_mb", 1024)
 
     // Sorting
     val sortBy = Preference("pref_sort_by", "SortName")

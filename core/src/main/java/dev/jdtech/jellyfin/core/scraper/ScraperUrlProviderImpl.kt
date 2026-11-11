@@ -1,6 +1,8 @@
 package dev.jdtech.jellyfin.core.scraper
 
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
+import dev.jdtech.jellyfin.settings.domain.Constants
+import dev.jdtech.jellyfin.settings.domain.ScrapeSiteUrlsProvider
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -11,11 +13,21 @@ import javax.inject.Singleton
 @Singleton
 class ScraperUrlProviderImpl @Inject constructor(
     private val appPreferences: AppPreferences,
-) : ScraperUrlProvider {
+) : ScraperUrlProvider, ScrapeSiteUrlsProvider {
     override fun baseUrl(site: ScraperSite): String? {
         // 与 ScraperSite.baseUrl 相同的归一化：去空白与结尾斜杠，空串视为未配置
         val fromPreferences =
             appPreferences.getValue(appPreferences.scrapeSiteUrl(site.key)).trim().trimEnd('/')
         return fromPreferences.takeIf { it.isNotEmpty() } ?: site.baseUrl
+    }
+
+    /**
+     * 「抓取网址」弹窗回填用（设置页与电影详情页共用）：与 [baseUrl] 同一套回退规则，
+     * 把打包配置也算进来。站点清单以 [ScraperSite] 的枚举顺序为唯一来源，字幕站附在末尾；
+     * 未配置的站点给空串而不是不放入 map，保证弹窗能列出所有站点。
+     */
+    override fun effectiveUrls(): Map<String, String> = buildMap {
+        ScraperSite.entries.forEach { site -> put(site.key, baseUrl(site).orEmpty()) }
+        put(Constants.SUBTITLE_SITE_KEY, appPreferences.subtitleSiteBaseUrl())
     }
 }

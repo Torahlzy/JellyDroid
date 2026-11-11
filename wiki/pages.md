@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-11-11**
+**最后更新：2026-11-12**
 
 ---
 
@@ -219,21 +219,21 @@ else -> WelcomeRoute
 - **加载错误**：加载失败停止等待动画，使用 `PHONE/presentation/film/components/DetailLoadError.kt` 显示错误详情和重试入口；重试调用本页原有 load 方法，已有内容继续保留，返回操作可用。
 - **路由**：`MovieRoute(movieId, heroKey?)`，定义并注册于 `PHONE/NavigationRoot.kt`；`heroKey` 记录点击来源，普通列表为空时使用默认卡片 key。
 - **进场动画**：列表封面与详情页头部之间是共享元素 morph（普通卡片 key 为 `movie-hero-<movieId>`，首页 Banner / 继续观看 / 接下来 / 最新添加分别使用带来源的 key，避免同一电影同时出现在多个分区时互相抢占；经 `PHONE/presentation/utils/SharedTransition.kt` 的 `heroSharedBounds` 建立，两个转场作用域由 `PHONE/NavigationRoot.kt` 的 `SharedTransitionNavHost` / `SharedElementHost` 经 CompositionLocal 下发）；加载态为居中转圈，内容区块等进场转场（morph）结束后才组合并让标题 / 信息行 / 按钮栏 / 简介 / 演员行依次入场（`AppearingSection`），避免转场中途组合整页内容抢帧卡顿；详情页进入为淡入 + 轻微放大、返回反向收缩，转场参数在 `PHONE/NavigationRoot.kt`（全局 token 镜像在 `PHONE/presentation/theme/Motion.kt`）。
-- **评论区（外网短评）**：最下方为 `MovieCommentsSection.kt`，支持加载、失败重试、JavDB 登录态提示。数据访问与磁盘缓存位于 `CORE/comment/`；开关和代理来自设置页「下载与网络 → 外网」，缓存空间由「缓存」统一管理。访客可见条数受站点账号权益限制，评论失败不影响详情页其它内容。失败原因是被站点拦截（Cloudflare，`ScraperException.SiteBlocked`，State 字段 `isCommentsSiteBlocked`）时额外提供「打开网页过盾」按钮，经 `NavigationRoot.kt` 的 `navigateToUnblock` 跳转 `JavDbUnblockRoute`。
-- **Screen**：`PHONE/presentation/film/MovieScreen.kt`；弹窗与小组件都在 `PHONE/presentation/film/components/` 下：
+- **评论区（外网短评）**：最下方为 `MovieCommentsSection.kt`，支持加载、失败重试、JavDB 登录态提示。数据访问与磁盘缓存位于 `CORE/comment/`；开关与「评论使用代理」来自设置页「下载与网络 → 评论」，本地代理来自同页独立的「代理」组，缓存空间由「缓存」统一管理。访客可见条数受站点账号权益限制，评论失败不影响详情页其它内容。失败原因是被站点拦截（Cloudflare，`ScraperException.SiteBlocked`，State 字段 `isCommentsSiteBlocked`）时额外提供「打开网页过盾」按钮，经 `NavigationRoot.kt` 的 `navigateToUnblock` 跳转 `JavDbUnblockRoute`。
+- **Screen**：`PHONE/presentation/film/MovieScreen.kt`；弹窗与小组件主要在 `PHONE/presentation/film/components/` 下，跨域共用的「抓取网址」弹窗在 `PHONE/presentation/components/`，代理连通性测试组件在 `PHONE/presentation/proxy/`：
   - `ItemPlayButton.kt`：封面上的悬浮播放按钮。未滚动时浮在封面中央并跟随内容一起滚动，点击直接播放（`MovieAction.Play(startFromBeginning = false)`，与按钮栏的播放一致）；封面滑出超过一半后收起，用弹簧动画飞到顶栏「回到首页」按钮后方（尺寸与收起锚点按 `ItemTopBar` 的按钮对齐）。悬浮层铺满全屏但不消费触摸，只有按钮圆形区域可点，`headerHeightPx` 由 `MovieScreen.kt` 测量封面后传入。
   - `FilePathText.kt`：副标题下方的文件路径，本地优先于服务器、各自去重拼接、可点击展开；服务端路径用 `ic_cloud`、本地已下载用 `ic_folder`。
   - `PlaybackSourceDialog.kt`：条目有多个来源（被识别成多个版本）时点播放先选版本，选中索引经 Intent extra `mediaSourceIndex` 交给播放器。
-  - `MoreMenuDialog.kt`（离线模式不显示）提供「编辑封面」「编辑 nfo」「下载字幕」三个入口；「删除全部」不放进菜单列表，而是用错误色置于标题行右上角（低频破坏性操作统一放右上角），点击后由 `DeleteItemWithFilesDialog.kt` 再确认（连服务器视频文件一起删，确认按钮为错误色，提示中「视频文件」用错误色强调）。按钮行左下角是「抓取网址」配置入口（打开 `ScraperUrlsDialog.kt`）。弹窗切换由 `MovieScreen.kt` 内的私有枚举 `MoreMenuDialogState` 控制（`rememberSaveable` 保存，旋转不丢），表单数据在弹窗打开时加载，结果以 Toast 提示，「删除全部」成功后返回上一页。
-  - `ScraperUrlsDialog.kt`：「抓取网址」弹窗，按 `MovieState.scrapeSiteUrls` 的 key 顺序为每个站点渲染一个输入框，站点 key（`ScraperSite.key`：javdb / javbus / jav321，以及字幕站 `subtitlecat`）作为标签与存储 key，保存经 `MovieAction.SaveScrapeUrls` 落到 `AppPreferences.scrapeSiteUrl(key)`；字幕站偏好默认值已填 `https://subtitlecat.com`，打开弹窗即可见、无需手动填写，可改成镜像域名（须与官方站路径结构一致），`CORE/subtitle/SubtitlecatScraper.kt` 拼搜索 URL 时读的就是它（`AppPreferences.subtitleSiteBaseUrl()`）；带防呆提示——网址归一化后解析不出 host、不是 http(s) 站点根地址（带其它 scheme 或路径 / 查询参数）、或 nfo 站点的 host 不含对应站点 key（可能贴错站点）时显示「可能不匹配」，但**不阻止保存**（字幕站不做 host 含 key 校验，填镜像域名不会误报）；防呆与保存共用同一套 scheme 补全规则，避免提示通过却把 URL 拼坏，保存时没写 http / https 的按 https 处理。nfo 站点留空表示清除自定义网址（回退到打包配置；release / staging 的打包配置为空，站点即被跳过），字幕站留空表示恢复内置默认地址。nfo 站点的实际取址逻辑在 `CORE/scraper/ScraperUrlProvider.kt` + `ScraperUrlProviderImpl.kt`（运行时配置优先于打包配置），文字 / 封面 / 头像抓取共用；字幕站不经过它，直接在 `CORE/subtitle/SubtitlecatScraper.kt` 里读偏好。
+  - `MoreMenuDialog.kt`（离线模式不显示）提供「编辑封面」「编辑 nfo」「下载字幕」三个入口；「删除全部」不放进菜单列表，而是用错误色置于标题行右上角（低频破坏性操作统一放右上角），点击后由 `DeleteItemWithFilesDialog.kt` 再确认（连服务器视频文件一起删，确认按钮为错误色，提示中「视频文件」用错误色强调）。按钮行左下角是「抓取网址」配置入口（打开 `PHONE/presentation/components/ScraperUrlsDialog.kt`，设置页「下载与网络」的「抓取网址」独立卡片也有同一入口）。弹窗切换由 `MovieScreen.kt` 内的私有枚举 `MoreMenuDialogState` 控制（`rememberSaveable` 保存，旋转不丢），表单数据在弹窗打开时加载，结果以 Toast 提示，「删除全部」成功后返回上一页。
+  - `PHONE/presentation/components/ScraperUrlsDialog.kt`：「抓取网址」弹窗，详情页与设置页共用；传入的网址 map（`MovieState.scrapeSiteUrls` / `SettingsState.scrapeSiteUrls`）来自 `SETTINGS/domain/ScrapeSiteUrlsProvider.kt`（实现见 `CORE/scraper/ScraperUrlProviderImpl.kt`，运行时配置优先、未配置回退打包配置、字幕站取默认地址），因此 debug 包打进 BuildConfig 的地址打开弹窗即可见。按 key 顺序为每个站点渲染一个输入框；站点清单以 `CORE/scraper/ScraperSite.kt` 的枚举为唯一来源、字幕站附在末尾，设置页与详情页共用同一份，站点 key（`ScraperSite.key`：jav321 / javbus / javdb，以及字幕站 `subtitlecat`）作为标签与存储 key，保存分别经 `MovieAction.SaveScrapeUrls` / `SettingsAction.SaveScrapeUrls` 落到 `AppPreferences.scrapeSiteUrl(key)`；字幕站偏好默认值已填 `https://subtitlecat.com`，打开弹窗即可见、无需手动填写，可改成镜像域名（须与官方站路径结构一致），`CORE/subtitle/SubtitlecatScraper.kt` 拼搜索 URL 时读的就是它（`AppPreferences.subtitleSiteBaseUrl()`）；带防呆提示——网址归一化后解析不出 host、不是 http(s) 站点根地址（带其它 scheme 或路径 / 查询参数）、或 nfo 站点的 host 不含对应站点 key（可能贴错站点）时显示「可能不匹配」，但**不阻止保存**（字幕站不做 host 含 key 校验，填镜像域名不会误报；校验只针对用户本次输入，已回填的打包地址不参与，避免打开就一片误报）；防呆与保存共用同一套 scheme 补全规则，避免提示通过却把 URL 拼坏，保存时没写 http / https 的按 https 处理。nfo 站点留空表示清除自定义网址（回退到打包配置；release / staging 的打包配置为空，站点即被跳过），字幕站留空表示恢复内置默认地址。nfo 站点的实际取址逻辑在 `CORE/scraper/ScraperUrlProvider.kt` + `ScraperUrlProviderImpl.kt`（运行时配置优先于打包配置），文字 / 封面 / 头像抓取共用；字幕站不经过它，直接在 `CORE/subtitle/SubtitlecatScraper.kt` 里读偏好。
   - `EditItemImagesDialog.kt`：封面编辑弹窗。上面用缩略图网格列出服务器上「当前服务器使用」的图片（带类型名与同类序号，点击任意一张可全屏查看），服务器上没有任何图片时该区块留空；右上角「清理」二次确认后删光服务器上的图片；左下角「抓取」按番号抓横图 / 竖图，右下角「关闭」（关闭会中断进行中的抓取并丢掉已抓到的图片）。抓取结果不另开弹窗，直接列在同一片网格里：配了地址的站点逐行展示，失败的给出原因（单站失败不影响其它站点），成功的列出抓到的横图 / 竖图（可全屏查看）并在行末给一个「上传」按钮（上传前先删服务器上同类型的旧图，再写入新图），另外在单张图片的全屏查看界面底部也有「上传」，只传当前查看的这一张，方便横图 / 竖图分开传；没有站点配置地址时给出提示并禁用「抓取」。
   - `ImageThumbnail.kt`：可全屏查看的图片缩略图（点击打开 `ImageViewerDialog.kt`）与图片类型文案，供「当前服务器使用」与抓取结果共用；可选地把「单张上传」入口透传给全屏查看界面。
   - `ImageViewerDialog.kt`：全屏查看单张图片，模型同时接受服务器图片地址与本地抓取图片字节；点击关闭，双指缩放、放大后可拖动；调用方给出上传回调时，底部多一个「上传」按钮（只传当前这一张，上传中换成转圈），用于抓取结果里的单张图片。
   - `EditItemMetadataDialog.kt`：编辑 nfo 字段、逐站点并发抓取、切换来源与翻译；支持整份或逐字段恢复服务器原值。**长期不变式：抓取结果的空字段不得覆盖服务器现有内容**（合并见 `MovieViewModel.mergeWithCurrent()`）。演员 / 导演按表单整体替换，编剧等其它人员保留；保存前校验标题、数值与日期。
   - `ScrapeActorImageDialog.kt`：「获取头像」弹窗，与人物列表页共用 `ActorImageScrapeViewModel`；演员长按菜单另有「复制演员名」。抓取支持并发搜索、逐站点展示结果、代理设置与取消，上传头像写入 Person 条目并覆盖原头像，需要服务器管理员权限。具体站点规则见 `CORE/scraper/ActorImageScraperImpl.kt`，站点不匹配或占位图不得上传。
   - `TranslateSettingsDialog.kt`：读写本机 OpenAI 兼容接口设置，可选翻译标题、简介、分类 / 标签及抓取后自动翻译；「翻译现有内容」只处理当前表单。实现位于 `CORE/translator/`：标题 / 简介由模型翻译，分类 / 标签优先使用内置词典与缓存、模型兜底；部分失败保留已成功的译文与原文，不覆盖用户未确认的服务器数据。
-  - `ScrapeKeywordDialog.kt` / `ScrapeProgressDialog.kt`：nfo 抓取关键词与进度入口，预填识别出的番号，支持代理、逐站点结果和取消；取消后仍保留已成功结果。封面抓取不走此进度弹窗。
-  - `SubtitleDownloadDialog.kt`：「下载字幕」弹窗，一个弹窗三个阶段（关键词 + 代理入口 / 搜索中 / 候选列表），关键词与代理分别复用 `defaultScrapeKeyword` / `scrapeProxy`。搜索与上传的状态机在 `CORE/subtitle/SubtitleDownloadController.kt`（`SubtitleDownloadState` / `SubtitleDownloadEvent`，详情页与播放页各注入一份、互不干扰），本弹窗与播放页菜单里的「下载字幕」共用同一套 UI：从字幕站（默认 subtitlecat，地址在「更多 → 抓取网址」里配置，已预填默认网址）搜索前 5 个候选并读完每页可用语言，**先按简体 > 繁体 > 英文定语言**（有简体就绝不退到繁体），再在该语言内按「字幕最后时间点与视频时长之差」挑最贴合的一份（容差为时长的 2%，限 1~3 分钟，因为片尾长时间无台词时字幕最后时间点会早于视频结束），下载后经 `JellyfinRepository.uploadSubtitle` 上传服务器；临时文件落在 `cacheDir/subtitle_temp`，每次使用前清理 3 天前的文件。列表底部另有「播放视频时对比」入口（`MovieAction.PrepareSubtitleCompare` → `SubtitleDownloadEvent.CompareReady`），把已下好的候选落盘并带 Intent extra `openSubtitleCompare` 进播放器，见「字幕对照模式」。
+  - `ScrapeKeywordDialog.kt` / `ScrapeProgressDialog.kt`：nfo 抓取关键词与进度入口，预填识别出的番号，支持代理、逐站点结果和取消；取消后仍保留已成功结果。封面抓取不走此进度弹窗。代理输入弹窗 `ScrapeProxyDialog.kt`（详情页、字幕下载、演员头像共用）与设置页「本地代理设置」弹窗都带「测试」按钮：测的是输入框里尚未保存的地址，解析规则与抓取链路共用 `CORE/scraper/ScraperProxy.kt`，由 `CORE/scraper/ProxyConnectionTester.kt` 经抓取专用 OkHttp 客户端探测公网连通性，结果（耗时 / 格式错误 / 失败原因）由 `PHONE/presentation/proxy/ProxyTestSection.kt` 展示，状态在 `PHONE/presentation/proxy/ProxyTestViewModel.kt` / `ProxyTestState.kt`，输入变化即清空旧结论。
+  - `SubtitleDownloadDialog.kt`：「下载字幕」弹窗，一个弹窗三个阶段（关键词 + 代理入口 / 搜索中 / 候选列表），关键词与代理分别复用 `defaultScrapeKeyword` / `scrapeProxy`。搜索与上传的状态机在 `CORE/subtitle/SubtitleDownloadController.kt`（`SubtitleDownloadState` / `SubtitleDownloadEvent`，详情页与播放页各注入一份、互不干扰），本弹窗与播放页菜单里的「下载字幕」共用同一套 UI：从字幕站（默认 subtitlecat，地址在「更多 → 抓取网址」或设置页里配置，已预填默认网址）搜索前 5 个候选并读完每页可用语言，**先按简体 > 繁体 > 英文定语言**（有简体就绝不退到繁体），再在该语言内按「字幕最后时间点与视频时长之差」挑最贴合的一份（容差为时长的 2%，限 1~3 分钟，因为片尾长时间无台词时字幕最后时间点会早于视频结束），下载后经 `JellyfinRepository.uploadSubtitle` 上传服务器；临时文件落在 `cacheDir/subtitle_temp`，每次使用前清理 3 天前的文件。列表底部另有「播放视频时对比」入口（`MovieAction.PrepareSubtitleCompare` → `SubtitleDownloadEvent.CompareReady`），把已下好的候选落盘并带 Intent extra `openSubtitleCompare` 进播放器，见「字幕对照模式」。
   - 抓取实现集中在 `CORE/scraper/`，文字、封面与头像抓取共用站点解析和 HTTP 基础设施。站点地址优先取运行时配置，未配置则回退打包配置；封面按真实比例归类横图 / 竖图。Cookie、UA 和具体站点兼容规则以该目录源码为准，不在页面索引重复维护。
 - **ViewModel / State / Action / Event**：`FILM/presentation/movie/MovieViewModel.kt`、`FILM/presentation/movie/MovieState.kt`、`FILM/presentation/movie/MovieAction.kt`、`FILM/presentation/movie/MovieEvent.kt`；另使用 `CORE/presentation/downloader/DownloaderViewModel.kt` 与共享的 `FILM/presentation/actorimage/ActorImageScrapeViewModel.kt`（State / Action / Event 同层：`ActorImageScrapeState.kt` / `ActorImageScrapeAction.kt` / `ActorImageScrapeEvent.kt`，与人物列表页共用同一个 ViewModel（各页面一份实例），编排「获取头像」弹窗的抓取 / 上传 / 代理；人物 Id + 名字 + 是否已有头像由界面传入，上传成功后各自负责刷新自己的列表；抓取整体异常（非单站失败）时会给尚无结果的站点补一条失败原因，避免这些行一直停在转圈状态）。
 - **State 分组**：影片 / 播放源与演职员；封面和 nfo 的加载、编辑与错误；元数据 / 图片抓取的站点、结果、来源选择、代理与翻译；评论开关、关键词、列表、加载 / 错误及 JavDB 登录态；字幕下载整份状态（`subtitleDownload`，镜像自 `CORE/subtitle/SubtitleDownloadState.kt`）；派生本地 / 远程路径与文件名。完整字段以 `MovieState.kt` 为准。
@@ -344,12 +344,12 @@ else -> WelcomeRoute
 
 ### SettingsScreen — 设置主页
 
-- **职责**：按 `indexes` 展示分组偏好并处理嵌套导航。首页七个入口按「语言」「用户与服务器」「播放器」「下载与网络」「缓存」「界面」「关于」排列，语言置顶便于首次使用切换。界面页仅保留跟随系统 / 浅色 / 深色主题；动态色彩在系统支持时自动启用。下载与网络页管理下载约束、连接超时与「外网」组（开启外网评论、站点账号登录、评论代理及抓取代理），缓存进入专属页面。文本输入和登录组件位于 `PHONE/presentation/settings/components/`；站点账号登录弹窗由设置页承载。播放器固定记忆手动调节的亮度，不再提供独立开关。
+- **职责**：按 `indexes` 展示分组偏好并处理嵌套导航。首页七个入口按「语言」「用户与服务器」「播放器」「下载与网络」「缓存」「界面」「关于」排列，语言置顶便于首次使用切换。界面页仅保留跟随系统 / 浅色 / 深色主题；动态色彩在系统支持时自动启用。下载与网络页管理下载约束、连接超时、「评论」组（开启外网评论、评论使用代理、站点账号登录）、独立的「抓取网址」卡片与独立的「代理」组（本地代理设置；代理是 nfo / 封面 / 头像 / 字幕 / 评论共用的全局设置，不受评论开关禁用），缓存进入专属页面。「抓取网址」入口只作配置入口、不显示网址，说明为「配置抓取图片、nfo、字幕的站点。」；点开后与详情页「更多」菜单共用 `PHONE/presentation/components/ScraperUrlsDialog.kt`，弹窗回填各站点实际生效地址（运行时配置优先，未配置回退打包配置，见 `SETTINGS/domain/ScrapeSiteUrlsProvider.kt` 与 `CORE/scraper/ScraperUrlProviderImpl.kt`），保存走 `SettingsAction.SaveScrapeUrls`；防呆只针对用户本次改动，不误报回填的打包地址。「本地代理设置」弹窗带「测试」按钮（见电影详情页一节）。动作型偏好只有声明了空态文案的账号行才显示「未登录」。文本输入和登录组件位于 `PHONE/presentation/settings/components/`；站点账号登录弹窗由设置页承载。播放器固定记忆手动调节的亮度，不再提供独立开关。
 - **路由**：`SettingsRoute(indexes: IntArray)`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/settings/SettingsScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETTINGS/presentation/settings/SettingsViewModel.kt`、`SETTINGS/presentation/settings/SettingsState.kt`、`SETTINGS/presentation/settings/SettingsAction.kt`、`SETTINGS/presentation/settings/SettingsEvent.kt`。
-- **State 字段**：`isLoading`、`preferenceGroups`。
-- **主要方法 / Action**：`loadPreferences(indexes)`、`onAction()`；`OnBackClick`、`OnUpdate`。
+- **State 字段**：`isLoading`、`preferenceGroups`，站点登录态（`javdbLogin` / `javdbAccount` / `javdbLoggedInUser`），以及「抓取网址」弹窗的 `showScrapeUrlsDialog` / `scrapeSiteUrls`。
+- **主要方法 / Action**：`loadPreferences(indexes)`、`onAction()`；`OnBackClick`、`OnUpdate`、站点登录相关 Action 与 `OpenScrapeUrls` / `SaveScrapeUrls` / `CloseScrapeUrls`。
 - **Event**：`NavigateToUsers`、`NavigateToServers`、`NavigateToAbout`、`NavigateToSettings`、`NavigateToSettingsFileEdit`、`UpdateTheme`、`LaunchIntent`。
 - **入口**：底部「设置」标签（`PHONE/NavigationRoot.kt`）。
 
@@ -359,16 +359,16 @@ else -> WelcomeRoute
 - **路由**：`AccountsRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/settings/AccountsScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETUP/presentation/accounts/AccountsViewModel.kt`、`SETUP/presentation/accounts/AccountsState.kt`、`SETUP/presentation/accounts/AccountsAction.kt`、`SETUP/presentation/accounts/AccountsEvent.kt`。服务器与用户来自本地 Room，由 ViewModel 进场立即加载；离线模式值在构造时同步读取、首帧即可显示，公共用户另行异步加载；切换服务器时取消旧请求，迟到结果不回填。本页不再依赖 `SETTINGS/presentation/settings/SettingsViewModel.kt`。
-- **入口**：设置首页「用户与服务器」。站点账号登录已移至设置页「下载与网络 → 外网」，登录 / 退出会作废评论缓存，站点会话实现见 `CORE/scraper/JavDbSessionImpl.kt`。
+- **入口**：设置首页「用户与服务器」。站点账号登录已移至设置页「下载与网络 → 评论」，登录 / 退出会作废评论缓存，站点会话实现见 `CORE/scraper/JavDbSessionImpl.kt`。
 
 ### CacheScreen — 缓存空间管理
 
-- **职责**：显示本地视频与各类缓存的实际磁盘占用，设置共享配额并按类别确认清理。默认配额为 2048 MB，图片、评论、字幕临时文件、播放器、翻译及网页响应缓存共用；没有独立类别上限。评论固定保鲜 30 天。
+- **职责**：显示本地视频、在线图片缓存与各类共享缓存的实际磁盘占用，分别设置两个配额并按类别确认清理。在线图片缓存由 Coil 自带磁盘缓存管理，独立配额默认 1024 MB，由框架按自身 LRU 淘汰，配额改动在下次启动生效；共享配额默认 1024 MB，覆盖评论、字幕临时文件、播放器、翻译、网页缓存与离线封面 / 预览图，仍按最久没用先删整体回收。评论固定保鲜 30 天。
 - **路由**：`CacheRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/settings/cache/CacheScreen.kt`。
 - **ViewModel / State / Action**：`CORE/presentation/cache/CacheViewModel.kt`、`CORE/presentation/cache/CacheState.kt`、`CORE/presentation/cache/CacheAction.kt`。
-- **存储实现**：`data/src/main/java/dev/jdtech/jellyfin/cache/CacheManager.kt`、`data/src/main/java/dev/jdtech/jellyfin/cache/FileCacheManager.kt`；DI 见 `core/src/main/java/dev/jdtech/jellyfin/di/CacheModule.kt`。图片磁盘适配见 `PHONE/presentation/settings/cache/SharedImageDiskCache.kt`，按条目原子发布并保护快照和编辑中的文件。
-- **边界**：所有存储卷的 `downloads` 目录只统计，不回收，包含下载中临时文件与配套字幕。`filesDir/images` 与 `filesDir/trickplay` 计入图片缓存，清掉后离线可能缺图。正在读取 / 写入的图片、使用中的字幕及 mpv 缓存暂时保护，释放后合并触发后台回收；因此活动文件可能使占用暂时超过配额。配置、数据库、Cookie 和登录状态不参与回收。WebView 不再持久缓存新的响应，保留登录所需的 Cookie / DOM 状态。
+- **存储实现**：`data/src/main/java/dev/jdtech/jellyfin/cache/CacheManager.kt`、`data/src/main/java/dev/jdtech/jellyfin/cache/FileCacheManager.kt`；DI 见 `core/src/main/java/dev/jdtech/jellyfin/di/CacheModule.kt`。图片磁盘缓存的目录与上限配置、旧版自建图片缓存目录的一次性清理见 `PHONE/BaseApplication.kt`。
+- **边界**：所有存储卷的 `downloads` 目录只统计，不回收，包含下载中临时文件与配套字幕。`cacheDir/image_cache` 由图片框架自管，只统计占用、不参与共享回收；`filesDir/images` 与 `filesDir/trickplay` 归入共享配额下的「离线封面与预览图」，清掉后离线可能缺图。使用中的字幕、离线封面写入与 mpv 缓存暂时保护，释放后合并触发后台回收；因此活动文件可能使共享占用暂时超过配额。配置、数据库、Cookie 和登录状态不参与回收。WebView 不再持久缓存新的响应，保留登录所需的 Cookie / DOM 状态。
 - **入口**：设置首页「缓存」。
 
 ### SettingsFileEditScreen — 设置文件编辑

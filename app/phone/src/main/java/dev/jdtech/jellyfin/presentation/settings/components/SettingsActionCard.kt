@@ -46,21 +46,17 @@ fun SettingsActionCard(
                     }
                 }
             }
-            // 值（如账号邮箱）单开一行：放在右侧同行会把标题列挤到一行只剩几个字
-            Spacer(modifier = Modifier.height(MaterialTheme.spacings.extraSmall))
-            if (preference.valueText.isBlank()) {
-                Text(
-                    text = stringResource(SettingsR.string.settings_javdb_not_logged_in),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
+            // 值（账号邮箱、已生效的站点网址）单开一行：放在右侧同行会把标题列挤到一行只剩几个字
+            val valueText = preference.valueText
+            val emptyValueRes = preference.emptyValueStringRes
+            if (valueText.isNotBlank()) {
+                Spacer(modifier = Modifier.height(MaterialTheme.spacings.extraSmall))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.small),
                 ) {
                     Text(
-                        text = preference.valueText,
+                        text = valueText,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -78,6 +74,13 @@ fun SettingsActionCard(
                         )
                     }
                 }
+            } else if (emptyValueRes != null) {
+                Spacer(modifier = Modifier.height(MaterialTheme.spacings.extraSmall))
+                Text(
+                    text = stringResource(emptyValueRes),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

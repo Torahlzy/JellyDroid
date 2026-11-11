@@ -26,6 +26,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import dev.jdtech.jellyfin.presentation.components.BaseDialog
+import dev.jdtech.jellyfin.presentation.proxy.ProxyTestSection
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.settings.R as SettingsR
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceTextInput
@@ -33,7 +34,8 @@ import dev.jdtech.jellyfin.settings.presentation.models.PreferenceTextInput
 /**
  * 文本输入的偏好弹窗。
  *
- * 不做格式校验：代理地址允许留空（表示直连），填错时由抓取链路自己回退并打日志。
+ * 不做格式校验：代理地址允许留空（表示直连），填错时由抓取链路自己回退并打日志；
+ * 声明了连通性测试的偏好会在下方多一个「测试」按钮，把格式错误直接提示出来。
  */
 @Composable
 fun SettingsTextInputDialog(
@@ -83,6 +85,9 @@ fun SettingsTextInputDialog(
                 keyboardActions = KeyboardActions(onDone = { onUpdate(textFieldValue.text) }),
                 singleLine = true,
             )
+            if (preference.supportsConnectionTest) {
+                ProxyTestSection(address = textFieldValue.text)
+            }
         }
     }
 }

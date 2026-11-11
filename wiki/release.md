@@ -1,6 +1,6 @@
 # 发版步骤（GitHub Release）
 
-最后更新：2026-11-11
+最后更新：2026-11-12
 
 本分支发版 = **本机构建并签名 release APK + 手工创建 GitHub Release**，不走 GitHub Actions。
 
@@ -28,7 +28,7 @@ release.key.alias=
 release.key.password=
 ```
 
-任一项缺失时 release / staging 会构建成**未签名包**：既装不上，也不能发布。发版前先确认这四项非空，并确保 keystore 与上一版是同一个——换签名会导致老用户必须卸载重装。
+任一项缺失时 release / staging 会构建成**未签名包**：既装不上，也不能发布，debug 则回退到 AGP 默认的 `debug.keystore`。发版前先确认这四项非空，并确保 keystore 与上一版是同一个——换签名会导致老用户必须卸载重装。四项齐全时 debug / release / staging 都用这份签名，debug 可直接覆盖安装已装的正式包并保留数据。
 
 ## 3. 构建
 

@@ -94,7 +94,7 @@ import dev.jdtech.jellyfin.presentation.film.components.PlaybackSourceDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScrapeActorImageDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScrapeKeywordDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScrapeProgressDialog
-import dev.jdtech.jellyfin.presentation.film.components.ScraperUrlsDialog
+import dev.jdtech.jellyfin.presentation.components.ScraperUrlsDialog
 import dev.jdtech.jellyfin.presentation.film.components.SubtitleDownloadDialog
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
 import dev.jdtech.jellyfin.presentation.film.components.DetailLoadError

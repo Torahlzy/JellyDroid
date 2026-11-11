@@ -21,6 +21,7 @@ import dev.jdtech.jellyfin.settings.presentation.models.PreferenceSwitch
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceTextInput
 import dev.jdtech.jellyfin.settings.domain.JavDbLoginResult
 import dev.jdtech.jellyfin.settings.domain.JavDbSession
+import dev.jdtech.jellyfin.settings.domain.ScrapeSiteUrlsProvider
 import dev.jdtech.jellyfin.logging.AppLog
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -36,6 +37,7 @@ class SettingsViewModel
 constructor(
     private val appPreferences: AppPreferences,
     private val javDbSession: JavDbSession,
+    private val scrapeSiteUrlsProvider: ScrapeSiteUrlsProvider,
 ) : ViewModel() {
     private val _state = MutableStateFlow(SettingsState())
     val state = _state.asStateFlow()
@@ -571,7 +573,7 @@ constructor(
                                                 ),
                                             )
                                     ),
-                                    // 外网评论：短评来自站点抓取，因此代理与「编辑 nfo」共用同一个偏好
+                                    // 评论：短评来自站点抓取；代理开关紧跟评论总开关
                                     PreferenceGroup(
                                         nameStringResource = R.string.settings_group_external,
                                         preferences =
@@ -584,16 +586,6 @@ constructor(
                                                     backendPreference =
                                                         appPreferences.commentsEnabled,
                                                 ),
-                                                // 站点登录影响短评可见条数，紧跟评论开关
-                                                PreferenceAction(
-                                                    nameStringResource =
-                                                        R.string.settings_javdb_account,
-                                                    descriptionStringRes =
-                                                        R.string.settings_javdb_account_summary,
-                                                    onClick = {
-                                                        viewModelScope.launch { openJavDbLogin() }
-                                                    },
-                                                ),
                                                 PreferenceSwitch(
                                                     nameStringResource =
                                                         R.string.settings_comments_use_proxy,
@@ -604,15 +596,49 @@ constructor(
                                                     backendPreference =
                                                         appPreferences.commentsUseProxy,
                                                 ),
+                                                // 站点登录影响短评可见条数
+                                                PreferenceAction(
+                                                    nameStringResource =
+                                                        R.string.settings_javdb_account,
+                                                    descriptionStringRes =
+                                                        R.string.settings_javdb_account_summary,
+                                                    emptyValueStringRes =
+                                                        R.string.settings_javdb_not_logged_in,
+                                                    onClick = {
+                                                        viewModelScope.launch { openJavDbLogin() }
+                                                    },
+                                                ),
+                                            )
+                                    ),
+                                    // 「抓取网址」单独一张卡片，入口行直接列出实际生效的地址
+                                    PreferenceGroup(
+                                        nameStringResource = null,
+                                        preferences =
+                                            listOf(
+                                                PreferenceAction(
+                                                    nameStringResource =
+                                                        R.string.settings_scrape_urls,
+                                                    descriptionStringRes =
+                                                        R.string.settings_scrape_urls_summary,
+                                                    onClick = {
+                                                        onAction(SettingsAction.OpenScrapeUrls)
+                                                    },
+                                                ),
+                                            )
+                                    ),
+                                    // 代理是全局设置（nfo / 封面 / 头像 / 字幕 / 评论共用），单独成组
+                                    PreferenceGroup(
+                                        nameStringResource = R.string.settings_group_proxy,
+                                        preferences =
+                                            listOf(
                                                 PreferenceTextInput(
                                                     nameStringResource =
                                                         R.string.settings_comments_proxy,
                                                     descriptionStringRes =
                                                         R.string.settings_comments_proxy_summary,
-                                                    dependencies =
-                                                        listOf(appPreferences.commentsUseProxy),
                                                     backendPreference =
                                                         appPreferences.scrapeProxy,
+                                                    supportsConnectionTest = true,
                                                 ),
                                             )
                                     ),
@@ -804,6 +830,10 @@ constructor(
                                                 )
                                             }
                                             is PreferenceAction -> {
+                                                // 只有账号行显示登录态，其它动作项保留自己的文案
+                                                val isAccountRow =
+                                                    preference.nameStringResource ==
+                                                        R.string.settings_javdb_account
                                                 val account = javDbSession.loggedInAccount()
                                                 preference.copy(
                                                     enabled =
@@ -811,10 +841,12 @@ constructor(
                                                             preference.dependencies.all {
                                                                 appPreferences.getValue(it)
                                                             },
-                                                    // 账号行右侧显示已登录账号，未登录为空串（界面显示「未登录」）
-                                                    valueText = account,
+                                                    valueText =
+                                                        if (isAccountRow) account
+                                                        else preference.valueText,
                                                     vipBadge =
-                                                        account.isNotEmpty() &&
+                                                        isAccountRow &&
+                                                            account.isNotEmpty() &&
                                                             appPreferences.getValue(appPreferences.javdbVip),
                                                 )
                                             }
@@ -830,10 +862,18 @@ constructor(
                     preferenceGroups = preferences,
                     javdbAccount = appPreferences.getValue(appPreferences.javdbAccount),
                     javdbLoggedInUser = javDbSession.loggedInAccount(),
+                    scrapeSiteUrls = loadScrapeSiteUrls(),
                 )
             )
         }
     }
+
+    /**
+     * 读取「抓取网址」弹窗要回填的地址：运行时自定义值优先，没填的站点回退打包配置，
+     * 字幕站取回退后的实际生效值；这样 debug 包里已配置的地址打开弹窗就能看到。
+     */
+    private fun loadScrapeSiteUrls(): Map<String, String> =
+        scrapeSiteUrlsProvider.effectiveUrls()
 
     fun onAction(action: SettingsAction) {
         when (action) {
@@ -892,6 +932,33 @@ constructor(
             is SettingsAction.CloseJavDbLogin ->
                 viewModelScope.launch {
                     _state.emit(_state.value.copy(javdbLogin = JavDbLoginState.Hidden))
+                }
+            is SettingsAction.OpenScrapeUrls ->
+                viewModelScope.launch {
+                    _state.emit(
+                        _state.value.copy(
+                            showScrapeUrlsDialog = true,
+                            scrapeSiteUrls = loadScrapeSiteUrls(),
+                        )
+                    )
+                }
+            is SettingsAction.SaveScrapeUrls -> {
+                action.urls.forEach { (key, url) ->
+                    appPreferences.setValue(appPreferences.scrapeSiteUrl(key), url.trim())
+                }
+                // 字幕站清空后会回退默认地址，因此回填读回的实际生效值而非刚输入的内容
+                viewModelScope.launch {
+                    _state.emit(
+                        _state.value.copy(
+                            showScrapeUrlsDialog = false,
+                            scrapeSiteUrls = loadScrapeSiteUrls(),
+                        )
+                    )
+                }
+            }
+            is SettingsAction.CloseScrapeUrls ->
+                viewModelScope.launch {
+                    _state.emit(_state.value.copy(showScrapeUrlsDialog = false))
                 }
             else -> Unit
         }

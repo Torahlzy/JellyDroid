@@ -11,6 +11,10 @@ data class SettingsState(
     val javdbAccount: String = "",
     /** 当前已登录的账号，空串表示未登录。 */
     val javdbLoggedInUser: String = "",
+    /** 「抓取网址」弹窗是否打开。 */
+    val showScrapeUrlsDialog: Boolean = false,
+    /** 各站点实际生效的网址（含打包配置），按站点枚举顺序、字幕站附在末尾，供弹窗回填。 */
+    val scrapeSiteUrls: Map<String, String> = emptyMap(),
 )
 
 /**
