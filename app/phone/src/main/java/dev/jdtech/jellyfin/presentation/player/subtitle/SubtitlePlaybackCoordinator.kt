@@ -5,6 +5,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Tracks
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dev.jdtech.jellyfin.core.R as CoreR
@@ -27,6 +28,7 @@ import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -61,6 +63,7 @@ class SubtitlePlaybackCoordinator(
     private val hidePlayerController: () -> Unit,
     /** 播放器当前条目 id（未开播为 null），由宿主从 PlayerViewModel 转发 */
     private val currentPlayerItemId: () -> UUID?,
+    private val currentPlaybackSession: () -> Long,
     /** ExoPlayer 后端的侧载切轨（重载当前条目），由宿主转发给 PlayerViewModel */
     private val reloadWithExternalSubtitle: (uri: Uri, label: String, language: String) -> Unit,
 ) {
@@ -102,6 +105,36 @@ class SubtitlePlaybackCoordinator(
     /** 上一次观察到的播放条目。 */
     private var observedItemId: UUID? = null
 
+    private var applyJob: Job? = null
+    private var keywordJob: Job? = null
+    private var panelLoadJob: Job? = null
+
+    private data class PlaybackTarget(
+        val server: String,
+        val userId: UUID,
+        val itemId: UUID,
+        val session: Long,
+    )
+
+    private fun playbackTarget(itemId: UUID = targetItemId()) =
+        PlaybackTarget(
+            repository.getBaseUrl(), repository.getUserId(), itemId, currentPlaybackSession()
+        )
+
+    private fun isCurrent(target: PlaybackTarget): Boolean = target == playbackTarget()
+
+    private val playbackListener = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            if (this@SubtitlePlaybackCoordinator::playedItemId.isInitialized) {
+                currentPlayerItemId()?.let { onPlaybackItemChanged(it) }
+            }
+        }
+    }
+
+    init {
+        player.addListener(playbackListener)
+    }
+
     /** 进画中画前面板是开着的，退出小窗后重新打开。 */
     private var wasCompareShowingInPip = false
 
@@ -111,8 +144,12 @@ class SubtitlePlaybackCoordinator(
      * 换了一部影片（`onNewIntent`）也要走这里：关键词与目标条目都得跟着换。
      */
     fun onPlaybackStarted(itemId: UUID, openSubtitleCompare: Boolean) {
-        playedItemId = itemId
-        loadDefaultKeyword()
+        if (this::playedItemId.isInitialized) {
+            onPlaybackItemChanged(itemId, force = true)
+        } else {
+            playedItemId = itemId
+            loadDefaultKeyword()
+        }
         if (openSubtitleCompare) {
             openComparePanel(itemId)
         }
@@ -135,7 +172,7 @@ class SubtitlePlaybackCoordinator(
     }
 
     fun downloadSubtitle(keyword: String) {
-        subtitleController.download(scope, keyword, currentVideoDurationMs())
+        subtitleController.download(scope, keyword, currentVideoDurationMs(), targetItemId())
     }
 
     fun uploadSubtitle(candidate: SubtitleCandidate) {
@@ -216,24 +253,50 @@ class SubtitlePlaybackCoordinator(
             hintIfMissing,
         )
         if (compareManager.state.value.isShowing) return
-        scope.launch {
-            if (!compareManager.load(itemId)) {
-                if (hintIfMissing) {
-                    Toast.makeText(context, CoreR.string.subtitle_compare_cache_missing, Toast.LENGTH_LONG)
-                        .show()
-                    showDownloadDialog()
+        panelLoadJob?.cancel()
+        panelLoadJob = scope.launch {
+            try {
+                repository.initialize()
+                when (loadCurrentCompare(itemId)) {
+                    true -> {
+                        if (subtitleAdjustManager.state.value.isAdjustMode) subtitleAdjustManager.close()
+                        subtitleAdjustManager.setRealSubtitleVisible(false)
+                        hidePlayerController()
+                    }
+                    false -> if (hintIfMissing) {
+                        Toast.makeText(context, CoreR.string.subtitle_compare_cache_missing, Toast.LENGTH_LONG)
+                            .show()
+                        showDownloadDialog()
+                    }
+                    null -> Unit
                 }
-                return@launch
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.e("加载字幕对照失败，错误类型：%s", e.javaClass.simpleName)
+                Toast.makeText(
+                    context,
+                    context.getString(CoreR.string.subtitle_download_failed, e.localizedMessage.orEmpty()),
+                    Toast.LENGTH_LONG,
+                ).show()
             }
-            // 两个面板互斥：开对照前先退出字幕调节模式
-            if (subtitleAdjustManager.state.value.isAdjustMode) subtitleAdjustManager.close()
-            // 面板已铺 5 行，关掉真实字幕轨，否则画面上会堆成 6 行
-            subtitleAdjustManager.setRealSubtitleVisible(false)
-            hidePlayerController()
+        }
+    }
+
+    /** 初次媒体切入也会换代；仍属同一条目时重读，避免丢掉详情页的对照请求。 */
+    private suspend fun loadCurrentCompare(itemId: UUID): Boolean? {
+        while (true) {
+            val target = playbackTarget(itemId)
+            val loaded = compareManager.load(itemId) { isCurrent(target) }
+            if (isCurrent(target)) return loaded
+            if (target.itemId != targetItemId() ||
+                target.server != repository.getBaseUrl() ||
+                target.userId != repository.getUserId()) return null
         }
     }
 
     fun closeComparePanel(clearCache: Boolean = true) {
+        panelLoadJob?.cancel()
         val itemId = compareManager.currentItemId() ?: targetItemId()
         AppLog.d("关闭对照面板：%s（清缓存 %b）", itemId, clearCache)
         compareManager.hide()
@@ -246,6 +309,8 @@ class SubtitlePlaybackCoordinator(
     /** 「应用」前的二次确认：正文必须写明同语言旧字幕会被覆盖（服务端行为）。 */
     fun confirmApplyCompare(row: SubtitleCompareManager.CompareRow) {
         val entry = compareManager.entryOrNull(row.order) ?: return
+        val target = playbackTarget()
+        val batchToken = compareCache.batchToken(target.itemId)
         MaterialAlertDialogBuilder(context)
             .setTitle(CoreR.string.subtitle_compare_apply_confirm_title)
             .setMessage(
@@ -257,7 +322,9 @@ class SubtitlePlaybackCoordinator(
             )
             .setNegativeButton(CoreR.string.cancel, null)
             .setPositiveButton(CoreR.string.subtitle_compare_apply) { _, _ ->
-                applyCompareEntry(entry)
+                if (isCurrent(target) && compareCache.batchToken(target.itemId) == batchToken) {
+                    applyCompareEntry(entry, target)
+                }
             }
             .show()
     }
@@ -280,6 +347,10 @@ class SubtitlePlaybackCoordinator(
 
     /** 播放页销毁：清掉本页的下载状态，并把对照快照与侧载字幕交给缓存自己的作用域删除。 */
     fun release() {
+        player.removeListener(playbackListener)
+        applyJob?.cancel()
+        panelLoadJob?.cancel()
+        keywordJob?.cancel()
         // 离开播放页时把本页那份字幕下载状态清掉（候选字节只在内存里）
         subtitleController.clear()
         // 侧载字幕只在本次播放会话内有效，播放器此时也要销毁，才到这里回收；
@@ -291,6 +362,7 @@ class SubtitlePlaybackCoordinator(
     private fun handleSubtitleEvent(event: SubtitleDownloadEvent) {
         when (event) {
             is SubtitleDownloadEvent.Uploaded -> {
+                if (!subtitleController.isCurrentTarget(event.target, targetItemId())) return
                 AppLog.tag("SubSideload").d(
                     "处理 Uploaded：title=%s，language=%s",
                     event.subtitle.candidate.title,
@@ -318,6 +390,7 @@ class SubtitlePlaybackCoordinator(
                     )
                     .show()
             is SubtitleDownloadEvent.CompareReady -> {
+                if (!subtitleController.isCurrentTarget(event.target, targetItemId())) return
                 _isDialogShowing.value = false
                 openComparePanel(event.itemId)
             }
@@ -330,12 +403,19 @@ class SubtitlePlaybackCoordinator(
      * 三件事必须跟着切：操作目标条目（否则字幕上传 / 侧载落到上一集）、默认关键词、
      * 以及上一集还开着的对照面板（继续留着会让用户以为「这一集就是这个轴」）。
      */
-    private fun onPlaybackItemChanged(itemId: UUID) {
-        if (itemId == playedItemId) return
+    private fun onPlaybackItemChanged(itemId: UUID, force: Boolean = false) {
+        if (itemId == playedItemId && !force) return
         AppLog.d("播放条目已切换：%s → %s", playedItemId, itemId)
+        subtitleController.clear()
+        applyJob?.cancel()
+        keywordJob?.cancel()
+        panelLoadJob?.cancel()
+        _isDialogShowing.value = false
+        _keyword.value = ""
+        wasCompareShowingInPip = false
+        if (compareManager.state.value.isShowing) closeComparePanel()
         playedItemId = itemId
         loadDefaultKeyword()
-        if (compareManager.state.value.isShowing) closeComparePanel()
     }
 
     /**
@@ -359,22 +439,28 @@ class SubtitlePlaybackCoordinator(
             return
         }
         val itemId = targetItemId()
-        scope.launch {
-            _keyword.value =
-                try {
-                    val sources = repository.getMediaSources(itemId, false)
-                    val path =
-                        sources
-                            .firstOrNull { it.remoteFilePath.isNotBlank() }
-                            ?.remoteFilePath
-                            .orEmpty()
-                    AvidParser.getDvdId(path)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    AppLog.w(e, "识别播放页字幕关键词失败：%s", itemId)
-                    ""
+        keywordJob?.cancel()
+        keywordJob = scope.launch {
+            try {
+                // 播放页可能由系统直接恢复，不能假设主界面已经恢复连接。
+                repository.initialize()
+                if (itemId != targetItemId()) return@launch
+                val target = playbackTarget(itemId)
+                val sources = repository.getMediaSources(itemId, false)
+                val path = sources.firstOrNull { it.remoteFilePath.isNotBlank() }
+                    ?.remoteFilePath.orEmpty()
+                val loadedKeyword = AvidParser.getDvdId(path)
+                if (target.itemId == targetItemId() &&
+                    target.server == repository.getBaseUrl() &&
+                    target.userId == repository.getUserId()) {
+                    _keyword.value = loadedKeyword
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.w("识别播放页字幕关键词失败，错误类型：%s", e.javaClass.simpleName)
+                if (itemId == targetItemId()) _keyword.value = ""
+            }
         }
     }
 
@@ -392,8 +478,9 @@ class SubtitlePlaybackCoordinator(
      * 写出的独立副本；副本要活到播放页销毁，快进快退后文本轨仍会读它。
      * 失败时留在面板、缓存保留，用户可重试或改选别的（不必重新下载）。
      */
-    private fun applyCompareEntry(entry: SubtitleCompareEntry) {
-        val itemId = targetItemId()
+    private fun applyCompareEntry(entry: SubtitleCompareEntry, target: PlaybackTarget) {
+        if (!isCurrent(target) || compareManager.state.value.isApplying) return
+        val itemId = target.itemId
         AppLog.d(
             "开始应用对照字幕：第 %d 行 %s（%s，%s，%d 字节）→ 条目 %s",
             entry.order,
@@ -404,15 +491,17 @@ class SubtitlePlaybackCoordinator(
             itemId,
         )
         compareManager.setApplying(true)
-        scope.launch {
+        applyJob = scope.launch {
             try {
                 val bytes = withContext(Dispatchers.IO) { entry.file.readBytes() }
+                if (!isCurrent(target)) return@launch
                 repository.uploadSubtitle(
                     itemId = itemId,
                     subtitleBytes = bytes,
                     language = entry.language.jellyfinLanguage,
                     format = entry.format,
                 )
+                if (!isCurrent(target)) return@launch
                 AppLog.tag("SubSideload").d("对照字幕已上传到服务器，开始切轨")
                 // 快照会在切轨完成后被整目录清掉，播放器不能引用快照里的文件
                 val sideloadFile =
@@ -422,6 +511,7 @@ class SubtitlePlaybackCoordinator(
                         format = entry.format,
                         bytes = bytes,
                     )
+                if (!isCurrent(target)) return@launch
                 switchSubtitleTo(
                     file = sideloadFile,
                     title = entry.title,
@@ -431,6 +521,7 @@ class SubtitlePlaybackCoordinator(
                 subtitleAdjustManager.setRealSubtitleVisible(true)
                 val appeared =
                     awaitSubtitleTrack(entry.title, AWAIT_SUBTITLE_TRACK_TIMEOUT_MS)
+                if (!isCurrent(target)) return@launch
                 AppLog.tag("SubSideload").d("对照路径等待轨道结果：appeared=%b", appeared)
                 logTextTracks()
                 // 用户已选定一条字幕，本批对照到此结束，剩余候选不再补进这份快照
@@ -463,7 +554,7 @@ class SubtitlePlaybackCoordinator(
                     )
                     .show()
             } finally {
-                compareManager.setApplying(false)
+                if (isCurrent(target)) compareManager.setApplying(false)
             }
         }
     }
@@ -476,13 +567,16 @@ class SubtitlePlaybackCoordinator(
      * 失败只记日志、不打断播放：字幕已经在服务器上了，下次播放照样会有这条轨。
      */
     private fun applyUploadedSubtitle(event: SubtitleDownloadEvent.Uploaded) {
+        val target = playbackTarget(event.target.itemId)
+        if (!subtitleController.isCurrentTarget(event.target, targetItemId())) return
         val title = event.subtitle.candidate.title
         AppLog.tag("SubSideload").d("上传完成，立即侧载到当前播放器：%s（%s）", title, event.language)
-        scope.launch {
+        applyJob?.cancel()
+        applyJob = scope.launch {
             val file =
                 try {
                     compareCache.stageForPlayback(
-                        itemId = targetItemId(),
+                        itemId = event.target.itemId,
                         nameHint = event.subtitle.candidate.pageUrl,
                         format = event.subtitle.subtitle.format,
                         bytes = event.subtitle.bytes,
@@ -499,6 +593,7 @@ class SubtitlePlaybackCoordinator(
                 file.isFile,
                 file.length(),
             )
+            if (!isCurrent(target)) return@launch
             switchSubtitleTo(
                 file = file,
                 title = title,

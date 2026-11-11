@@ -261,7 +261,16 @@ class SubtitleAdjustManager(
     // Player.Listener ---------------------------------------------------------------------------
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+        delayedSubtitleView?.clear()
         applyOffsetForCurrentItem()
+    }
+
+    override fun onPositionDiscontinuity(
+        oldPosition: Player.PositionInfo,
+        newPosition: Player.PositionInfo,
+        reason: Int,
+    ) {
+        delayedSubtitleView?.clear()
     }
 
     /** PlayerView 不再渲染字幕（没有 exo_subtitles），整组 Cue 由这里转发给延迟容器。 */

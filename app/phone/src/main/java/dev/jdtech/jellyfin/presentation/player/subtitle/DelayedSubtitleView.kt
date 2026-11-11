@@ -46,12 +46,12 @@ constructor(
                 return
             }
             field = clamped
-            // 偏移变化时按新偏移重新调度还没渲染的那组 Cue，归零则立即渲染
-            pending?.let { (_, cues) -> schedule(cues) }
+            clearPending()
+            schedule(latestCues)
         }
 
-    /** 还没渲染的待播 Cue 组，null 表示当前没有挂起的渲染。 */
-    private var pending: Pair<Runnable, List<Cue>>? = null
+    private val pending = mutableSetOf<Runnable>()
+    private var latestCues: List<Cue> = emptyList()
 
     /**
      * 抑制渲染的开关：为 true 时收到的 Cue 一律丢弃并清空画面。
@@ -73,6 +73,7 @@ constructor(
 
     /** 由 SubtitleAdjustManager 在收到 onCues 时调用，替代 PlayerView 的内部转发。 */
     fun setCues(cues: List<Cue>) {
+        latestCues = cues.toList()
         if (isSuppressed) return
         if (delayMs == 0L) {
             clearPending()
@@ -83,21 +84,34 @@ constructor(
     }
 
     private fun schedule(cues: List<Cue>) {
-        clearPending()
+        if (isSuppressed) return
         if (delayMs == 0L) {
             subtitleView.setCues(cues)
             return
         }
-        val runnable = Runnable {
-            pending = null
+        lateinit var runnable: Runnable
+        runnable = Runnable {
+            pending.remove(runnable)
             subtitleView.setCues(cues)
         }
-        pending = runnable to cues
+        pending.add(runnable)
         handler.postDelayed(runnable, delayMs)
     }
 
+    /** seek、切集和离开页面时丢弃旧时间轴上的所有延迟任务。 */
+    fun clear() {
+        clearPending()
+        latestCues = emptyList()
+        subtitleView.setCues(emptyList())
+    }
+
+    override fun onDetachedFromWindow() {
+        clear()
+        super.onDetachedFromWindow()
+    }
+
     private fun clearPending() {
-        pending?.let { (runnable, _) -> handler.removeCallbacks(runnable) }
-        pending = null
+        pending.forEach(handler::removeCallbacks)
+        pending.clear()
     }
 }

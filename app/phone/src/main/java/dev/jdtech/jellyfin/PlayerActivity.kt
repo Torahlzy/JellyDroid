@@ -63,7 +63,7 @@ import kotlinx.coroutines.launch
 var isControlsLocked: Boolean = false
 
 @AndroidEntryPoint
-class PlayerActivity : BasePlayerActivity() {
+class PlayerActivity : BasePlayerActivity(), PlayerMenuDialogFragment.Host {
 
     companion object {
         /** 指定播放条目下的哪个来源（多版本时由用户选择），未携带该 extra 时由播放器按默认规则挑选。 */
@@ -159,6 +159,7 @@ class PlayerActivity : BasePlayerActivity() {
                 subtitleAdjustManager = subtitleAdjustManager,
                 hidePlayerController = { binding.playerView.hideController() },
                 currentPlayerItemId = { viewModel.currentItemId },
+                currentPlaybackSession = { viewModel.currentPlaybackSession },
                 reloadWithExternalSubtitle = { uri, label, language ->
                     viewModel.reloadCurrentItemWithExternalSubtitle(uri, label, language)
                 },
@@ -377,21 +378,7 @@ class PlayerActivity : BasePlayerActivity() {
         }
 
         menuButton.setOnClickListener {
-            // 离线模式下没有可写的服务器：截图设封面与上传字幕都必然失败，不提供这两个入口
-            // （与详情页的「更多」菜单一致，那里离线模式整块隐藏）
-            val isOffline = appPreferences.getValue(appPreferences.offlineMode)
-            val onCaptureBackdrop: (() -> Unit)? = if (isOffline) null else ::captureBackdrop
-            PlayerMenuDialogFragment(
-                viewModel,
-                onCaptureBackdrop,
-                onSubtitleAdjust = {
-                    // 收起控制层，避免进度条与调节面板 / 拖动手柄互相遮挡
-                    binding.playerView.hideController()
-                    subtitleAdjustManager.enterAdjustMode()
-                },
-                onDownloadSubtitle =
-                    if (isOffline) null else subtitleCoordinator::showDownloadDialog,
-            ).show(supportFragmentManager, "playermenudialog")
+            PlayerMenuDialogFragment().show(supportFragmentManager, "playermenudialog")
         }
 
         val exoPlayerControlView = findViewById<FrameLayout>(R.id.player_controls)
@@ -503,8 +490,21 @@ class PlayerActivity : BasePlayerActivity() {
      *
      * 已有封面时不覆盖服务器数据，只提示用户先去删除，避免把服务器上已挑好的封面冲掉。
      */
-    private fun captureBackdrop() {
+    override val canModifyServer: Boolean
+        get() = !appPreferences.getValue(appPreferences.offlineMode)
+
+    override fun adjustSubtitles() {
+        binding.playerView.hideController()
+        subtitleAdjustManager.enterAdjustMode()
+    }
+
+    override fun downloadSubtitles() {
+        subtitleCoordinator.showDownloadDialog()
+    }
+
+    override fun captureBackdrop() {
         val itemId = viewModel.currentItemId
+        val session = viewModel.currentPlaybackSession
         val surfaceView = binding.playerView.videoSurfaceView as? SurfaceView
         if (itemId == null || surfaceView == null) {
             Toast.makeText(this, PlayerR.string.player_backdrop_frame_unavailable, Toast.LENGTH_SHORT)
@@ -519,7 +519,7 @@ class PlayerActivity : BasePlayerActivity() {
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    AppLog.e(e, "检查横屏封面失败")
+                    AppLog.e("检查横屏封面失败，错误类型：%s", e.javaClass.simpleName)
                     Toast.makeText(
                             this@PlayerActivity,
                             PlayerR.string.player_backdrop_set_failed,
@@ -529,6 +529,7 @@ class PlayerActivity : BasePlayerActivity() {
                     return@launch
                 }
 
+            if (!isCaptureSessionCurrent(itemId, session)) return@launch
             if (hasBackdrop) {
                 Toast.makeText(
                         this@PlayerActivity,
@@ -539,19 +540,31 @@ class PlayerActivity : BasePlayerActivity() {
                 return@launch
             }
 
-            surfaceView.captureFrameAsJpeg(displayAspectRatio()) { imageBytes ->
-                if (imageBytes == null) {
-                    Toast.makeText(
-                            this@PlayerActivity,
-                            PlayerR.string.player_backdrop_frame_unavailable,
-                            Toast.LENGTH_SHORT,
-                        )
-                        .show()
-                    return@captureFrameAsJpeg
-                }
-                uploadBackdrop(itemId, imageBytes)
+            val imageBytes = try {
+                surfaceView.captureFrameAsJpeg(displayAspectRatio())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.e(e, "截图编码失败")
+                null
             }
+            if (!isCaptureSessionCurrent(itemId, session)) return@launch
+            if (imageBytes == null) {
+                Toast.makeText(
+                    this@PlayerActivity,
+                    PlayerR.string.player_backdrop_frame_unavailable,
+                    Toast.LENGTH_SHORT,
+                ).show()
+                return@launch
+            }
+            uploadBackdrop(itemId, imageBytes)
         }
+    }
+
+    private fun isCaptureSessionCurrent(itemId: UUID, session: Long): Boolean {
+        if (viewModel.currentItemId == itemId && viewModel.currentPlaybackSession == session) return true
+        Toast.makeText(this, PlayerR.string.player_backdrop_frame_unavailable, Toast.LENGTH_SHORT).show()
+        return false
     }
 
     /** 把截图字节上传为横屏封面，并提示结果。 */
@@ -569,7 +582,7 @@ class PlayerActivity : BasePlayerActivity() {
                 // Activity 销毁会取消本协程，不是上传失败，直接放行
                 throw e
             } catch (e: Exception) {
-                AppLog.e(e, "设置横屏封面失败")
+                AppLog.e("设置横屏封面失败，错误类型：%s", e.javaClass.simpleName)
                 Toast.makeText(
                         this@PlayerActivity,
                         PlayerR.string.player_backdrop_set_failed,

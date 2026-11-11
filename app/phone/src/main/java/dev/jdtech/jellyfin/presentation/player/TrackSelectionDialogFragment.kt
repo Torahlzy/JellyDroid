@@ -6,6 +6,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.DialogFragment
+import androidx.fragment.app.activityViewModels
 import androidx.media3.common.C
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dev.jdtech.jellyfin.logging.AppLog
@@ -14,10 +15,19 @@ import dev.jdtech.jellyfin.player.local.domain.getTrackNames
 import dev.jdtech.jellyfin.player.local.presentation.PlayerViewModel
 import java.lang.IllegalStateException
 
-class TrackSelectionDialogFragment(
-    private val type: @C.TrackType Int,
-    private val viewModel: PlayerViewModel,
-) : DialogFragment() {
+class TrackSelectionDialogFragment : DialogFragment() {
+    private val viewModel: PlayerViewModel by activityViewModels()
+    private val type: Int
+        get() = requireArguments().getInt(TRACK_TYPE)
+
+    companion object {
+        private const val TRACK_TYPE = "trackType"
+
+        fun newInstance(type: @C.TrackType Int) = TrackSelectionDialogFragment().apply {
+            arguments = Bundle().apply { putInt(TRACK_TYPE, type) }
+        }
+    }
+
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val titleResource =
             when (type) {
@@ -39,14 +49,13 @@ class TrackSelectionDialogFragment(
             val builder = MaterialAlertDialogBuilder(activity)
             builder.setTitle(getString(titleResource)).setSingleChoiceItems(
                 arrayOf(getString(R.string.none)) +
-                    tracksGroups.getTrackNames(), // Add "None" at the top of the list
+                    tracksGroups.getTrackNames(), // 顶部保留关闭轨道选项
                 tracksGroups.indexOfFirst { it.isSelected } +
-                    1, // Add 1 to the index to account for the "None" item
+                    1, // 关闭选项占用第 0 项
             ) { dialog, which ->
                 viewModel.switchToTrack(
                     type,
-                    which - 1, // Minus 1 to get the correct group without the "None" item. "None"
-                    // becomes -1
+                    which - 1, // -1 表示关闭轨道
                 )
                 dialog.dismiss()
             }
@@ -56,7 +65,7 @@ class TrackSelectionDialogFragment(
 
     override fun onDestroy() {
         super.onDestroy()
-        // Fix for hiding the system bars on API < 30
+        // API 30 以下关闭弹窗后需要重新隐藏系统栏
         activity?.window?.let {
             WindowCompat.getInsetsController(it, it.decorView).apply {
                 systemBarsBehavior =

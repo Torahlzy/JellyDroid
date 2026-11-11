@@ -1,0 +1,71 @@
+{
+  "baseline": "0b83cc5708a0ee9b5da7b38dc6f71997b225e328",
+  "verified_at": "2026-11-11T12:05:18+08:00",
+  "results": {
+    "verify_first_batch.py": {
+      "sync_acknowledgement": {
+        "uploaded_position": 100,
+        "local_position": 200,
+        "pending_after_current_ack": false
+      },
+      "migration_8_9": {
+        "tables_checked": [
+          "sources",
+          "mediastreams"
+        ],
+        "result": "路径保留，结构匹配 schema 9"
+      },
+      "download_file_collision": {
+        "result": "同名并发窗口与编号耗尽均覆盖已有文件",
+        "limit": "等价 JVM 文件探针；未运行 Android Worker"
+      }
+    },
+    "verify_continuation.py": {
+      "actual_kotlin_with_platform_stubs": "短格式 VTT=0 cue；标准长格式=1 cue；协议相对 URL 缺少 //；延迟短句丢失；发现列表第二次赋值被 StateFlow 合并",
+      "equivalent_cache_interleaving": "等价时序探针：clear 完成后旧批次仍可重新建目录并发布清单"
+    },
+    "verify_resources_and_schema.py": {
+      "resources": {
+        "xml_parsed": 307,
+        "duplicate_keys": [],
+        "placeholder_mismatch": [],
+        "missing_zh": {
+          "settings/src/main/res/values-zh-rCN/strings.xml": [
+            "edit_file_title",
+            "pref_player_backend",
+            "mpv_options",
+            "advanced",
+            "discard_changes_dialog_title",
+            "discard_changes_dialog_text"
+          ],
+          "settings/src/main/res/values-zh-rTW/strings.xml": [
+            "edit_file_title",
+            "pref_player_backend",
+            "mpv_options",
+            "advanced",
+            "discard_changes_dialog_title",
+            "discard_changes_dialog_text"
+          ]
+        }
+      },
+      "schemas": {
+        "schema_tables": {
+          "2": 3,
+          "3": 12,
+          "4": 12,
+          "5": 12,
+          "6": 12,
+          "7": 12,
+          "8": 12,
+          "9": 12
+        },
+        "manual_migrations": [
+          "6→7 结构匹配",
+          "8→9 结构匹配"
+        ],
+        "auto_migrations": "声明及 schema 静态核对；未执行 Room 生成的迁移代码",
+        "limitation": "仓库只有 2～9 的导出 schema，未验证 1 及更早版本"
+      }
+    }
+  }
+}

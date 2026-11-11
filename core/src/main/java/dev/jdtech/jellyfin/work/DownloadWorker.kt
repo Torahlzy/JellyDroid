@@ -30,6 +30,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -476,52 +478,57 @@ constructor(
         request: DownloadRequest,
         temporaryFile: File,
     ): Result {
+        currentCoroutineContext().ensureActive()
         val finalFile = resolveFinalFile(temporaryFile, request.outputFileName)
         if (!temporaryFile.renameTo(finalFile)) {
+            finalFile.delete()
             AppLog.e("下载文件重命名失败：%s", temporaryFile.name)
             return Result.failure()
         }
 
         return when (request.recordType) {
             RECORD_TYPE_SOURCE -> {
-                database.setSourcePath(request.recordId, finalFile.absolutePath)
+                if (database.setSourcePath(request.recordId, finalFile.absolutePath, id.toString()) == 0) {
+                    finalFile.delete()
+                    return Result.failure()
+                }
                 AppLog.i("下载完成：%s", finalFile.name)
                 Result.success()
             }
             RECORD_TYPE_STREAM -> {
                 val streamId = runCatching { UUID.fromString(request.recordId) }.getOrNull()
                 if (streamId == null) {
+                    finalFile.delete()
                     AppLog.e("媒体流 id 非法：%s", request.recordId)
                     return Result.failure()
                 }
-                database.setMediaStreamPath(streamId, finalFile.absolutePath)
+                if (database.setMediaStreamPath(streamId, finalFile.absolutePath, id.toString()) == 0) {
+                    finalFile.delete()
+                    return Result.failure()
+                }
                 Result.success()
             }
             else -> {
+                finalFile.delete()
                 AppLog.e("未知的下载记录类型：%s", request.recordType)
                 Result.failure()
             }
         }
     }
 
-    /**
-     * 决定最终文件名：用入队时给的服务端文件名，同名则加序号。
-     *
-     * 临时文件里的 UUID 只是为了保证不同任务互不干扰，最终名要对用户可读；
-     * 同名的另一个媒体源不能被覆盖，因此这里只找空位、不删已有文件。
-     */
+    /** 原子占位后才发布文件，避免并发任务选中同一个空位。 */
     private fun resolveFinalFile(temporaryFile: File, outputFileName: String?): File {
         val directory = temporaryFile.parentFile
         val desiredName =
             outputFileName?.takeIf { it.isNotBlank() }
                 ?: temporaryFile.name.removeSuffix(TEMP_SUFFIX)
-        var candidate = File(directory, desiredName)
-        var index = FIRST_DUPLICATE_INDEX
-        while (candidate.exists() && index <= MAX_DUPLICATE_INDEX) {
-            candidate = File(directory, appendIndex(desiredName, index))
-            index++
+        val desiredFile = File(directory, desiredName)
+        if (desiredFile.createNewFile()) return desiredFile
+        for (index in FIRST_DUPLICATE_INDEX..MAX_DUPLICATE_INDEX) {
+            val candidate = File(directory, appendIndex(desiredName, index))
+            if (candidate.createNewFile()) return candidate
         }
-        return candidate
+        throw IOException("下载文件的同名编号已用尽")
     }
 
     /** 把 `Movie.mkv` 变成 `Movie (2).mkv`；没有扩展名时序号直接追加在末尾。 */

@@ -5,6 +5,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 
@@ -35,7 +37,7 @@ constructor(private val scraper: SubtitleScraper) : SubtitleDownloader {
             candidates.forEach { candidate ->
                 send(process(candidate, videoDurationMs))
             }
-        }
+        }.flowOn(Dispatchers.Default)
 
     /** 处理单条候选：解析可用语言 → 取优先级最高的一份 → 下载 → 求与视频时长的差。 */
     private suspend fun process(

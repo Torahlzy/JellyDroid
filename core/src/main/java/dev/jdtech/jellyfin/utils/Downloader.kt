@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 interface Downloader {
     /**
      * 创建下载任务并入队。
+     * 已接受的准备工作独立于页面生命周期，离开页面后继续完成后台交接。
      *
      * @return 任务 id 与错误提示；任务 id 为 null 表示入队失败，此时第二个值说明原因。
      */

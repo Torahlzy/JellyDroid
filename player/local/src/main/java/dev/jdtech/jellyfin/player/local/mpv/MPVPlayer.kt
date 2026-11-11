@@ -45,7 +45,6 @@ import java.util.concurrent.CopyOnWriteArraySet
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
-import timber.log.Timber
 
 class MPVPlayer(
     context: Context,
@@ -63,6 +62,7 @@ class MPVPlayer(
     private val mpvLib: MPVLib
     private val audioManager: AudioManager by lazy { context.getSystemService()!! }
     private var audioFocusCallback: () -> Unit = {}
+    private var resumeAfterTransientFocusLoss = false
     private lateinit var audioFocusRequest: AudioFocusRequestCompat
     private val handler: Handler = Handler(context.mainLooper)
 
@@ -168,7 +168,7 @@ class MPVPlayer(
         mpvLib.setOptionString("hwdec-codecs", "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1")
 
         // TLS
-        mpvLib.setOptionString("tls-verify", "no")
+        mpvLib.setOptionString("tls-verify", "yes")
 
         // Cache
         mpvLib.setOptionString("cache", "yes")
@@ -243,8 +243,8 @@ class MPVPlayer(
     }
 
     private fun setupDirectories(context: Context, configDir: File, cacheDir: File) {
-        Timber.i("mpv config dir: $configDir")
-        Timber.i("mpv cache dir: $cacheDir")
+        AppLog.i("mpv config dir: $configDir")
+        AppLog.i("mpv cache dir: $cacheDir")
 
         if (!configDir.exists()) configDir.mkdirs()
         if (!cacheDir.exists()) cacheDir.mkdirs()
@@ -292,7 +292,7 @@ class MPVPlayer(
         try {
             configFile.writeText(config)
         } catch (e: IOException) {
-            Timber.w("Failed to write fonts.conf: $e")
+            AppLog.w("Failed to write fonts.conf: $e")
         }
     }
 
@@ -475,7 +475,7 @@ class MPVPlayer(
                         isPlayerReady = true
                         seekTo(C.TIME_UNSET)
                         if (playWhenReady) {
-                            Timber.d("Starting playback...")
+                            AppLog.d("Starting playback...")
                             mpvLib.setPropertyBoolean("pause", false)
                         }
                         for (videoListener in videoListeners) {
@@ -716,17 +716,14 @@ class MPVPlayer(
         when (focusChange) {
             AudioManager.AUDIOFOCUS_LOSS,
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                val oldAudioFocusCallback = audioFocusCallback
-                val wasPlaying = isPlaying
+                resumeAfterTransientFocusLoss =
+                    focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT &&
+                        (resumeAfterTransientFocusLoss || playWhenReady)
                 mpvLib.setPropertyBoolean("pause", true)
                 setPlayerStateAndNotifyIfChanged(
                     playWhenReady = false,
                     playWhenReadyChangeReason = PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
                 )
-                audioFocusCallback = {
-                    oldAudioFocusCallback()
-                    if (wasPlaying) mpvLib.setPropertyBoolean("pause", false)
-                }
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 mpvLib.command(arrayOf("multiply", "volume", "$AUDIO_FOCUS_DUCKING"))
@@ -737,6 +734,14 @@ class MPVPlayer(
             AudioManager.AUDIOFOCUS_GAIN -> {
                 audioFocusCallback()
                 audioFocusCallback = {}
+                if (resumeAfterTransientFocusLoss) {
+                    resumeAfterTransientFocusLoss = false
+                    mpvLib.setPropertyBoolean("pause", false)
+                    setPlayerStateAndNotifyIfChanged(
+                        playWhenReady = true,
+                        playWhenReadyChangeReason = PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
+                    )
+                }
             }
         }
     }
@@ -978,6 +983,8 @@ class MPVPlayer(
      * @param playWhenReady Whether playback should proceed when ready.
      */
     override fun setPlayWhenReady(playWhenReady: Boolean) {
+        // 即使已因失焦暂停，用户再点暂停也必须取消自动恢复。
+        resumeAfterTransientFocusLoss = false
         if (currentPlayWhenReady != playWhenReady) {
             setPlayerStateAndNotifyIfChanged(
                 playWhenReady = playWhenReady,

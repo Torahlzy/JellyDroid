@@ -9,6 +9,8 @@ import java.net.URI
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.ResponseBody
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -125,6 +127,7 @@ constructor(
         url: String,
         headers: Map<String, String> = emptyMap(),
         what: String = "图片",
+        maxBytes: Long = MAX_BINARY_BYTES,
     ): ByteArray =
         withContext(Dispatchers.IO) {
             try {
@@ -149,7 +152,7 @@ constructor(
                                 null,
                             )
                         }
-                        response.body?.bytes()?.takeIf { it.isNotEmpty() }
+                        response.body?.readLimitedBytes(maxBytes)?.takeIf { it.isNotEmpty() }
                             ?: throw ScraperException.NetworkError("下载到的${what}为空：$url", null)
                     }
             } catch (e: IOException) {
@@ -194,7 +197,12 @@ constructor(
                     ScraperResponse(
                         code = response.code,
                         url = response.request.url.toString(),
-                        body = response.body?.string().orEmpty(),
+                        body = response.body?.let { body ->
+                            String(
+                                body.readLimitedBytes(MAX_HTML_BYTES),
+                                body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8,
+                            )
+                        }.orEmpty(),
                         location = response.header("Location"),
                     )
                 }
@@ -230,26 +238,25 @@ constructor(
     private fun formBody(form: Map<String, String>): FormBody =
         FormBody.Builder().apply { form.forEach { (name, value) -> add(name, value) } }.build()
 
+    /** 同时限制解压后的正文，避免未知长度或压缩响应绕过大小上限。 */
+    private fun ResponseBody.readLimitedBytes(maxBytes: Long): ByteArray {
+        if (contentLength() > maxBytes) throw IOException("响应内容超过大小限制")
+        val source = source()
+        source.request(maxBytes + 1)
+        if (source.buffer.size > maxBytes) throw IOException("响应内容超过大小限制")
+        return source.readByteArray()
+    }
+
     private companion object {
         const val MAX_REDIRECTS = 5
 
-        /** 把 Location 头解析成绝对地址，只处理站点实际会用的三种形态。 */
+        const val MAX_HTML_BYTES = 8L * 1024 * 1024
+        const val MAX_BINARY_BYTES = 32L * 1024 * 1024
+
+        /** 使用标准 URL 解析，保留协议相对路径、查询参数和父目录语义。 */
         fun resolveUrl(base: String, location: String?): String? {
             if (location.isNullOrBlank()) return null
-            if (location.startsWith("http://") || location.startsWith("https://")) return location
-            val schemeEnd = base.indexOf("://")
-            if (schemeEnd < 0) return location
-            val originEnd = base.indexOf('/', schemeEnd + 3)
-            val origin = if (originEnd < 0) base else base.substring(0, originEnd)
-            return when {
-                // 协议相对地址，形如 //host/path
-                location.startsWith("//") ->
-                    base.substring(0, schemeEnd + 1) + location.removePrefix("//")
-                // 站内绝对路径，形如 /doc/driver-verify
-                location.startsWith("/") -> origin + location
-                // 同目录相对路径
-                else -> base.substringBeforeLast('/') + "/" + location
-            }
+            return base.toHttpUrlOrNull()?.resolve(location)?.toString()
         }
     }
 }

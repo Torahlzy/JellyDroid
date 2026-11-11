@@ -15,6 +15,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -40,6 +41,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -114,6 +116,13 @@ constructor(
      * 重载期间暂停进度上报：重载会把播放位置短暂清零，此时上报会把服务器上的观看进度冲回开头。
      */
     private var isReloadingForSubtitle: Boolean = false
+    private var subtitleReloadItemId: String? = null
+    private var subtitleReloadJob: Job? = null
+    private var pendingSubtitleId: String? = null
+
+    /** 每次切集或重新开播均换代，异步操作不能跨播放会话生效。 */
+    var currentPlaybackSession: Long = 0L
+        private set
 
     /** 重载标记的兜底时长：超过它还没到 READY 就强制恢复进度上报（见 [reloadCurrentItemWithExternalSubtitle]）。 */
     private val reloadFlagTimeoutMs = 15_000L
@@ -205,9 +214,15 @@ constructor(
         startFromBeginning: Boolean,
         mediaSourceIndex: Int? = null,
     ) {
+        currentPlaybackSession++
+        subtitleReloadJob?.cancel()
+        isReloadingForSubtitle = false
+        subtitleReloadItemId = null
+        pendingSubtitleId = null
         player.addListener(this)
 
         viewModelScope.launch {
+            repository.initialize()
             val startItem =
                 try {
                     playlistManager.getInitialItem(
@@ -217,7 +232,7 @@ constructor(
                         startFromBeginning = startFromBeginning,
                     )
                 } catch (e: Exception) {
-                    AppLog.e(e)
+                    AppLog.e("播放器操作失败，错误类型：%s", e.javaClass.simpleName)
                     Toast.makeText(application, e.localizedMessage, Toast.LENGTH_LONG).show()
                     null
                 }
@@ -236,7 +251,7 @@ constructor(
                     mediaItems.add(item.toMediaItem())
                 }
             } catch (e: Exception) {
-                AppLog.e(e)
+                AppLog.e("播放器操作失败，错误类型：%s", e.javaClass.simpleName)
             }
 
             val startPosition =
@@ -257,6 +272,7 @@ constructor(
         val allSubtitles = externalSubtitles + listOfNotNull(extraSubtitle)
         val mediaSubtitles = allSubtitles.map { externalSubtitle ->
             MediaItem.SubtitleConfiguration.Builder(externalSubtitle.uri)
+                .setId(externalSubtitle.uri.toString())
                 .setLabel(
                     externalSubtitle.title.ifBlank { application.getString(R.string.external) }
                 )
@@ -265,7 +281,7 @@ constructor(
                 .build()
         }
 
-        AppLog.d("Stream url: $streamUrl")
+        AppLog.d("准备播放条目：%s", itemId)
         val mediaItem =
             MediaItem.Builder()
                 .setMediaId(itemId.toString())
@@ -284,7 +300,7 @@ constructor(
      * 虽然会 BUFFERING → READY，但新的 SubtitleConfiguration 不进播放图，
      * `currentTracks` 里始终没有文本轨、连 `onTracksChanged` 都不派发。
      * 因此改走与重新播放相同的 `setMediaItems` 重建播放列表，并顺带重取一次
-     * 服务器刚索引好的外挂字幕；服务器还没索引好时才用本地侧载文件兜底。
+     * 服务器外挂字幕，并用具有唯一 id 的本地副本明确选中本次应用的字幕。
      * 播放位置、播放状态与上下集列表都在这里显式保住。
      */
     fun reloadCurrentItemWithExternalSubtitle(uri: Uri, label: String, language: String) {
@@ -302,8 +318,7 @@ constructor(
             )
             return
         }
-        val position = player.currentPosition
-        val wasPlaying = player.playWhenReady
+        val session = currentPlaybackSession
         val extraSubtitle =
             ExternalSubtitle(
                 title = label,
@@ -323,7 +338,8 @@ constructor(
             items.size,
             extraSubtitle.mimeType,
         )
-        viewModelScope.launch {
+        subtitleReloadJob?.cancel()
+        subtitleReloadJob = viewModelScope.launch {
             // 服务器刚把上传的字幕写进 mediaStreams，重取一次；失败时保留播放会话原有的字幕列表，
             // 否则会把影片原本就有的外挂字幕一起丢掉
             val serverSubtitles =
@@ -332,35 +348,42 @@ constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    AppLog.tag("SubSideload").w(e, "重取服务器字幕失败，保留原有字幕列表并只用本地侧载")
+                    AppLog.tag("SubSideload").w("重取服务器字幕失败，错误类型：%s", e.javaClass.simpleName)
                     item.externalSubtitles
                 }
-            // 服务器字幕轨的 label 可能为空、标题也由服务器生成，按标题无法可靠比对；
-            // 用「外挂字幕数比上传前变多」判断刚上传的那条是否已被索引
-            val serverIndexedUpload = serverSubtitles.size > item.externalSubtitles.size
+            if (session != currentPlaybackSession || currentItemId != item.itemId ||
+                player.currentMediaItemIndex != currentIndex ||
+                items.getOrNull(currentIndex)?.mediaSourceId != item.mediaSourceId) return@launch
+            // 索引数量不能识别具体的新轨，明确应用时始终选择有唯一 id 的本地副本。
             items[currentIndex] = item.copy(externalSubtitles = serverSubtitles)
-            // 服务器已索引好时不叠加本地副本，避免轨道列表里出现两条一样的字幕
-            val sideLoad = if (serverIndexedUpload) null else extraSubtitle
+            val position = player.currentPosition
+            val wasPlaying = player.playWhenReady
             val mediaItems =
                 items.mapIndexed { index, playerItem ->
                     if (index == currentIndex) {
-                        playerItem.toMediaItem(extraSubtitle = sideLoad)
+                        playerItem.toMediaItem(extraSubtitle = extraSubtitle)
                     } else {
                         playerItem.toMediaItem()
                     }
                 }
             AppLog.tag("SubSideload").d(
-                "setMediaItems 重建：服务器字幕=%d（新增=%b），本地侧载=%b，列表=%d，index=%d，position=%d",
+                "setMediaItems 重建：服务器字幕=%d，本地侧载=%b，列表=%d，index=%d，position=%d",
                 serverSubtitles.size,
-                serverIndexedUpload,
-                sideLoad != null,
+                true,
                 mediaItems.size,
                 currentIndex,
                 position,
             )
             // 紧挨着重建设置：网络请求期间不该屏蔽条目切换，而 setMediaItems 触发的
             // 切换与短暂位置清零必须屏蔽，否则会重复上报进度、重复插入上下集
+            pendingSubtitleId = uri.toString()
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                .setPreferredTextLanguage(language)
+                .build()
             isReloadingForSubtitle = true
+            subtitleReloadItemId = item.itemId.toString()
             player.setMediaItems(mediaItems, currentIndex, position)
             player.prepare()
             player.playWhenReady = wasPlaying
@@ -374,7 +397,7 @@ constructor(
             // 会让随后触发的条目切换失去屏蔽
             viewModelScope.launch {
                 delay(reloadFlagTimeoutMs)
-                if (isReloadingForSubtitle) {
+                if (session == currentPlaybackSession && isReloadingForSubtitle) {
                     isReloadingForSubtitle = false
                     AppLog.w("侧载字幕重载超时未就绪，已恢复进度上报")
                 }
@@ -407,7 +430,7 @@ constructor(
                     )
                 }
             } catch (e: Exception) {
-                AppLog.e(e)
+                AppLog.e("播放器操作失败，错误类型：%s", e.javaClass.simpleName)
             }
         }
 
@@ -433,7 +456,7 @@ constructor(
                         !player.isPlaying,
                     )
                 } catch (e: Exception) {
-                    AppLog.e(e)
+                    AppLog.e("播放器操作失败，错误类型：%s", e.javaClass.simpleName)
                 }
             }
         }
@@ -486,13 +509,35 @@ constructor(
         }
     }
 
+    override fun onTracksChanged(tracks: Tracks) {
+        val subtitleId = pendingSubtitleId ?: return
+        for (group in tracks.groups) {
+            if (group.type != C.TRACK_TYPE_TEXT || !group.isSupported) continue
+            val index = (0 until group.length).firstOrNull { group.getTrackFormat(it).id == subtitleId }
+                ?: continue
+            pendingSubtitleId = null
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
+                .build()
+            return
+        }
+    }
+
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         // 注入侧载字幕会用 setMediaItems 重建播放列表，进而触发一次条目切换。这里必须跳过：
         // 否则会重复 postPlaybackStart、重拉 segments / trickplay，并往播放列表里再插一遍上 / 下一集
-        if (isReloadingForSubtitle) {
+        if (isReloadingForSubtitle &&
+            reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED &&
+            mediaItem?.mediaId == subtitleReloadItemId) {
             AppLog.d("重载侧载字幕中，跳过条目切换处理：${mediaItem?.mediaId}")
             return
         }
+        isReloadingForSubtitle = false
+        subtitleReloadItemId = null
+        currentPlaybackSession++
+        subtitleReloadJob?.cancel()
+        pendingSubtitleId = null
         AppLog.d("Playing MediaItem: ${mediaItem?.mediaId}")
         savedStateHandle["mediaItemIndex"] = player.currentMediaItemIndex
         viewModelScope.launch {
@@ -552,7 +597,7 @@ constructor(
                         AppLog.tag("PlayerItems").d(items.map { it.indexNumber }.toString())
                     }
             } catch (e: Exception) {
-                AppLog.e(e)
+                AppLog.e("播放器操作失败，错误类型：%s", e.javaClass.simpleName)
             }
         }
     }
@@ -575,7 +620,7 @@ constructor(
                         position.div(duration.toFloat()).times(100).toInt(),
                     )
                 } catch (e: Exception) {
-                    AppLog.e(e)
+                    AppLog.e("播放器操作失败，错误类型：%s", e.javaClass.simpleName)
                 }
                 player.seekToNextMediaItem()
                 player.play()
@@ -607,7 +652,11 @@ constructor(
 
     override fun onPlayerError(error: PlaybackException) {
         super.onPlayerError(error)
-        AppLog.e(error, "播放出错")
+        AppLog.e(
+            "播放出错，错误代码：%s，错误类型：%s",
+            error.errorCodeName,
+            error.javaClass.simpleName,
+        )
         // 重载失败时不会再到 STATE_READY，这里必须把标记清掉，否则进度上报会一直停着
         isReloadingForSubtitle = false
     }
@@ -698,7 +747,7 @@ constructor(
             currentMediaItemSegments = repository.getSegments(itemId)
         } catch (e: Exception) {
             currentMediaItemSegments = emptyList()
-            AppLog.e(e)
+            AppLog.e("播放器操作失败，错误类型：%s", e.javaClass.simpleName)
         }
     }
 

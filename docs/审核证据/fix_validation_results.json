@@ -1,0 +1,43 @@
+{
+  "sync_snapshot": "进度、收藏、已播放的新修改均保留；完全匹配的快照才清位",
+  "download_ownership": "旧任务和已删除记录拒绝收尾回写；仅匹配任务可更新路径并清除任务号",
+  "kotlin_behavior": "通过：SRT/VTT、字幕延迟/清理、重定向与正文限额、20 路同名下载与编号耗尽、缓存并发/失效、准备对照与事件等待期间追加、切集上传拒绝",
+  "kotlin_syntax": {
+    "files": 52,
+    "syntax_errors": 0,
+    "type_check": false
+  },
+  "resources": {
+    "xml_parsed": 307,
+    "duplicate_keys": [],
+    "placeholder_mismatch": [],
+    "missing_zh": {}
+  },
+  "wiki": {
+    "kotlin_paths": 136,
+    "nav_routes": 22,
+    "missing_paths": []
+  },
+  "diff_check": "passed",
+  "android_compilation": {
+    "task": ":app:phone:compileLibreDebugKotlin --offline",
+    "status": "blocked_before_application_compilation",
+    "reason": "Failed to find Build Tools revision 37.0.0",
+    "type_check_verified": false
+  },
+  "device_or_server_write_verification": false,
+  "probe_kotlin_version": "2.4.10",
+  "project_kotlin_version": "2.4.20",
+  "review_regressions": {
+    "regression_checks": [
+      "冷启动：关键词和对照入口均等待连接恢复后才读用户及媒体源",
+      "初次同条目换代：旧加载未发布，重读成功后面板与真实字幕互斥",
+      "切条目、换用户和加载期间关闭：过期加载不能重新显示面板",
+      "退出详情页：只取消界面等待，已接受的准备继续完成",
+      "主动取消：停止独立准备，并等待不可取消的清理段完成",
+      "重进页面取消或删除可停止遗留准备；同来源并发请求只准备一次"
+    ],
+    "android_type_check": false,
+    "network_used": false
+  }
+}

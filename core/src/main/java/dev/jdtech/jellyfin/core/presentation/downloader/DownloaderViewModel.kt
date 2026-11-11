@@ -10,11 +10,16 @@ import dev.jdtech.jellyfin.models.FindroidSourceType
 import dev.jdtech.jellyfin.models.UiText
 import dev.jdtech.jellyfin.models.isDownloading
 import dev.jdtech.jellyfin.utils.DownloadPauseReason
+import dev.jdtech.jellyfin.utils.DownloadCancelledException
 import dev.jdtech.jellyfin.utils.DownloadProgress
 import dev.jdtech.jellyfin.utils.DownloadStatus
 import dev.jdtech.jellyfin.utils.Downloader
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,52 +41,98 @@ class DownloaderViewModel @Inject constructor(private val downloader: Downloader
 
     /** 进度收集协程，切换任务或取消下载时需要先停掉。 */
     private var progressJob: Job? = null
+    private var preparationJob: Job? = null
+    private val operationMutex = Mutex()
+    private val cancelledTaskIds = mutableSetOf<String>()
 
     fun update(item: FindroidItem) {
         viewModelScope.launch {
-            if (!item.isDownloading()) return@launch
-            val source =
-                item.sources.firstOrNull { it.type == FindroidSourceType.LOCAL } ?: return@launch
-            taskId = source.downloadTaskId
-            observeProgress(source.downloadTaskId)
+            operationMutex.withLock {
+                if (!item.isDownloading() || preparationJob?.isActive == true) return@withLock
+                val source = item.sources.firstOrNull { it.type == FindroidSourceType.LOCAL }
+                    ?: return@withLock
+                val sourceTaskId = source.downloadTaskId ?: return@withLock
+                if (sourceTaskId in cancelledTaskIds) return@withLock
+                taskId = sourceTaskId
+                observeProgress(sourceTaskId)
+            }
         }
     }
 
     private fun download(item: FindroidItem, storageIndex: Int = 0) {
-        viewModelScope.launch {
-            _state.emit(DownloaderState(status = DownloadStatus.QUEUED))
-            val (newTaskId, errorText) =
-                downloader.downloadItem(
-                    item = item,
-                    sourceId = item.sources.first().id,
-                    storageIndex = storageIndex,
-                )
-            if (newTaskId != null) {
-                taskId = newTaskId
-                observeProgress(newTaskId)
-            } else {
-                _state.emit(DownloaderState(status = DownloadStatus.FAILED, errorText = errorText))
+        preparationJob?.cancel(DownloadCancelledException())
+        preparationJob = viewModelScope.launch {
+            operationMutex.withLock {
+                progressJob?.cancelAndJoin()
+                taskId = null
+                _state.emit(DownloaderState(status = DownloadStatus.QUEUED))
+                val (newTaskId, errorText) =
+                    downloader.downloadItem(
+                        item = item,
+                        sourceId = item.sources.first().id,
+                        storageIndex = storageIndex,
+                    )
+                if (newTaskId != null) {
+                    taskId = newTaskId
+                    observeProgress(newTaskId)
+                } else {
+                    _state.emit(DownloaderState(status = DownloadStatus.FAILED, errorText = errorText))
+                }
             }
         }
     }
 
     private fun cancelDownload(item: FindroidItem) {
+        val pendingPreparation = preparationJob
+        val pendingTaskId = taskId ?: item.sources.firstOrNull {
+            it.type == FindroidSourceType.LOCAL
+        }?.downloadTaskId
+        pendingTaskId?.let(cancelledTaskIds::add)
+        item.sources.mapNotNullTo(cancelledTaskIds) { it.downloadTaskId }
+        pendingPreparation?.cancel(DownloadCancelledException())
         viewModelScope.launch {
-            progressJob?.cancel()
-            taskId?.let { downloader.cancelDownload(item = item, taskId = it) }
-            taskId = null
-            _state.emit(DownloaderState())
+            operationMutex.withLock {
+                pendingPreparation?.join()
+                progressJob?.cancelAndJoin()
+                try {
+                    pendingTaskId?.let { downloader.cancelDownload(item = item, taskId = it) }
+                    taskId = null
+                    _state.emit(DownloaderState())
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    showOperationError(e)
+                }
+            }
         }
     }
 
     private fun deleteDownload(item: FindroidItem) {
         viewModelScope.launch {
-            downloader.deleteItem(
-                item = item,
-                source = item.sources.first { it.type == FindroidSourceType.LOCAL },
-            )
-            eventsChannel.send(DownloaderEvent.Deleted)
+            operationMutex.withLock {
+                try {
+                    progressJob?.cancelAndJoin()
+                    downloader.deleteItem(
+                        item = item,
+                        source = item.sources.first { it.type == FindroidSourceType.LOCAL },
+                    )
+                    eventsChannel.send(DownloaderEvent.Deleted)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    showOperationError(e)
+                }
+            }
         }
+    }
+
+    private suspend fun showOperationError(error: Exception) {
+        AppLog.e("下载操作失败，错误类型：%s", error.javaClass.simpleName)
+        _state.emit(_state.value.copy(
+            status = DownloadStatus.FAILED,
+            errorText = error.localizedMessage?.let { UiText.DynamicString(it) }
+                ?: UiText.StringResource(CoreR.string.unknown_error),
+        ))
     }
 
     private fun observeProgress(taskId: String?) {

@@ -124,4 +124,10 @@
     <string name="media_segments_type_outro">片尾</string>
     <string name="media_segments_type_intro">片头</string>
     <string name="pref_player_media_segments_skip_button_duration">显示跳过按钮</string>
+    <string name="edit_file_title">编辑 %1$s</string>
+    <string name="pref_player_backend">播放器后端</string>
+    <string name="mpv_options">mpv 配置</string>
+    <string name="advanced">高级</string>
+    <string name="discard_changes_dialog_title">放弃修改？</string>
+    <string name="discard_changes_dialog_text">你有尚未保存的修改。</string>
 </resources>

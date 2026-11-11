@@ -56,6 +56,7 @@ import dev.jdtech.jellyfin.presentation.film.components.ItemHeader
 import dev.jdtech.jellyfin.presentation.film.components.ItemPoster
 import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
 import dev.jdtech.jellyfin.presentation.film.components.OverviewText
+import dev.jdtech.jellyfin.presentation.film.components.DetailLoadError
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
@@ -80,6 +81,7 @@ fun ShowScreen(
     LaunchedEffect(true) { viewModel.loadShow(showId = showId) }
 
     ShowScreenLayout(
+        onRetryClick = { viewModel.loadShow(showId) },
         state = state,
         onAction = { action ->
             when (action) {
@@ -109,7 +111,7 @@ fun ShowScreen(
 }
 
 @Composable
-private fun ShowScreenLayout(state: ShowState, onAction: (ShowAction) -> Unit) {
+private fun ShowScreenLayout(state: ShowState, onAction: (ShowAction) -> Unit, onRetryClick: () -> Unit = {}) {
     val safePadding = rememberSafePadding()
 
     val paddingStart = safePadding.start + MaterialTheme.spacings.default
@@ -288,7 +290,18 @@ private fun ShowScreenLayout(state: ShowState, onAction: (ShowAction) -> Unit) {
                 }
                 Spacer(Modifier.height(paddingBottom))
             }
-        } ?: run { CircularProgressIndicator(modifier = Modifier.align(Alignment.Center)) }
+        } ?: run {
+            if (state.error == null) CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        }
+        state.error?.let { error ->
+            DetailLoadError(
+                error = error,
+                onRetryClick = onRetryClick,
+                modifier = Modifier.align(
+                    if (state.show == null) Alignment.Center else Alignment.BottomCenter
+                ),
+            )
+        }
 
         ItemTopBar(
             hasBackButton = true,

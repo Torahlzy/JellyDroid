@@ -87,24 +87,18 @@ object VideoMetadataParser {
                                 else -> null
                             }?.let { displayProfiles.add(it) }
 
-                            /**
-                             * Force stream [org.jellyfin.sdk.model.api.MediaStream.height] and
-                             * [org.jellyfin.sdk.model.api.MediaStream.width] as not null since we
-                             * are inside [MediaStreamType.VIDEO] block
-                             */
-                            resolution.add(
-                                when {
-                                    height!! <= 1080 && width!! <= 1920 -> {
-                                        Resolution.HD
+                            // VIDEO 类型不保证尺寸已探测，未知尺寸只隐藏分辨率标记。
+                            val videoHeight = height
+                            val videoWidth = width
+                            if (videoHeight != null && videoHeight > 0 && videoWidth != null && videoWidth > 0) {
+                                resolution.add(
+                                    when {
+                                        videoHeight <= 1080 && videoWidth <= 1920 -> Resolution.HD
+                                        videoHeight <= 2160 && videoWidth <= 3840 -> Resolution.UHD
+                                        else -> Resolution.SD
                                     }
-
-                                    height!! <= 2160 && width!! <= 3840 -> {
-                                        Resolution.UHD
-                                    }
-
-                                    else -> Resolution.SD
-                                }
-                            )
+                                )
+                            }
 
                             videoCodecs.add(
                                 when (stream.codec.lowercase()) {

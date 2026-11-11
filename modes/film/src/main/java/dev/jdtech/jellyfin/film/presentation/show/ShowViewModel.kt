@@ -9,6 +9,7 @@ import dev.jdtech.jellyfin.models.FindroidShow
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,6 +27,7 @@ class ShowViewModel @Inject constructor(private val repository: JellyfinReposito
     fun loadShow(showId: UUID) {
         this.showId = showId
         viewModelScope.launch {
+            _state.emit(_state.value.copy(error = null))
             try {
                 val show = repository.getShow(showId)
                 val nextUp = getNextUp(showId)
@@ -43,6 +45,8 @@ class ShowViewModel @Inject constructor(private val repository: JellyfinReposito
                         writers = writers,
                     )
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.emit(_state.value.copy(error = e))
             }

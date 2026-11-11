@@ -17,6 +17,7 @@ sealed interface SubtitleDownloadEvent {
      * 详情页没有播放器，忽略它即可。
      */
     data class Uploaded(
+        val target: SubtitleDownloadController.Target,
         val language: SubtitleLanguage,
         val subtitle: DownloadedSubtitle,
     ) : SubtitleDownloadEvent
@@ -25,5 +26,5 @@ sealed interface SubtitleDownloadEvent {
     data class Failed(val error: Exception) : SubtitleDownloadEvent
 
     /** 对照用的字幕快照已落盘到 [itemId] 对应的目录，可以进播放页开对照面板了。 */
-    data class CompareReady(val itemId: UUID) : SubtitleDownloadEvent
+    data class CompareReady(val itemId: UUID, val target: SubtitleDownloadController.Target) : SubtitleDownloadEvent
 }

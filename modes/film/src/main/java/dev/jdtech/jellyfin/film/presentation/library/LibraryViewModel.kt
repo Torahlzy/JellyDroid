@@ -36,8 +36,10 @@ constructor(
     private var isPreferencesLoaded = false
 
     fun setup(parentId: UUID, libraryType: CollectionType) {
+        if (this::parentId.isInitialized && this.parentId == parentId && this.libraryType == libraryType) return
         this.parentId = parentId
         this.libraryType = libraryType
+        loadItems()
     }
 
     fun loadItems() {

@@ -74,6 +74,7 @@ import org.jellyfin.sdk.model.api.RepeatMode
 import org.jellyfin.sdk.model.api.SortOrder as ItemSortOrder
 import org.jellyfin.sdk.model.api.SubtitleDeliveryMethod
 import org.jellyfin.sdk.model.api.SubtitleProfile
+import org.jellyfin.sdk.api.client.extensions.subtitleApi
 import org.jellyfin.sdk.model.api.UploadSubtitleDto
 import org.jellyfin.sdk.model.api.UserConfiguration
 import org.jellyfin.sdk.model.toFileInfo
@@ -144,6 +145,10 @@ class JellyfinRepositoryImpl(
     private val database: ServerDatabaseDao,
     private val appPreferences: AppPreferences,
 ) : JellyfinRepository {
+
+    override suspend fun initialize() {
+        jellyfinApi.initialize(database, appPreferences)
+    }
     /**
      * 合集封面缓存：封面取自合集内部条目，会话内基本不变，缓存后翻页、回退都不会重复请求。
      *
@@ -885,6 +890,12 @@ class JellyfinRepositoryImpl(
         language: String,
         format: String,
     ) {
+        // 在切线程前固定连接与凭据，页面切换账号不能改向已经确认的上传。
+        val uploadApi = jellyfinApi.jellyfin.createApi(
+            baseUrl = jellyfinApi.api.baseUrl,
+            accessToken = jellyfinApi.api.accessToken,
+            httpClientOptions = jellyfinApi.api.httpClientOptions,
+        )
         withContext(Dispatchers.IO) {
             // 只认 JSON + Base64（实测 10.10.7）：把字幕原文直接放进 JSON 会回来 500，
             // 发 multipart / urlencoded 则被当成表单解析而回 415，别改成「更直观」的写法。
@@ -896,7 +907,7 @@ class JellyfinRepositoryImpl(
                     isHearingImpaired = false,
                     data = Base64.encodeToString(subtitleBytes, Base64.NO_WRAP),
                 )
-            jellyfinApi.subtitleApi.uploadSubtitle(itemId, dto)
+            uploadApi.subtitleApi.uploadSubtitle(itemId, dto)
         }
     }
 

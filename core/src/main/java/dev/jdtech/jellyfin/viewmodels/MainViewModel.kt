@@ -3,6 +3,7 @@ package dev.jdtech.jellyfin.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.database.ServerDatabaseDao
 import dev.jdtech.jellyfin.models.Server
 import dev.jdtech.jellyfin.models.User
@@ -15,7 +16,11 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class MainViewModel
 @Inject
-constructor(private val appPreferences: AppPreferences, private val database: ServerDatabaseDao) :
+constructor(
+    private val appPreferences: AppPreferences,
+    private val database: ServerDatabaseDao,
+    private val repository: JellyfinRepository,
+) :
     ViewModel() {
     private val _state = MutableStateFlow(MainState())
     val state = _state.asStateFlow()
@@ -36,6 +41,7 @@ constructor(private val appPreferences: AppPreferences, private val database: Se
     private fun check() {
         viewModelScope.launch {
             _state.emit(MainState(isLoading = true))
+            repository.initialize()
             val mainState =
                 MainState(
                     isLoading = false,

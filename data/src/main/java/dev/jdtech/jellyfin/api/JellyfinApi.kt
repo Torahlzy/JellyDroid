@@ -1,6 +1,10 @@
 package dev.jdtech.jellyfin.api
 
 import android.content.Context
+import dev.jdtech.jellyfin.database.ServerDatabaseDao
+import dev.jdtech.jellyfin.settings.domain.AppPreferences
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import dev.jdtech.jellyfin.data.BuildConfig
 import dev.jdtech.jellyfin.settings.domain.Constants
 import java.util.UUID
@@ -35,13 +39,7 @@ import org.jellyfin.sdk.createJellyfin
 import org.jellyfin.sdk.model.ClientInfo
 import org.jellyfin.sdk.model.ServerVersion
 
-/**
- * Jellyfin API class using org.jellyfin.sdk:jellyfin-platform-android
- *
- * @param androidContext The context
- * @param socketTimeout The socket timeout
- * @constructor Creates a new [JellyfinApi] instance
- */
+/** 封装 Jellyfin SDK，连接配置由异步初始化恢复，依赖注入不等待数据库。 */
 class JellyfinApi(
     androidContext: Context,
     requestTimeout: Long = Constants.NETWORK_DEFAULT_REQUEST_TIMEOUT,
@@ -96,6 +94,23 @@ class JellyfinApi(
     val userLibraryApi = api.userLibraryApi
     val videosApi = api.videosApi
     val viewsApi = api.userViewsApi
+
+    private val sessionMutex = Mutex()
+    private var isSessionRestored = false
+
+    /** 异步恢复连接信息，避免依赖注入在主线程等待 Room。 */
+    suspend fun initialize(database: ServerDatabaseDao, preferences: AppPreferences) {
+        sessionMutex.withLock {
+            if (isSessionRestored) return
+            val serverId = preferences.getValue(preferences.currentServer)
+            val saved = serverId?.let { database.getServerWithAddressAndUser(it) }
+            saved?.address?.let { address ->
+                api.update(baseUrl = address.address, accessToken = saved.user?.accessToken)
+                userId = saved.user?.id
+            }
+            isSessionRestored = true
+        }
+    }
 
     companion object {
         @Volatile private var INSTANCE: JellyfinApi? = null

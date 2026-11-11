@@ -45,6 +45,10 @@ class JellyfinRepositoryOfflineImpl(
     private val appPreferences: AppPreferences,
 ) : JellyfinRepository {
 
+    override suspend fun initialize() {
+        jellyfinApi.initialize(database, appPreferences)
+    }
+
     override suspend fun getPublicSystemInfo(): PublicSystemInfo {
         throw Exception("System info not available in offline mode")
     }

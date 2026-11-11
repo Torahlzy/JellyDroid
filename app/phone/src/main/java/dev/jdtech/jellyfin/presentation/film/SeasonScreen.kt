@@ -46,6 +46,7 @@ import dev.jdtech.jellyfin.presentation.film.components.ItemButtonsBar
 import dev.jdtech.jellyfin.presentation.film.components.ItemHeader
 import dev.jdtech.jellyfin.presentation.film.components.ItemPoster
 import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
+import dev.jdtech.jellyfin.presentation.film.components.DetailLoadError
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
@@ -67,6 +68,7 @@ fun SeasonScreen(
     LaunchedEffect(true) { viewModel.loadSeason(seasonId = seasonId) }
 
     SeasonScreenLayout(
+        onRetryClick = { viewModel.loadSeason(seasonId) },
         state = state,
         onAction = { action ->
             when (action) {
@@ -88,7 +90,7 @@ fun SeasonScreen(
 }
 
 @Composable
-private fun SeasonScreenLayout(state: SeasonState, onAction: (SeasonAction) -> Unit) {
+private fun SeasonScreenLayout(state: SeasonState, onAction: (SeasonAction) -> Unit, onRetryClick: () -> Unit = {}) {
     val safePadding = rememberSafePadding()
 
     val paddingStart = safePadding.start + MaterialTheme.spacings.default
@@ -175,7 +177,18 @@ private fun SeasonScreenLayout(state: SeasonState, onAction: (SeasonAction) -> U
                     )
                 }
             }
-        } ?: run { CircularProgressIndicator(modifier = Modifier.align(Alignment.Center)) }
+        } ?: run {
+            if (state.error == null) CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        }
+        state.error?.let { error ->
+            DetailLoadError(
+                error = error,
+                onRetryClick = onRetryClick,
+                modifier = Modifier.align(
+                    if (state.season == null) Alignment.Center else Alignment.BottomCenter
+                ),
+            )
+        }
 
         ItemTopBar(
             hasBackButton = true,

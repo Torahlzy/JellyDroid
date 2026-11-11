@@ -51,6 +51,7 @@ class SubtitleCompareManager(
     val state: StateFlow<CompareState> = _state.asStateFlow()
 
     private var itemId: UUID? = null
+    private var loadGeneration = 0L
     private var entries: List<SubtitleCompareEntry> = emptyList()
 
     /** 与 [entries] 一一对应的 cue 列表；解不出文本的那条为空表（文本区留空但仍可应用）。 */
@@ -64,9 +65,10 @@ class SubtitleCompareManager(
     /**
      * 读 [itemId] 对应的快照并解析字幕。
      *
-     * @return 是否有可显示的候选；false 表示缓存缺失（调用方提示用户重新下载，不静默重下）。
+     * @return 是否已发布可显示的候选；false 表示缓存缺失或本次加载已失效。
      */
-    suspend fun load(itemId: UUID): Boolean {
+    suspend fun load(itemId: UUID, isCurrent: () -> Boolean = { true }): Boolean {
+        val generation = ++loadGeneration
         val loaded = cache.load(itemId)
         if (loaded.isEmpty()) {
             AppLog.w("对照面板打不开：%s 没有可用快照（缓存缺失或清单损坏）", itemId)
@@ -82,6 +84,8 @@ class SubtitleCompareManager(
                         }
                 }
             }
+        // 校验必须早于状态发布，失效的加载不能把面板重新显示出来。
+        if (generation != loadGeneration || !isCurrent()) return false
         this.itemId = itemId
         entries = loaded
         cues = parsed
@@ -121,6 +125,7 @@ class SubtitleCompareManager(
 
     /** 关闭面板并丢弃快照（磁盘上的文件由调用方决定何时清理）。 */
     fun hide() {
+        loadGeneration++
         if (_state.value.isShowing) {
             AppLog.d("对照面板已关闭：%s", itemId)
         }

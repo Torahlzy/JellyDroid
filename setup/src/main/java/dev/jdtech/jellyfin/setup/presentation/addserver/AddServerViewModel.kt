@@ -34,14 +34,16 @@ constructor(private val repository: SetupRepository, private val appPreferences:
             val discoveredServers = mutableListOf<DiscoveredServer>()
             val serversDiscovery = repository.discoverServers()
             serversDiscovery.collect { serverDiscoveryInfo ->
-                discoveredServers.add(
+                val discoveredServer =
                     DiscoveredServer(
                         serverDiscoveryInfo.id,
                         serverDiscoveryInfo.name,
                         serverDiscoveryInfo.address,
                     )
-                )
-                _state.emit(_state.value.copy(discoveredServers = discoveredServers))
+                if (discoveredServers.none { it.id == discoveredServer.id }) {
+                    discoveredServers.add(discoveredServer)
+                    _state.emit(_state.value.copy(discoveredServers = discoveredServers.toList()))
+                }
             }
         }
     }

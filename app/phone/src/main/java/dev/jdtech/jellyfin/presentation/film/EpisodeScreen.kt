@@ -54,6 +54,7 @@ import dev.jdtech.jellyfin.presentation.film.components.ItemHeader
 import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
 import dev.jdtech.jellyfin.presentation.film.components.OverviewText
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
+import dev.jdtech.jellyfin.presentation.film.components.DetailLoadError
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.LocalOfflineMode
@@ -101,6 +102,7 @@ fun EpisodeScreen(
     }
 
     EpisodeScreenLayout(
+        onRetryClick = { viewModel.loadEpisode(episodeId) },
         state = state,
         downloaderState = downloaderState,
         onAction = { action ->
@@ -128,6 +130,7 @@ fun EpisodeScreen(
 @Composable
 private fun EpisodeScreenLayout(
     state: EpisodeState,
+    onRetryClick: () -> Unit = {},
     downloaderState: DownloaderState,
     onAction: (EpisodeAction) -> Unit,
     onDownloaderAction: (DownloaderAction) -> Unit,
@@ -269,7 +272,18 @@ private fun EpisodeScreenLayout(
                 }
                 Spacer(Modifier.height(paddingBottom))
             }
-        } ?: run { CircularProgressIndicator(modifier = Modifier.align(Alignment.Center)) }
+        } ?: run {
+            if (state.error == null) CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        }
+        state.error?.let { error ->
+            DetailLoadError(
+                error = error,
+                onRetryClick = onRetryClick,
+                modifier = Modifier.align(
+                    if (state.episode == null) Alignment.Center else Alignment.BottomCenter
+                ),
+            )
+        }
 
         ItemTopBar(
             hasBackButton = true,

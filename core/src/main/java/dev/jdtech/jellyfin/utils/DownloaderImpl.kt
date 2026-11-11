@@ -42,10 +42,21 @@ import dev.jdtech.jellyfin.work.DownloadWorker
 import dev.jdtech.jellyfin.work.ImagesDownloaderWorker
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.Exception
 import kotlin.math.ceil
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -55,6 +66,8 @@ private const val BACKOFF_DELAY_MINUTES = 1L
 
 /** 下载文件统一放在外部私有目录的该子目录下。 */
 private const val DOWNLOAD_DIRECTORY = "downloads"
+
+private const val SOURCE_DOWNLOAD_TAG_PREFIX = "download_source_"
 
 /** 文件名里不允许出现的字符（含控制字符），统一替换成下划线。 */
 private val ILLEGAL_FILE_NAME_CHARS = Regex("""[\\/:*?"<>|\x00-\x1F]""")
@@ -98,80 +111,118 @@ class DownloaderImpl(
     private val workManager: WorkManager,
 ) : Downloader {
     private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+    private val preparationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val preparations = ConcurrentHashMap<String, Deferred<Pair<String?, UiText?>>>()
 
     override suspend fun downloadItem(
         item: FindroidItem,
         sourceId: String,
         storageIndex: Int,
-    ): Pair<String?, UiText?> = coroutineScope {
-        val storageLocation = context.getExternalFilesDirs(null)?.getOrNull(storageIndex)
-        if (
-            storageLocation == null ||
-                Environment.getExternalStorageState(storageLocation) != Environment.MEDIA_MOUNTED
-        ) {
-            return@coroutineScope Pair(null, UiText.StringResource(CoreR.string.storage_unavailable))
+    ): Pair<String?, UiText?> {
+        // 页面退出只取消等待，准备工作继续交接给 Worker；同一来源共用一次准备。
+        val request = preparationScope.async(start = CoroutineStart.LAZY) {
+            prepareDownload(item, sourceId, storageIndex)
         }
+        val preparation = preparations.putIfAbsent(sourceId, request) ?: request
+        if (preparation !== request) request.cancel()
+        preparation.invokeOnCompletion { preparations.remove(sourceId, preparation) }
+        preparation.start()
+        return try {
+            preparation.await()
+        } catch (e: DownloadCancelledException) {
+            preparation.cancel(e)
+            withContext(NonCancellable) { preparation.join() }
+            throw e
+        }
+    }
 
-        try {
-            val source =
-                jellyfinRepository.getMediaSources(item.id, true).first { it.id == sourceId }
-            val segments = jellyfinRepository.getSegments(item.id)
-            val trickplayInfo =
-                if (item is FindroidSources) {
-                    item.trickplayInfo?.get(sourceId)
-                } else {
-                    null
+    private suspend fun prepareDownload(
+        item: FindroidItem,
+        sourceId: String,
+        storageIndex: Int,
+    ): Pair<String?, UiText?> {
+        var preparedSource: FindroidSource? = null
+        return try {
+            withContext(Dispatchers.IO) {
+                val storageLocation = context.getExternalFilesDirs(null)?.getOrNull(storageIndex)
+                if (
+                    storageLocation == null ||
+                        Environment.getExternalStorageState(storageLocation) != Environment.MEDIA_MOUNTED
+                ) {
+                    return@withContext Pair(null, UiText.StringResource(CoreR.string.storage_unavailable))
                 }
-            val stats = StatFs(storageLocation.path)
-            if (stats.availableBytes < source.size) {
-                return@coroutineScope Pair(
-                    null,
-                    UiText.StringResource(
-                        CoreR.string.not_enough_storage,
-                        Formatter.formatFileSize(context, source.size),
-                        Formatter.formatFileSize(context, stats.availableBytes),
-                    ),
-                )
+
+                val source =
+                    jellyfinRepository.getMediaSources(item.id, true).first { it.id == sourceId }
+                val segments = jellyfinRepository.getSegments(item.id)
+                val trickplayInfo =
+                    if (item is FindroidSources) {
+                        item.trickplayInfo?.get(sourceId)
+                    } else {
+                        null
+                    }
+                val stats = StatFs(storageLocation.path)
+                if (stats.availableBytes < source.size) {
+                    return@withContext Pair(
+                        null,
+                        UiText.StringResource(
+                            CoreR.string.not_enough_storage,
+                            Formatter.formatFileSize(context, source.size),
+                            Formatter.formatFileSize(context, stats.availableBytes),
+                        ),
+                    )
+                }
+
+                val file = buildDownloadFile(storageLocation, item.id, source.id)
+                val uniqueName = "download_file_${item.id}_${source.id}"
+                val request =
+                    buildDownloadRequest(
+                        sourceId = source.id,
+                        recordId = source.id,
+                        recordType = DownloadWorker.RECORD_TYPE_SOURCE,
+                        url = source.path,
+                        filePath = file.absolutePath,
+                        displayName = item.name,
+                        outputFileName = resolveServerFileName(item, source),
+                    )
+                val taskId = request.id.toString()
+
+                // 必须先落库再入队：Worker 结束时会按 taskId 找回记录并回写文件路径
+                preparedSource = source.copy(path = file.absolutePath)
+                insertItemRecords(item, source, file.absolutePath, taskId)
+                currentCoroutineContext().ensureActive()
+
+                logNetworkState()
+                workManager.enqueueUniqueWork(uniqueName, ExistingWorkPolicy.REPLACE, request).result.get()
+                AppLog.i("下载已入队：itemId=%s，taskId=%s", item.id, taskId)
+
+                downloadExternalMediaStreams(item, source, storageIndex)
+
+                segments.forEach { database.insertSegment(it.toFindroidSegmentsDto(item.id)) }
+
+                if (trickplayInfo != null) {
+                    downloadTrickplayData(item.id, sourceId, trickplayInfo)
+                }
+
+                startImagesDownloader(item, sourceId)
+                return@withContext Pair(taskId, null)
             }
-
-            val file = buildDownloadFile(storageLocation, item.id, source.id)
-            val uniqueName = "download_file_${item.id}_${source.id}"
-            val request =
-                buildDownloadRequest(
-                    sourceId = source.id,
-                    recordId = source.id,
-                    recordType = DownloadWorker.RECORD_TYPE_SOURCE,
-                    url = source.path,
-                    filePath = file.absolutePath,
-                    displayName = item.name,
-                    outputFileName = resolveServerFileName(item, source),
-                )
-            val taskId = request.id.toString()
-
-            // 必须先落库再入队：Worker 结束时会按 taskId 找回记录并回写文件路径
-            insertItemRecords(item, source, file.absolutePath, taskId)
-
-            logNetworkState()
-            workManager.enqueueUniqueWork(uniqueName, ExistingWorkPolicy.REPLACE, request)
-            AppLog.i("下载已入队：itemId=%s，taskId=%s", item.id, taskId)
-
-            downloadExternalMediaStreams(item, source, storageIndex)
-
-            segments.forEach { database.insertSegment(it.toFindroidSegmentsDto(item.id)) }
-
-            if (trickplayInfo != null) {
-                downloadTrickplayData(item.id, sourceId, trickplayInfo)
-            }
-
-            startImagesDownloader(item)
-            return@coroutineScope Pair(taskId, null)
         } catch (e: Exception) {
-            try {
-                val source = jellyfinRepository.getMediaSources(item.id).first { it.id == sourceId }
-                deleteItem(item, source)
-            } catch (_: Exception) {}
+            withContext(NonCancellable + Dispatchers.IO) {
+                try {
+                    preparedSource?.let { source ->
+                        workManager.cancelAllWorkByTag(sourceDownloadTag(source.id)).result.get()
+                        val localSource = database.getSources(item.id).firstOrNull { it.id == source.id }
+                        deleteItemFiles(item, localSource?.toFindroidSource(database) ?: source)
+                    }
+                } catch (cleanupError: Exception) {
+                    AppLog.e("取消下载后的清理失败，错误类型：%s", cleanupError.javaClass.simpleName)
+                    e.addSuppressed(cleanupError)
+                }
+            }
+            if (e is CancellationException) throw e
             AppLog.e(e)
-            return@coroutineScope Pair(
+            Pair(
                 null,
                 if (e.message != null) UiText.DynamicString(e.message.orEmpty())
                 else UiText.StringResource(CoreR.string.unknown_error),
@@ -179,53 +230,85 @@ class DownloaderImpl(
         }
     }
 
-    override suspend fun cancelDownload(item: FindroidItem, taskId: String) {
-        val source = database.getSourceByTaskId(taskId)?.toFindroidSource(database) ?: return
-        // 主文件与外部媒体流是同一批任务，按 tag 一起取消
-        workManager.cancelAllWorkByTag(sourceDownloadTag(source.id))
-        deleteItem(item, source)
+    override suspend fun cancelDownload(item: FindroidItem, taskId: String): Unit =
+        withContext(Dispatchers.IO) {
+            // 主文件可能刚完成并清除了 taskId，仍需按界面记录的源取消本批附属任务。
+            val sourceId = database.getSourceByTaskId(taskId)?.id
+                ?: item.sources.firstOrNull { it.downloadTaskId == taskId }?.id
+                ?: workManager.getWorkInfoById(UUID.fromString(taskId)).get()?.tags
+                    ?.firstOrNull { it.startsWith(SOURCE_DOWNLOAD_TAG_PREFIX) }
+                    ?.removePrefix(SOURCE_DOWNLOAD_TAG_PREFIX)
+                ?: return@withContext
+            val pendingSource = database.getSources(item.id).firstOrNull { it.id == sourceId }
+                ?: return@withContext
+            if (pendingSource.downloadTaskId != null && pendingSource.downloadTaskId != taskId) {
+                return@withContext
+            }
+            cancelPreparation(sourceId)
+            workManager.cancelAllWorkByTag(sourceDownloadTag(sourceId)).result.get()
+            val source = database.getSources(item.id).firstOrNull {
+                it.id == sourceId && (it.downloadTaskId == null || it.downloadTaskId == taskId)
+            } ?: return@withContext
+            deleteItemFiles(item, source.toFindroidSource(database))
+        }
+
+    override suspend fun deleteItem(item: FindroidItem, source: FindroidSource): Unit =
+        withContext(Dispatchers.IO) {
+            cancelPreparation(source.id)
+            deleteItemFiles(item, source)
+        }
+
+    /** 重新进入详情页后的取消和删除，也要先停止上一页留下的准备工作。 */
+    private suspend fun cancelPreparation(sourceId: String) {
+        preparations[sourceId]?.let { preparation ->
+            preparation.cancel(DownloadCancelledException())
+            preparation.join()
+        }
     }
 
-    override suspend fun deleteItem(item: FindroidItem, source: FindroidSource) {
-        when (item) {
-            is FindroidMovie -> {
-                database.deleteMovie(item.id)
-            }
-            is FindroidEpisode -> {
-                database.deleteEpisode(item.id)
-                val remainingEpisodes = database.getEpisodesBySeasonId(item.seasonId)
-                if (remainingEpisodes.isEmpty()) {
-                    database.deleteSeason(item.seasonId)
-                    database.deleteUserData(item.seasonId)
-                    File(context.filesDir, "trickplay/${item.seasonId}").deleteRecursively()
-                    File(context.filesDir, "images/${item.seasonId}").deleteRecursively()
-                    val remainingSeasons = database.getSeasonsByShowId(item.seriesId)
-                    if (remainingSeasons.isEmpty()) {
-                        database.deleteShow(item.seriesId)
-                        database.deleteUserData(item.seriesId)
-                        File(context.filesDir, "trickplay/${item.seriesId}").deleteRecursively()
-                        File(context.filesDir, "images/${item.seriesId}").deleteRecursively()
+    private suspend fun deleteItemFiles(item: FindroidItem, source: FindroidSource): Unit =
+        withContext(Dispatchers.IO) {
+            // 主文件完成后外部字幕或封面可能仍在下载，删除前一并停止。
+            workManager.cancelAllWorkByTag(sourceDownloadTag(source.id)).result.get()
+            when (item) {
+                is FindroidMovie -> {
+                    database.deleteMovie(item.id)
+                }
+                is FindroidEpisode -> {
+                    database.deleteEpisode(item.id)
+                    val remainingEpisodes = database.getEpisodesBySeasonId(item.seasonId)
+                    if (remainingEpisodes.isEmpty()) {
+                        database.deleteSeason(item.seasonId)
+                        database.deleteUserData(item.seasonId)
+                        File(context.filesDir, "trickplay/${item.seasonId}").deleteRecursively()
+                        File(context.filesDir, "images/${item.seasonId}").deleteRecursively()
+                        val remainingSeasons = database.getSeasonsByShowId(item.seriesId)
+                        if (remainingSeasons.isEmpty()) {
+                            database.deleteShow(item.seriesId)
+                            database.deleteUserData(item.seriesId)
+                            File(context.filesDir, "trickplay/${item.seriesId}").deleteRecursively()
+                            File(context.filesDir, "images/${item.seriesId}").deleteRecursively()
+                        }
                     }
                 }
             }
+
+            database.deleteSource(source.id)
+            // 分片下载会留下 `<临时文件>.partN` 中间文件，删主文件时一并清掉，避免占用磁盘
+            DownloadWorker.deleteSegmentFiles(source.path)
+            File(source.path).delete()
+
+            val mediaStreams = database.getMediaStreamsBySourceId(source.id)
+            for (mediaStream in mediaStreams) {
+                File(mediaStream.path).delete()
+            }
+            database.deleteMediaStreamsBySourceId(source.id)
+
+            database.deleteUserData(item.id)
+
+            File(context.filesDir, "trickplay/${item.id}").deleteRecursively()
+            File(context.filesDir, "images/${item.id}").deleteRecursively()
         }
-
-        database.deleteSource(source.id)
-        // 分片下载会留下 `<临时文件>.partN` 中间文件，删主文件时一并清掉，避免占用磁盘
-        DownloadWorker.deleteSegmentFiles(source.path)
-        File(source.path).delete()
-
-        val mediaStreams = database.getMediaStreamsBySourceId(source.id)
-        for (mediaStream in mediaStreams) {
-            File(mediaStream.path).delete()
-        }
-        database.deleteMediaStreamsBySourceId(source.id)
-
-        database.deleteUserData(item.id)
-
-        File(context.filesDir, "trickplay/${item.id}").deleteRecursively()
-        File(context.filesDir, "images/${item.id}").deleteRecursively()
-    }
 
     override fun observeProgress(taskId: String?): Flow<DownloadProgress> {
         val workId = taskId?.let { runCatching { UUID.fromString(it) }.getOrNull() }
@@ -394,7 +477,7 @@ class DownloaderImpl(
         }
     }
 
-    private fun sourceDownloadTag(sourceId: String) = "download_source_$sourceId"
+    private fun sourceDownloadTag(sourceId: String) = "$SOURCE_DOWNLOAD_TAG_PREFIX$sourceId"
 
     /** 记录主文件与附属数据：Worker 结束时会按 taskId 找回 source 记录。 */
     private suspend fun insertItemRecords(
@@ -420,8 +503,8 @@ class DownloaderImpl(
                     item.toFindroidEpisodeDto(appPreferences.getValue(appPreferences.currentServer))
                 )
 
-                startImagesDownloader(show)
-                startImagesDownloader(season)
+                startImagesDownloader(show, source.id)
+                startImagesDownloader(season, source.id)
             }
         }
 
@@ -479,7 +562,7 @@ class DownloaderImpl(
                     .toFindroidMediaStreamDto(id, source.id, file.absolutePath)
                     .copy(downloadTaskId = request.id.toString())
             )
-            workManager.enqueueUniqueWork(uniqueName, ExistingWorkPolicy.REPLACE, request)
+            workManager.enqueueUniqueWork(uniqueName, ExistingWorkPolicy.REPLACE, request).result.get()
         }
     }
 
@@ -528,12 +611,13 @@ class DownloaderImpl(
         }
     }
 
-    private fun startImagesDownloader(item: FindroidItem) {
+    private fun startImagesDownloader(item: FindroidItem, sourceId: String) {
         val downloadImagesRequest =
             OneTimeWorkRequestBuilder<ImagesDownloaderWorker>()
+                .addTag(sourceDownloadTag(sourceId))
                 .setInputData(workDataOf(ImagesDownloaderWorker.KEY_ITEM_ID to item.id.toString()))
                 .build()
 
-        workManager.enqueue(downloadImagesRequest)
+        workManager.enqueue(downloadImagesRequest).result.get()
     }
 }

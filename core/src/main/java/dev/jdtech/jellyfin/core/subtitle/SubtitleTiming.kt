@@ -10,13 +10,13 @@ package dev.jdtech.jellyfin.core.subtitle
 internal object SubtitleTiming {
 
     /**
-     * 兼容 SRT / VTT 的 `HH:MM:SS,mmm` / `HH:MM:SS.mmm` 与 ASS 的 `H:MM:SS.cc`，
+     * 兼容 SRT / VTT 的小时格式与 VTT 的 `MM:SS.mmm`，以及 ASS 的 `H:MM:SS.cc`，
      * 冒号同时接受 ASCII 与全角（站点字幕常见的中文输入法产物）。
      *
      * 对 [SubtitleCueParser] 也可见：解析每条 cue 的起止时间要用的就是这一份正则，
      * 不要再复制第二套（两处不一致时会出现「时长判断用一套、取句用另一套」的错位）。
      */
-    internal val TIMESTAMP = Regex("""(\d{1,2})[:：](\d{2})[:：](\d{2})[,.](\d{1,3})""")
+    internal val TIMESTAMP = Regex("""(?:(\d{1,})[:：])?(\d{2})[:：](\d{2})[,.](\d{1,3})""")
 
     /**
      * 正文里不超过 [maxMs] 的最晚时间点（毫秒）；一个时间戳都没有时返回 null。
@@ -31,7 +31,7 @@ internal object SubtitleTiming {
     /** 把 [TIMESTAMP] 的一次匹配换算成毫秒。 */
     internal fun timestampMillis(match: MatchResult): Long {
         val (hours, minutes, seconds, fraction) = match.destructured
-        return hours.toLong() * 3_600_000 +
+        return (hours.toLongOrNull() ?: 0L) * 3_600_000 +
             minutes.toLong() * 60_000 +
             seconds.toLong() * 1_000 +
             fractionToMillis(fraction)

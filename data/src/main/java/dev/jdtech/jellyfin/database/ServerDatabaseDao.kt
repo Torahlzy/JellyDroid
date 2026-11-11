@@ -22,6 +22,7 @@ import dev.jdtech.jellyfin.models.ServerWithAddresses
 import dev.jdtech.jellyfin.models.ServerWithAddressesAndUsers
 import dev.jdtech.jellyfin.models.User
 import java.util.UUID
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ServerDatabaseDao {
@@ -97,8 +98,10 @@ interface ServerDatabaseDao {
     suspend fun getSourceByTaskId(downloadTaskId: String): FindroidSourceDto?
 
     // 下载完成后同时清掉任务 id，让「downloadTaskId 非空」严格等价于「正在下载」
-    @Query("UPDATE sources SET path = :path, downloadTaskId = NULL WHERE id = :id")
-    suspend fun setSourcePath(id: String, path: String)
+    @Query(
+        "UPDATE sources SET path = :path, downloadTaskId = NULL WHERE id = :id AND downloadTaskId = :taskId"
+    )
+    suspend fun setSourcePath(id: String, path: String, taskId: String): Int
 
     @Query("DELETE FROM sources WHERE id = :id") suspend fun deleteSource(id: String)
 
@@ -116,8 +119,10 @@ interface ServerDatabaseDao {
     suspend fun getMediaStreamsBySourceId(sourceId: String): List<FindroidMediaStreamDto>
 
     // 下载完成后同时清掉任务 id，让「downloadTaskId 非空」严格等价于「正在下载」
-    @Query("UPDATE mediastreams SET path = :path, downloadTaskId = NULL WHERE id = :id")
-    suspend fun setMediaStreamPath(id: UUID, path: String)
+    @Query(
+        "UPDATE mediastreams SET path = :path, downloadTaskId = NULL WHERE id = :id AND downloadTaskId = :taskId"
+    )
+    suspend fun setMediaStreamPath(id: UUID, path: String, taskId: String): Int
 
     @Query("DELETE FROM mediastreams WHERE id = :id") suspend fun deleteMediaStream(id: UUID)
 
@@ -223,6 +228,22 @@ interface ServerDatabaseDao {
         "UPDATE userdata SET toBeSynced = :toBeSynced WHERE itemId = :itemId AND userId = :userId"
     )
     suspend fun setUserDataToBeSynced(userId: UUID, itemId: UUID, toBeSynced: Boolean)
+
+    /** 只确认已上传的快照；请求期间的新修改必须继续保留。 */
+    @Query(
+        "UPDATE userdata SET toBeSynced = 0 WHERE userId = :userId AND itemId = :itemId " +
+            "AND playbackPositionTicks = :positionTicks AND favorite = :favorite AND played = :played"
+    )
+    suspend fun acknowledgeUserData(
+        userId: UUID,
+        itemId: UUID,
+        positionTicks: Long,
+        favorite: Boolean,
+        played: Boolean,
+    )
+
+    @Query("SELECT * FROM userdata WHERE toBeSynced = 1 ORDER BY userId, itemId")
+    fun observePendingUserData(): Flow<List<FindroidUserDataDto>>
 
     @Query("SELECT * FROM movies WHERE serverId = :serverId AND name LIKE '%' || :name || '%'")
     suspend fun searchMovies(serverId: String, name: String): List<FindroidMovieDto>

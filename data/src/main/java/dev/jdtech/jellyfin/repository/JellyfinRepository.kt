@@ -26,6 +26,9 @@ import org.jellyfin.sdk.model.api.PublicSystemInfo
 import org.jellyfin.sdk.model.api.UserConfiguration
 
 interface JellyfinRepository {
+    /** 恢复持久化连接后才能使用在线或离线数据。 */
+    suspend fun initialize()
+
     suspend fun getPublicSystemInfo(): PublicSystemInfo
 
     suspend fun getUserViews(): List<BaseItemDto>

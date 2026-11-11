@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -22,6 +23,7 @@ class SeasonViewModel @Inject constructor(private val repository: JellyfinReposi
     fun loadSeason(seasonId: UUID) {
         this.seasonId = seasonId
         viewModelScope.launch {
+            _state.emit(_state.value.copy(error = null))
             try {
                 val season = repository.getSeason(seasonId)
                 val episodes =
@@ -31,6 +33,8 @@ class SeasonViewModel @Inject constructor(private val repository: JellyfinReposi
                         fields = listOf(ItemFields.OVERVIEW),
                     )
                 _state.emit(_state.value.copy(season = season, episodes = episodes))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.emit(_state.value.copy(error = e))
             }

@@ -10,6 +10,7 @@ import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,7 @@ constructor(
     fun loadEpisode(episodeId: UUID) {
         this.episodeId = episodeId
         viewModelScope.launch {
+            _state.emit(_state.value.copy(error = null))
             try {
                 val episode = repository.getEpisode(episodeId)
                 val videoMetadata = videoMetadataParser.parse(episode.sources.first())
@@ -46,6 +48,8 @@ constructor(
                         displayExtraInfo = displayExtraInfo,
                     )
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.emit(_state.value.copy(error = e))
             }

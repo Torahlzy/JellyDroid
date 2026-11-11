@@ -9,6 +9,8 @@ import dev.jdtech.jellyfin.core.scraper.ScraperUrlProvider
 import dev.jdtech.jellyfin.logging.AppLog
 import javax.inject.Inject
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -40,7 +42,7 @@ constructor(
     private val cookieJar: ScraperCookieJar,
 ) : MovieCommentSource {
 
-    override suspend fun load(keyword: String, useProxy: Boolean): List<MovieComment> {
+    override suspend fun load(keyword: String, useProxy: Boolean): List<MovieComment> = withContext(Dispatchers.Default) {
         val baseUrl =
             scraperUrlProvider.baseUrl(ScraperSite.JAVDB)
                 ?: throw ScraperException.WebsiteError("JavDB: 没有配置站点网址")
@@ -63,7 +65,7 @@ constructor(
 
         val comments = parse(Jsoup.parse(normalizeBody(response.body), reviewsUrl))
         AppLog.d("JavDB 短评 '%s'：%d 条", keyword, comments.size)
-        return comments
+        comments
     }
 
     /**

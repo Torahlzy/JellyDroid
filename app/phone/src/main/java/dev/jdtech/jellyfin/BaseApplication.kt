@@ -30,6 +30,7 @@ import dev.jdtech.jellyfin.logging.TorahDebugTree
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.work.MpvCleanupWorker
 import dev.jdtech.jellyfin.work.SyncWorker
+import dev.jdtech.jellyfin.work.UserDataSyncScheduler
 import javax.inject.Inject
 import kotlin.time.ExperimentalTime
 import okhttp3.OkHttpClient
@@ -41,6 +42,8 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
     @Inject lateinit var appPreferences: AppPreferences
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject lateinit var userDataSyncScheduler: UserDataSyncScheduler
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder().setWorkerFactory(workerFactory).build()
@@ -71,6 +74,7 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
         val workManager = WorkManager.getInstance(applicationContext)
 
         scheduleUserDataSync(workManager)
+        userDataSyncScheduler.start()
 
         if (!appPreferences.getValue(appPreferences.mpvMigrated)) {
             scheduleMpvCleanup(workManager)
@@ -79,7 +83,7 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
 
     @OptIn(ExperimentalCoilApi::class, ExperimentalTime::class)
     override fun newImageLoader(context: PlatformContext): ImageLoader {
-        // 图片加载专用 OkHttp：非正常响应时打印状态码与 URL，配合 eventListener 定位加载失败原因
+        // 图片加载只记录状态与异常类型，避免请求地址和凭据进入日志
         val imageHttpClient =
             OkHttpClient.Builder()
                 .addInterceptor { chain ->
@@ -87,9 +91,8 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
                     // 只报 4xx/5xx：3xx 是重定向的中间响应（含 304 缓存再验证），OkHttp/Coil 会自动处理，不算失败
                     if (response.code >= 400) {
                         AppLog.w(
-                            "图片请求返回 %d：%s",
+                            "图片请求返回 HTTP %d",
                             response.code,
-                            response.request.url,
                         )
                     }
                     response
@@ -120,11 +123,11 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
                     .build()
             }
             .crossfade(true)
-            // 排查图片加载失败用：任何请求失败都打印 URL 与异常，logcat 过滤 torah 即可看到
+            // 异常消息与堆栈可能包含请求 URL，仅保留类型用于诊断
             .eventListener(
                 object : EventListener() {
                     override fun onError(request: ImageRequest, result: ErrorResult) {
-                        AppLog.e(result.throwable, "图片加载失败：%s", request.data)
+                        AppLog.e("图片加载失败，错误类型：%s", result.throwable.javaClass.simpleName)
                     }
                 }
             )

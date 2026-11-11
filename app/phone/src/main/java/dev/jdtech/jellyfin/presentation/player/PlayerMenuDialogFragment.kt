@@ -12,6 +12,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.DialogFragment
+import androidx.fragment.app.activityViewModels
 import androidx.media3.common.C
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.player.local.R as PlayerR
@@ -21,16 +22,22 @@ import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 /**
  * 播放器右上角菜单：横屏下用一行正方形格子展示字幕、播放速度、音轨等入口。
  *
- * 截图与字幕调节依赖 Activity 持有的视频视图 / 管理器，因此通过构造参数把动作交回宿主；
- * [onCaptureBackdrop] 为 null 表示离线模式下不提供该入口。窗口用无边框透明主题，
+ * 截图与字幕调节通过宿主接口分发；离线模式下隐藏需要修改服务器的入口。窗口用无边框透明主题，
  * 卡片与蒙层交给 Compose 绘制，才能去掉标题行、控制上下留白并横向铺开。
  */
-class PlayerMenuDialogFragment(
-    private val viewModel: PlayerViewModel,
-    private val onCaptureBackdrop: (() -> Unit)?,
-    private val onSubtitleAdjust: (() -> Unit)? = null,
-    private val onDownloadSubtitle: (() -> Unit)? = null,
-) : DialogFragment() {
+class PlayerMenuDialogFragment : DialogFragment() {
+    private val viewModel: PlayerViewModel by activityViewModels()
+
+    /** 回调从恢复后的宿主获取，Fragment 的构造器不保存运行时对象。 */
+    interface Host {
+        val canModifyServer: Boolean
+        fun captureBackdrop()
+        fun adjustSubtitles()
+        fun downloadSubtitles()
+    }
+
+    private val host: Host
+        get() = requireActivity() as Host
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,7 +92,8 @@ class PlayerMenuDialogFragment(
                 enabled = hasSubtitleTracks,
                 onClick = { showTrackSelection(C.TRACK_TYPE_TEXT) },
             ),
-            onSubtitleAdjust?.let { action ->
+            run {
+                val action = host::adjustSubtitles
                 PlayerMenuItem(
                     labelRes = PlayerR.string.player_menu_subtitle_adjust,
                     iconRes = CoreR.drawable.ic_settings,
@@ -93,13 +101,14 @@ class PlayerMenuDialogFragment(
                     onClick = action,
                 )
             },
-            onDownloadSubtitle?.let { action ->
+            if (host.canModifyServer) run {
+                val action = host::downloadSubtitles
                 PlayerMenuItem(
                     labelRes = PlayerR.string.player_menu_download_subtitle,
                     iconRes = CoreR.drawable.ic_download,
                     onClick = action,
                 )
-            },
+            } else null,
             PlayerMenuItem(
                 labelRes = PlayerR.string.select_playback_speed,
                 iconRes = CoreR.drawable.ic_gauge,
@@ -110,13 +119,14 @@ class PlayerMenuDialogFragment(
                 iconRes = CoreR.drawable.ic_speaker,
                 onClick = { showTrackSelection(C.TRACK_TYPE_AUDIO) },
             ),
-            onCaptureBackdrop?.let { action ->
+            if (host.canModifyServer) run {
+                val action = host::captureBackdrop
                 PlayerMenuItem(
                     labelRes = PlayerR.string.player_menu_capture_backdrop,
                     iconRes = CoreR.drawable.ic_film,
                     onClick = action,
                 )
-            },
+            } else null,
         )
     }
 
@@ -127,12 +137,12 @@ class PlayerMenuDialogFragment(
     }
 
     private fun showTrackSelection(type: @C.TrackType Int) {
-        TrackSelectionDialogFragment(type, viewModel)
+        TrackSelectionDialogFragment.newInstance(type)
             .show(requireActivity().supportFragmentManager, "trackselectiondialog")
     }
 
     private fun showSpeedSelection() {
-        SpeedSelectionDialogFragment(viewModel)
+        SpeedSelectionDialogFragment()
             .show(requireActivity().supportFragmentManager, "speedselectiondialog")
     }
 

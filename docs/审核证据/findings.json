@@ -1,0 +1,686 @@
+[
+  {
+    "id": "JD-001",
+    "priority": "P1",
+    "title": "同名下载文件可能覆盖已有媒体",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/work/DownloadWorker.kt",
+        513
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/utils/DownloaderImpl.kt",
+        155
+      ]
+    ],
+    "trigger": "同一存储目录内，两个不同条目的服务端文件名相同（例如不同子目录里的 `video.mkv`），且两个 Worker 同时收尾；或者同名文件与 `(2)` 至 `(99)` 均已存在。",
+    "impact": "先 `exists()` 找空位再 `renameTo()`，两步间没有占位或互斥。两个任务可以选中同一路径，后一次重命名覆盖前一个文件，两条数据库记录却都指向它。编号达到上限时，循环直接返回已存在的 `(99)` 路径，同样会覆盖。",
+    "validation": "代码确认；等价 JVM 文件探针已复现并发覆盖和编号耗尽覆盖，未运行 Android Worker。",
+    "fix": "以条目/媒体源 ID 保证最终路径唯一，或对选名与发布文件实行可靠的排他保护；编号耗尽必须明确失败，不能返回已占用路径。",
+    "main": false
+  },
+  {
+    "id": "JD-002",
+    "priority": "P2",
+    "title": "同步旧快照成功后清掉新修改的待同步标记",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/work/SyncWorker.kt",
+        88
+      ],
+      [
+        "data/src/main/java/dev/jdtech/jellyfin/database/ServerDatabaseDao.kt",
+        225
+      ],
+      [
+        "data/src/main/java/dev/jdtech/jellyfin/repository/JellyfinRepositoryOfflineImpl.kt",
+        299
+      ]
+    ],
+    "trigger": "有网络时后台同步正在上传某条目的旧进度，同时用户在离线模式继续播放或修改收藏；也可由联网调用失败后的本地写入产生竞争。应用启动会调度同步，未因离线开关而排除这类并发。",
+    "impact": "Worker 读取位置 100 后发起请求；页面将位置改成 200 并标记待同步；旧请求成功后，Worker 按用户/条目直接把标记清零，没有比对版本或快照。服务端保留 100，本地是 200，但后续同步查询已找不到该行。",
+    "validation": "代码确认；使用现有 DAO 原始 SQL 与 schema 9 的内存 SQLite 复现。",
+    "fix": "增加修改版本号或基于快照的条件确认；只有上传数据仍对应当前版本时才能清位。避免在网络请求期间持有数据库事务。",
+    "main": false
+  },
+  {
+    "id": "JD-003",
+    "priority": "P2",
+    "title": "同步失败标成成功且缺少重新调度",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/work/SyncWorker.kt",
+        65
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/BaseApplication.kt",
+        134
+      ]
+    ],
+    "trigger": "启动同步时网络已连接，但 Jellyfin 暂时不可用、请求超时或返回错误；或者启动时同步已结束，随后本地写入才产生新的待同步数据。",
+    "impact": "请求失败后脏标记虽然保留，Worker 仍返回 `Result.success()`，WorkManager 不会按失败重试。全局调用搜索确认同步只由 Application 的一次性请求入队；Repository 写脏标记、恢复联网等路径没有再次调度。服务器恢复可用后，当前进程持续存活期间数据可以一直不回传，通常要等下次进程重建再试。",
+    "validation": "完整调度与异常处理调用链静态确认；未向服务端发请求。",
+    "fix": "写入待同步数据时触发受网络约束的唯一任务，并对可重试失败返回 `Result.retry()`；明确处理认证错误和部分成功，避免因任意失败导致整批无期限重传。",
+    "main": false
+  },
+  {
+    "id": "JD-004",
+    "priority": "P2",
+    "title": "下载准备阶段取消无效",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/presentation/downloader/DownloaderViewModel.kt",
+        50
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/utils/DownloaderImpl.kt",
+        155
+      ]
+    ],
+    "trigger": "首次点击下载，界面已显示排队，`downloadItem()` 尚未返回任务 ID 时确认取消。加载媒体源和附属数据期间均有窗口；尤其主文件入队后还会串行获取 Trickplay，窗口可明显拉长。",
+    "impact": "ViewModel 在整个 `downloadItem()` 返回后才赋值 `taskId`，没有保存/取消下载准备协程。此时取消只尝试操作仍为 null 的 `taskId`，随后重置界面；原协程继续运行，最终赋值并观察任务，下载重新出现或一直在后台执行。",
+    "validation": "页面按钮、ViewModel 和 Downloader 完整时序静态确认；未在设备上执行下载。",
+    "fix": "让入队尽快返回可取消的任务句柄，并管理准备协程或请求代次；取消必须涵盖准备、主文件和附属任务，还要阻止旧结果恢复界面。取消传播需要配合失败清理，不能只加一个协程 `cancel()`。",
+    "main": false
+  },
+  {
+    "id": "JD-005",
+    "priority": "P1",
+    "title": "mpv 默认关闭所有 HTTPS 证书验证",
+    "locations": [
+      [
+        "player/local/src/main/java/dev/jdtech/jellyfin/player/local/mpv/MPVPlayer.kt",
+        171
+      ],
+      [
+        "data/src/main/java/dev/jdtech/jellyfin/repository/JellyfinRepositoryImpl.kt",
+        639
+      ]
+    ],
+    "trigger": "选择 mpv 后端，播放 HTTPS 服务器的在线媒体；这不需要用户开启“不安全连接”设置。",
+    "impact": "`tls-verify=no` 是统一默认值，服务器身份与证书链不再经过验证。能干预链路的一方可冒充媒体端点，篡改响应，并可能接收该请求携带的鉴权信息。普通 Android 网络安全配置不能替代 native mpv 的验证。",
+    "validation": "配置与媒体 URL 调用链静态确认；没有执行中间人攻击，也没有验证 native 构建的具体 TLS 库。没有将 HTTP 本地服务器兼容需求本身报为缺陷。",
+    "fix": "默认验证证书；自签名服务器使用明确的信任配置或限定服务器的用户选择。回归有效证书、错误主机名、过期证书及自签名服务器。",
+    "main": false
+  },
+  {
+    "id": "JD-006",
+    "priority": "P2",
+    "title": "截图裁剪、缩放和 JPEG 压缩在主线程执行",
+    "locations": [
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/utils/VideoFrameCapture.kt",
+        41
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/PlayerActivity.kt",
+        542
+      ]
+    ],
+    "trigger": "播放菜单选择“截图设为横屏封面”，PixelCopy 成功回调。",
+    "impact": "回调 Handler 明确指定 Main；其中同步裁剪、缩放、JPEG quality=90 压缩及字节数组复制。原始位图按 Surface 全尺寸分配，之后才缩到最大宽 1920。大画面或慢设备会占用 UI 线程，干扰播放操作与动画。",
+    "validation": "Main 回调和实际计算路径静态确认；未测量帧耗时、掉帧率或 ANR，不能声称每次截图都会卡顿。",
+    "fix": "仅在 Main 取视图尺寸和提交 PixelCopy，把位图处理与编码交给后台 dispatcher，回到 Main 提示/更新 UI；核对取消与位图释放。",
+    "main": true
+  },
+  {
+    "id": "JD-007",
+    "priority": "P2",
+    "title": "下载附属图片写盘和删除目录继承主线程",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/utils/DownloaderImpl.kt",
+        524
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/utils/DownloaderImpl.kt",
+        200
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/presentation/downloader/DownloaderViewModel.kt",
+        78
+      ]
+    ],
+    "trigger": "详情页下载含 Trickplay 的媒体，或从下载卡片删除/取消已有下载。",
+    "impact": "入口是 viewModelScope 的 Main 协程；DAO/Repository 挂起调用返回后仍回到 Main。saveTrickplayData 逐张 writeBytes，deleteItem 同步删除分片、媒体流及多层 images/trickplay 目录，工作量随图片和文件数量增长。",
+    "validation": "入口、dispatcher 和文件操作静态确认。Room 挂起 SQL 自行调度，这里指出的是恢复到 Main 之后的文件操作；没有把 DAO 误报成主线程 SQL。",
+    "fix": "在 Downloader 内对整段文件工作建立 IO 边界，保留数据库/文件一致性与取消清理。回归长片 Trickplay、多分片及最后一集连带清理。",
+    "main": true
+  },
+  {
+    "id": "JD-008",
+    "priority": "P2",
+    "title": "配置编辑同步读写文件且失败会逃出 UI 回调",
+    "locations": [
+      [
+        "settings/src/main/java/dev/jdtech/jellyfin/settings/presentation/settings/SettingsFileEditViewModel.kt",
+        26
+      ],
+      [
+        "settings/src/main/java/dev/jdtech/jellyfin/settings/presentation/settings/SettingsFileEditViewModel.kt",
+        36
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/settings/SettingsFileEditScreen.kt",
+        52
+      ]
+    ],
+    "trigger": "打开或保存 mpv.conf/input.conf，遇到大配置、慢存储、文件不可读或写盘失败。",
+    "impact": "loadFile 由 LaunchedEffect 调用，保存由点击回调调用，均直接 readText/writeText，没有 IO 切换或异常反馈。IOException 会逃出主线程操作；writeText 直接覆盖原文件，也没有原子替换保护。",
+    "validation": "源码与 UI 调用链确认；通常配置很小，因此卡顿程度依赖输入和存储。没有伪造磁盘耗尽，也没有声称实测发生原文件丢失。",
+    "fix": "后台读取、临时文件写入后原子替换，捕获失败并保留编辑内容及旧配置。回归不可读文件、写失败、返回时未保存内容和较大配置。",
+    "main": true
+  },
+  {
+    "id": "JD-009",
+    "priority": "P2",
+    "title": "首次 UI 注入 API 时 runBlocking 等待 Room",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/di/ApiModule.kt",
+        38
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/di/RepositoryModule.kt",
+        22
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/film/HomeScreen.kt",
+        63
+      ]
+    ],
+    "trigger": "JellyfinApi 尚未由其他入口初始化，UI 在 Main 获取依赖 Repository 的 Hilt ViewModel。",
+    "impact": "普通同步 provider 内 runBlocking 等待 getServerWithAddressAndUser。SQL 在 Room 调度器执行，但 Main 会一直阻塞到查询返回；数据库锁竞争或调度延迟会直接传递给页面创建。",
+    "validation": "阻塞等待语义和可达 UI 注入链确认。Application 的 Worker 也可能先实例化 API，因此不是每次启动都会走 Main；未证明死锁或测得等待时长。",
+    "fix": "把连接配置恢复改为异步初始化，UI 等待可观察的准备状态；同步 provider 只创建轻量实例。回归首次 UI 创建、Worker 抢先初始化和数据库繁忙。",
+    "main": true
+  },
+  {
+    "id": "JD-010",
+    "priority": "P2",
+    "title": "字幕全文和评论 HTML 解析在网络返回后回到 Main",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/subtitle/SubtitleDownloaderImpl.kt",
+        53
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/subtitle/SubtitlecatScraper.kt",
+        41
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/comment/JavDbCommentSource.kt",
+        64
+      ],
+      [
+        "modes/film/src/main/java/dev/jdtech/jellyfin/film/presentation/movie/MovieViewModel.kt",
+        390
+      ]
+    ],
+    "trigger": "详情/播放页搜索字幕，或电影页缓存未命中时加载评论。",
+    "impact": "Controller 的 scope.launch 与 MovieViewModel 默认在 Main；channelFlow 没有 flowOn。HTTP 自身切 IO，但返回后的全文解码、时间行替换、多次时间戳遍历、Jsoup 解析仍由 Main 执行。最多 5 个候选限制数量，没有限制每份正文大小。",
+    "validation": "dispatcher 继承和解析位置静态确认。评论通常只有少量条目，实际耗时取决于响应体，未宣称已出现 ANR。元数据/图片/演员抓取已有外层 IO，未一并误报。",
+    "fix": "在解析层使用 Default 或对整个处理流建立后台边界，增加合理响应大小限制；状态及事件继续在 UI 所需上下文更新。",
+    "main": true
+  },
+  {
+    "id": "JD-011",
+    "priority": "P2",
+    "title": "合法的分钟格式 WebVTT 无法生成字幕 cue",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/subtitle/SubtitleTiming.kt",
+        19
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/subtitle/SubtitleCueParser.kt",
+        79
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/subtitle/SubtitlecatScraper.kt",
+        97
+      ]
+    ],
+    "trigger": "下载支持范围内的 .vtt，其时间行是 `00:01.000 --> 00:02.000`（省略小时）。",
+    "impact": "共享正则强制要求小时、分钟、秒三个字段。该合法 WebVTT 得到 0 条 cue、时长未知，对照面板没有台词；同内容改成 HH:MM:SS 则正常。",
+    "validation": "verify_continuation.py 编译并运行当前 SubtitleTiming/CueParser/TextDecoder 源码，最小日志替身不改变解析；短格式 0 条、长格式 1 条。未运行 Android UI。",
+    "fix": "按格式支持可选小时并保持时间行规范化、时长和 cue 解析一致。回归分钟格式、超过一小时、cue 设置和 SRT。",
+    "main": false
+  },
+  {
+    "id": "JD-012",
+    "priority": "P2",
+    "title": "对照缓存的批次检查与写入不是原子操作",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/subtitle/SubtitleCompareCache.kt",
+        95
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/subtitle/SubtitleCompareCache.kt",
+        194
+      ]
+    ],
+    "trigger": "旧 upsert 通过令牌检查后尚未执行 IO，另一入口 clear 并开始新一轮；或两份 controller 同时合并缓存。",
+    "impact": "检查在 withContext(IO) 之前，clear/读清单/写字幕/写清单没有按条目串行化。旧写入可在清理后重建目录并发布旧候选；并行读改写还可丢行或争用同名 .tmp。令牌存在并不覆盖这段窗口。",
+    "validation": "源码确认；隔离目录与线程屏障的等价时序探针复现 clear 完成后旧清单重现。探针不是 Android 协程/文件系统压力测试。",
+    "fix": "按条目序列化 clear 与 upsert，在保护区内核对代次并发布；临时文件不能被并发写者共用。回归清理/追加/重开交错。",
+    "main": false
+  },
+  {
+    "id": "JD-013",
+    "priority": "P2",
+    "title": "切集后旧候选仍可上传并应用到新一集",
+    "locations": [
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/player/subtitle/SubtitlePlaybackCoordinator.kt",
+        141
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/player/subtitle/SubtitlePlaybackCoordinator.kt",
+        333
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/player/subtitle/SubtitlePlaybackCoordinator.kt",
+        473
+      ]
+    ],
+    "trigger": "A 集打开下载弹窗并取得候选，视频自动进入 B 集后再点击上传；或 A 的上传尚未返回便切到 B。",
+    "impact": "切集只改 playedItemId/关键词、关闭已开的对照面板，不清候选或取消任务。上传时取当前 targetItemId，候选本身未绑定 A；Uploaded 事件也不带目标 ID，完成后再次向当前条目侧载。对照的确认回调也存在同类对象漂移。",
+    "validation": "完整入口、切集轮询、Controller 与事件消费链静态确认；没有向服务器上传测试字幕。",
+    "fix": "批次、候选、确认及 Uploaded 事件绑定服务器/条目身份，切集时失效并取消，完成回调再次比对。回归自动切集、手动下一集、确认框停留与迟到上传。",
+    "main": false
+  },
+  {
+    "id": "JD-014",
+    "priority": "P2",
+    "title": "ExoPlayer 在字幕关闭状态下上传字幕仍保持关闭",
+    "locations": [
+      [
+        "player/local/src/main/java/dev/jdtech/jellyfin/player/local/presentation/PlayerViewModel.kt",
+        151
+      ],
+      [
+        "player/local/src/main/java/dev/jdtech/jellyfin/player/local/presentation/PlayerViewModel.kt",
+        364
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/player/subtitle/SubtitlePlaybackCoordinator.kt",
+        531
+      ]
+    ],
+    "trigger": "之前手动关闭字幕（记忆为 OFF），在播放页上传或应用一份新字幕，希望按该操作立即切轨。",
+    "impact": "初始化明确把 TEXT 禁用；字幕侧载只 setMediaItems/prepare，没有清除 TEXT 禁用或旧 override、也没有选择新轨。新增字幕可出现在轨道列表里，但仍不可见，界面却提示上传成功。",
+    "validation": "ExoPlayer 参数保持及调用链静态确认；setRealSubtitleVisible 只控制覆盖层/mpv，未替 Exo 清除禁用。未做设备播放验证。",
+    "fix": "用户明确应用时开启 TEXT、移除失效 override 并选择对应轨，处理服务器索引与本地副本的身份。回归 OFF、另一语言偏好及两种后端。",
+    "main": false
+  },
+  {
+    "id": "JD-015",
+    "priority": "P2",
+    "title": "字幕重载用网络请求前的集数和位置重建播放列表",
+    "locations": [
+      [
+        "player/local/src/main/java/dev/jdtech/jellyfin/player/local/presentation/PlayerViewModel.kt",
+        331
+      ],
+      [
+        "player/local/src/main/java/dev/jdtech/jellyfin/player/local/presentation/PlayerViewModel.kt",
+        341
+      ],
+      [
+        "player/local/src/main/java/dev/jdtech/jellyfin/player/local/presentation/PlayerViewModel.kt",
+        364
+      ]
+    ],
+    "trigger": "ExoPlayer 开始重载字幕后，getExternalSubtitles 等待期间用户拖动、暂停或切集。",
+    "impact": "currentIndex/item/position/wasPlaying 在请求前抓取，返回后没有身份/代次或播放状态检查，直接覆盖 items[currentIndex] 并跳回旧位置、恢复旧播放状态；切集时可能跳回上一集。",
+    "validation": "跨挂起点的数据快照与写回静态确认；与 JD-013 的“候选归错对象”根因不同，此项是重载播放器时应用旧快照。",
+    "fix": "请求结果绑定当前会话并检查有效性，真正重建前读取当前位置和播放状态，已切集则丢弃；串行化重复应用请求。",
+    "main": false
+  },
+  {
+    "id": "JD-016",
+    "priority": "P2",
+    "title": "正字幕延迟会把尚未显示的短句取消",
+    "locations": [
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/player/subtitle/DelayedSubtitleView.kt",
+        85
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/player/subtitle/DelayedSubtitleView.kt",
+        99
+      ]
+    ],
+    "trigger": "延迟设为 5 秒，字幕 A 在 0～1 秒出现；1 秒时收到空 cue 或下一句。",
+    "impact": "每次 schedule 都先 removeCallbacks，A 原本应在 5 秒显示，却在 1 秒被取消。这里实现了只保留最后一次变化的防抖，无法保留整个字幕时间轴；短于延迟的句子可能全部消失。",
+    "validation": "编译运行当前 DelayedSubtitleView，使用可控 Handler/视图替身；推进到 5 秒确认 A 从未渲染。该测试验证调度逻辑，不模拟 Media3 解码。",
+    "fix": "按原到达时间排队延迟每次 cue 变化；seek、关闭、偏移变化时显式清理/重新同步。回归短句、连续句、空 cue 和快速拖动。",
+    "main": false
+  },
+  {
+    "id": "JD-017",
+    "priority": "P2",
+    "title": "首次创建对照快照时到达的候选会漏入面板",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/subtitle/SubtitleDownloadController.kt",
+        147
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/subtitle/SubtitleDownloadController.kt",
+        175
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/subtitle/SubtitleDownloadController.kt",
+        304
+      ]
+    ],
+    "trigger": "已有第一份候选时点“播放视频时对比”，clear/upsert 的 IO 等待期间第二份下载完成。",
+    "impact": "ready 先取快照，compareItemId 要等写入成功才登记。第二份虽进入候选 State，但 append 看到关联为空直接返回，也不在第一次 ready 快照里；之后没有补齐步骤，这行不会自动出现。",
+    "validation": "同一 Main scope 在 IO 挂起点可交错，源码时序确认；没有在设备上模拟慢磁盘。此项与缓存内的并发写入 JD-012 分别处理。",
+    "fix": "建立批次期间缓存增量，或发布前后补齐最新 Ready 集合并序列化关联；回归慢写盘时的候选到达。",
+    "main": false
+  },
+  {
+    "id": "JD-018",
+    "priority": "P2",
+    "title": "mpv 恢复音频焦点后逻辑状态仍是暂停",
+    "locations": [
+      [
+        "player/local/src/main/java/dev/jdtech/jellyfin/player/local/mpv/MPVPlayer.kt",
+        722
+      ],
+      [
+        "player/local/src/main/java/dev/jdtech/jellyfin/player/local/mpv/MPVPlayer.kt",
+        728
+      ],
+      [
+        "player/local/src/main/java/dev/jdtech/jellyfin/player/local/mpv/MPVPlayer.kt",
+        1008
+      ]
+    ],
+    "trigger": "正在用 mpv 播放，暂时失去音频焦点后又取得 AUDIOFOCUS_GAIN。",
+    "impact": "失焦把 currentPlayWhenReady 置 false；恢复回调只向 native 写 pause=false，没有恢复 Java Player 状态。未观察 pause 属性以做反向同步，原生画面恢复而 Player.isPlaying/播放按钮/进度上报仍按暂停判断。",
+    "validation": "状态写入、观察属性与焦点回调静态确认；未在设备上制造来电/其他音频抢占。",
+    "fix": "通过统一状态入口恢复播放并派发 Media3 事件，区分暂时/永久失焦与用户主动暂停；核对焦点期间的暂停操作。",
+    "main": false
+  },
+  {
+    "id": "JD-019",
+    "priority": "P2",
+    "title": "播放器 DialogFragment 无无参构造，恢复时会崩溃",
+    "locations": [
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/player/PlayerMenuDialogFragment.kt",
+        28
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/player/TrackSelectionDialogFragment.kt",
+        17
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/player/SpeedSelectionDialogFragment.kt",
+        14
+      ]
+    ],
+    "trigger": "菜单/轨道/速度 DialogFragment 尚在 FragmentManager 保存状态中，宿主进程被回收后恢复。",
+    "impact": "三个 Fragment 都要求构造参数注入 ViewModel/回调，没有无参构造，也没有注册可恢复它们的 FragmentFactory。默认恢复按类名调用无参构造，会抛 Fragment.InstantiationException。Manifest 的 configChanges 不能避免进程回收。",
+    "validation": "构造器及全仓 FragmentFactory 使用核对；基于 AndroidX 恢复契约静态确认，未跑设备进程恢复。",
+    "fix": "使用可恢复的 Fragment、arguments 和宿主 ViewModel/结果通信，或采用能恢复参数的工厂；回归对话框打开时进程回收。",
+    "main": false
+  },
+  {
+    "id": "JD-020",
+    "priority": "P2",
+    "title": "截图检查期间切集会把新一集画面上传给旧一集",
+    "locations": [
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/PlayerActivity.kt",
+        507
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/PlayerActivity.kt",
+        518
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/PlayerActivity.kt",
+        542
+      ]
+    ],
+    "trigger": "对 A 集点“截图设为横屏封面”，hasBackdrop(A) 网络等待期间自动连播到 B。",
+    "impact": "itemId 在请求前保存为 A，SurfaceView 始终是同一个视图；返回后不再核对当前媒体，截取的可能是 B，仍用旧 itemId 上传给 A。PixelCopy 等待窗口也需同样保护。",
+    "validation": "检查、截图回调与上传目标链静态确认；没有改真实封面。",
+    "fix": "操作绑定播放会话，网络返回及 PixelCopy 完成时均比对条目/媒体源；身份变化则放弃并明确提示。",
+    "main": false
+  },
+  {
+    "id": "JD-021",
+    "priority": "P2",
+    "title": "视频流尺寸缺失会使详情加载整体失败",
+    "locations": [
+      [
+        "modes/film/src/main/java/dev/jdtech/jellyfin/film/domain/VideoMetadataParser.kt",
+        97
+      ],
+      [
+        "modes/film/src/main/java/dev/jdtech/jellyfin/film/presentation/movie/MovieViewModel.kt",
+        151
+      ]
+    ],
+    "trigger": "服务器返回 VIDEO 轨，但 height 或 width 缺失，例如未完成探测或异常媒体元数据。",
+    "impact": "FindroidMediaStream 的尺寸可空，VIDEO 类型不保证尺寸存在，解析却使用 !!。异常发生在详情成功 State 发布之前，导致电影/分集详情走整体错误路径，而不是仅隐藏分辨率标记。",
+    "validation": "模型可空性、强制解包与 ViewModel catch 路径静态确认；未依赖假设某个真实媒体必然缺字段。",
+    "fix": "未知尺寸只降级这一项元信息，保留可用详情；回归缺宽、缺高和未知视频编码。",
+    "main": false
+  },
+  {
+    "id": "JD-022",
+    "priority": "P2",
+    "title": "替换抓取封面先删旧图，上传失败后无法恢复",
+    "locations": [
+      [
+        "modes/film/src/main/java/dev/jdtech/jellyfin/film/presentation/movie/MovieViewModel.kt",
+        1059
+      ],
+      [
+        "modes/film/src/main/java/dev/jdtech/jellyfin/film/presentation/movie/MovieViewModel.kt",
+        1062
+      ]
+    ],
+    "trigger": "编辑封面中选用抓取图片，旧图删除成功后上传因断网、限额或服务器错误失败；批量替换部分失败同样可达。",
+    "impact": "先删除本次所有同类型旧图，再逐个上传新图。catch 只发失败事件，既未保留旧字节也不回滚；正常的“替换”失败会丢失原有服务器封面。",
+    "validation": "MovieScreen → UploadScrapedImages → Repository 删除/上传顺序及异常反馈静态确认；没有执行真实删除。",
+    "fix": "优先使用服务器覆盖语义，成功后再处理多余旧图；确需先删时备份可恢复内容并明确处理部分失败。回归删除成功/上传失败及批次中途失败。",
+    "main": false
+  },
+  {
+    "id": "JD-023",
+    "priority": "P2",
+    "title": "封面预下载失败后目录存在会阻止重试",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/work/ImagesDownloaderWorker.kt",
+        42
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/work/ImagesDownloaderWorker.kt",
+        48
+      ],
+      [
+        "data/src/main/java/dev/jdtech/jellyfin/models/FindroidImages.kt",
+        76
+      ]
+    ],
+    "trigger": "首次预下载封面先创建目录，随后 primary/backdrop 请求失败、写盘失败，或任务在两张图之间中断。",
+    "impact": "失败被 continue/日志吸收，任务仍成功。后续新 Worker 仅因目录 exists 就跳过，不检查单个文件是否完整；离线映射仍指向缺失图片，网络恢复后不会自行补齐。",
+    "validation": "下载调度、目录短路、失败处理与离线图片路径静态闭环；没有声称在线 Coil 图片缓存也受同一判断控制。",
+    "fix": "按文件完整性判断、使用完成标记并对暂时失败重试，避免把半成品目录当完成。回归首次两张均失败、只成功一张及进程中断。",
+    "main": false
+  },
+  {
+    "id": "JD-024",
+    "priority": "P2",
+    "title": "媒体库进程恢复后跳过加载，留下空列表",
+    "locations": [
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/film/LibraryScreen.kt",
+        74
+      ],
+      [
+        "modes/film/src/main/java/dev/jdtech/jellyfin/film/presentation/library/LibraryViewModel.kt",
+        39
+      ]
+    ],
+    "trigger": "媒体库已加载（initialLoad=false），应用后台进程被回收，再恢复到该页面。",
+    "impact": "rememberSaveable 恢复 false，但新 ViewModel 的分页 State 已重置为空。LaunchedEffect 只 setup，不再 loadItems；没有 init/SavedStateHandle 恢复数据流，直到用户触发排序等额外加载动作。",
+    "validation": "可保存 UI 标记与非持久 ViewModel 初始状态静态确认；没有执行设备进程恢复。普通旋转保留 VM 时不一定触发此问题。",
+    "fix": "加载幂等性由 ViewModel 持有，并在新 VM 中恢复必要请求参数；不要把进程内“已加载”标记独立持久化。",
+    "main": false
+  },
+  {
+    "id": "JD-025",
+    "priority": "P2",
+    "title": "发现服务器时重复修改同一列表抑制状态通知",
+    "locations": [
+      [
+        "setup/src/main/java/dev/jdtech/jellyfin/setup/presentation/addserver/AddServerViewModel.kt",
+        34
+      ],
+      [
+        "setup/src/main/java/dev/jdtech/jellyfin/setup/presentation/addserver/AddServerViewModel.kt",
+        44
+      ]
+    ],
+    "trigger": "局域网发现接口先后返回至少两台服务器。",
+    "impact": "首次 State 已持有 mutableList；后续 add 原地改了旧 State 的同一列表，再 copy 得到与旧 State 相等的新 State。StateFlow 合并该赋值，普通 List 也没有 Compose 快照通知，后到服务器可能一直不显示。",
+    "validation": "verify_continuation.py 用 StateFlow 和当前同形赋值步骤确认第二次赋值后仍是原 State 实例；未在局域网发发现包。",
+    "fix": "每次发出新的不可变列表，避免已发布状态继续被原地修改。回归多台服务器分批到达与重复发现。",
+    "main": false
+  },
+  {
+    "id": "JD-026",
+    "priority": "P2",
+    "title": "详情错误已进入 State，界面却继续显示加载动画",
+    "locations": [
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/film/MovieScreen.kt",
+        1007
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/film/EpisodeScreen.kt",
+        272
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/film/SeasonScreen.kt",
+        178
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/presentation/film/ShowScreen.kt",
+        291
+      ]
+    ],
+    "trigger": "首次加载电影/剧集/季/分集详情时请求失败、条目失效或解析抛错，尚未拿到内容。",
+    "impact": "ViewModel catch 写入 error，但这些 Screen 没有消费 state.error；模型为空时一直显示 spinner。电影页工具栏还受 entranceStarted 控制，没有内容就不进入，错误原因和重试入口都不可见。",
+    "validation": "四个 Screen 与对应 ViewModel 的失败状态逐一静态核对。这里不是“网络慢”，而是请求已结束后 UI 仍表现为加载。",
+    "fix": "明确区分 Loading/Content/Error/Empty，展示失败原因、重试和可用返回入口；保留已有内容时采用非阻塞错误反馈。",
+    "main": false
+  },
+  {
+    "id": "JD-027",
+    "priority": "P2",
+    "title": "POST 同站协议相对重定向被错误当作跨域",
+    "locations": [
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/scraper/ScraperHttp.kt",
+        246
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/scraper/ScraperHttp.kt",
+        86
+      ],
+      [
+        "core/src/main/java/dev/jdtech/jellyfin/core/scraper/ScraperHttp.kt",
+        96
+      ]
+    ],
+    "trigger": "postFollowingRedirects 收到合法的 `Location: //example.test/detail`，原请求也在 example.test（如 Jav321 查询后跳详情）。",
+    "impact": "resolveUrl 拼成 `https:example.test/detail`，缺少 //；接着 URI(...).host 为 null，isSameHost 拒绝继续并返回 3xx。调用方无法取得影片。不能据此断言所有 GET 都失败，GET 还经过 OkHttp 的 URL 规范化。",
+    "validation": "提取运行当前 resolveUrl 与 isSameHost 源码，确认同站协议相对 Location 被拒；普通 /path 对照正常。未访问实际网站。",
+    "fix": "使用 URI/HttpUrl 的标准相对解析，保留同域策略；回归 //host、绝对/相对路径和真正跨域跳转。",
+    "main": false
+  },
+  {
+    "id": "JD-028",
+    "priority": "P2",
+    "title": "Fastlane 发布包名与实际手机版包名不一致",
+    "locations": [
+      [
+        "fastlane/Appfile",
+        1
+      ],
+      [
+        "app/phone/build.gradle.kts",
+        50
+      ],
+      [
+        "fastlane/Fastfile",
+        34
+      ]
+    ],
+    "trigger": "打标签运行 publish 工作流，经 fastlane publish 上传 libreRelease AAB 到 Play。",
+    "impact": "Appfile 仍指定 dev.jdtech.jellyfin，手机版实际 applicationId 是 com.torah.my.jellyfin；Fastfile 未覆盖 package_name。上传所选 Play 应用与产物不一致，会被拒绝，后续 GitHub Release 步骤也无法正常走完。",
+    "validation": "工作流、Appfile、Fastfile 与 release 变体静态交叉核对；没有执行构建、发布或验证 Play 账号权限。namespace 不等于 applicationId。",
+    "fix": "统一发布应用标识，并核对账号/轨道和元数据归属；在上传前从产物校验包名与目标。",
+    "main": false
+  },
+  {
+    "id": "JD-029",
+    "priority": "P3",
+    "title": "完整播放和失败图片 URL 写入 debug 日志",
+    "locations": [
+      [
+        "player/local/src/main/java/dev/jdtech/jellyfin/player/local/presentation/PlayerViewModel.kt",
+        268
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/BaseApplication.kt",
+        89
+      ],
+      [
+        "app/phone/src/main/java/dev/jdtech/jellyfin/BaseApplication.kt",
+        127
+      ]
+    ],
+    "trigger": "使用 debug 包播放在线媒体，或图片请求失败后收集/共享日志。",
+    "impact": "直接记录完整 streamUrl 和图片请求 URL，至少暴露服务器地址及路径，违反仓库敏感信息不落日志约定；若 URL 携带凭据参数还会一并打印。没有截断或脱敏。",
+    "validation": "记录位置与 DEBUG 才 plant Tree 的限制已核对。发布包没有该 Tree，未认定 release 持续输出日志；未取得 SDK 1.7.1 实际生成样本，因此不把 token 必然在 query 中作为已验证事实。",
+    "fix": "只记录条目 ID、状态码与错误类别，URL/账号/凭据统一脱敏；检查异常对象中是否附带请求信息。",
+    "main": false
+  },
+  {
+    "id": "JD-030",
+    "priority": "P3",
+    "title": "设置模块的六个文案缺少简繁中文",
+    "locations": [
+      [
+        "settings/src/main/res/values/strings.xml",
+        128
+      ],
+      [
+        "settings/src/main/res/values-zh-rCN/strings.xml",
+        1
+      ],
+      [
+        "settings/src/main/res/values-zh-rTW/strings.xml",
+        1
+      ]
+    ],
+    "trigger": "使用简体或繁体中文，进入播放器后端、mpv 配置文件编辑或放弃修改确认。",
+    "impact": "edit_file_title、pref_player_backend、mpv_options、advanced、discard_changes_dialog_title、discard_changes_dialog_text 只在英文 values 存在且可翻译，中文界面会回落英文。",
+    "validation": "解析全部范围内资源并按 key 做差集确认；其他本轮核对的模块简繁中文差集为空，翻译占位符未发现不一致。",
+    "fix": "补齐两个中文目录的六项翻译，保留 %1$s 等参数；用资源差集复核。",
+    "main": false
+  }
+]

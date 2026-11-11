@@ -11,6 +11,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,7 +53,15 @@ fun SettingsFileEditScreen(
 
     LaunchedEffect(filePath) { viewModel.loadFile(filePath = filePath) }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    val fallbackError = stringResource(CoreR.string.unknown_error)
+    LaunchedEffect(state.error) {
+        state.error?.let { snackbarHostState.showSnackbar(it.localizedMessage ?: fallbackError) }
+    }
+
     SettingsFileEditScreenLayout(
+        isEditable = state.isLoaded && !state.isSaving,
+        snackbarHostState = snackbarHostState,
         fileName = filePath.split("/").last(),
         initialText = state.initialText,
         onAction = { action ->
@@ -68,6 +78,8 @@ fun SettingsFileEditScreen(
 private fun SettingsFileEditScreenLayout(
     fileName: String,
     initialText: String,
+    isEditable: Boolean = true,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     onAction: (SettingsFileEditAction) -> Unit,
 ) {
     val textFieldState = rememberTextFieldState()
@@ -85,6 +97,7 @@ private fun SettingsFileEditScreenLayout(
 
     Scaffold(
         modifier = Modifier.imePadding(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(SettingsR.string.edit_file_title, fileName)) },
@@ -107,7 +120,7 @@ private fun SettingsFileEditScreenLayout(
                             val text = textFieldState.text.toString()
                             onAction(SettingsFileEditAction.OnSave(text))
                         },
-                        enabled = isModified,
+                        enabled = isModified && isEditable,
                     ) {
                         Icon(
                             painter = painterResource(CoreR.drawable.ic_save),
@@ -120,6 +133,7 @@ private fun SettingsFileEditScreenLayout(
     ) { innerPadding ->
         TextField(
             state = textFieldState,
+            enabled = isEditable,
             modifier = Modifier.fillMaxSize().padding(innerPadding).focusRequester(focusRequester),
             textStyle =
                 TextStyle(

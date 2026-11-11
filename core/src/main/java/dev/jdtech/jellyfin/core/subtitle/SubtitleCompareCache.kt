@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONArray
@@ -61,6 +63,12 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
      * 线程安全：upsert 跑在 IO，clear / clearAsync 可能来自任意线程。
      */
     private val generations = ConcurrentHashMap<UUID, Long>()
+    private val itemLocks = ConcurrentHashMap<UUID, Mutex>()
+
+    private suspend fun <T> withItemLock(itemId: UUID, block: suspend () -> T): T =
+        withContext(Dispatchers.IO) {
+            itemLocks.getOrPut(itemId) { Mutex() }.withLock { block() }
+        }
 
     /** 当前批次令牌；从没 clear 过的条目为 0。调用方必须在 clear 之后读取才是本批的令牌。 */
     fun batchToken(itemId: UUID): Long = generations[itemId] ?: 0L
@@ -96,14 +104,9 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
         batchToken: Long,
         subtitles: Map<Int, DownloadedSubtitle>,
     ): List<SubtitleCompareEntry> {
-        // 令牌校验放在进 IO 之前：过期写入直接拒绝，避免为它重新建目录
-        val currentToken = generations[itemId] ?: 0L
-        if (currentToken != batchToken) {
-            throw IllegalStateException(
-                "对照快照批次已过期，丢弃本次写入：$itemId（令牌 $batchToken ≠ 当前 $currentToken）"
-            )
-        }
-        return withContext(Dispatchers.IO) {
+        return withItemLock(itemId) {
+            // 校验与文件发布必须处于同一保护区，clear 不能插进两者之间。
+            check(this.batchToken(itemId) == batchToken) { "字幕对照快照批次已过期" }
             val dir = itemDir(itemId)
             if (!dir.isDirectory && !dir.mkdirs()) {
                 throw IllegalStateException("无法创建字幕对照缓存目录：$dir")
@@ -147,7 +150,7 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
      * 空表由调用方按「本地字幕已失效」处理（提示用户重新下载，不静默重下）。
      */
     suspend fun load(itemId: UUID): List<SubtitleCompareEntry> =
-        withContext(Dispatchers.IO) {
+        withItemLock(itemId) {
             try {
                 readEntries(itemDir(itemId))
             } catch (e: CancellationException) {
@@ -186,7 +189,7 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
         format: String,
         bytes: ByteArray,
     ): File =
-        withContext(Dispatchers.IO) {
+        withItemLock(itemId) {
             val dir = sideloadDir(itemId)
             if (!dir.isDirectory && !dir.mkdirs()) {
                 throw IllegalStateException("无法创建字幕侧载目录：$dir")
@@ -203,8 +206,9 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
      *
      * 侧载字幕不在这里删：播放器在 seek 后仍会读它，只有播放页销毁时的 [clearAsync] 才回收。
      */
-    suspend fun clear(itemId: UUID, includeSideload: Boolean = false) {
-        withContext(Dispatchers.IO) {
+    suspend fun clear(itemId: UUID, includeSideload: Boolean = false, expectedToken: Long? = null): Long =
+        withItemLock(itemId) {
+            if (expectedToken != null && batchToken(itemId) != expectedToken) return@withItemLock batchToken(itemId)
             generations[itemId] = (generations[itemId] ?: 0L) + 1
             val dir = itemDir(itemId)
             if (dir.exists() && !dir.deleteRecursively()) {
@@ -216,8 +220,8 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
                     AppLog.w("清理字幕侧载缓存失败：%s", sideloaded)
                 }
             }
+            batchToken(itemId)
         }
-    }
 
     /**
      * 不依赖调用方协程作用域的清理入口，用于播放页 `onDestroy` 这类「马上就要销毁」的时机。
@@ -228,7 +232,8 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
      */
     fun clearAsync(itemId: UUID) {
         AppLog.d("后台清理字幕对照快照与侧载字幕：%s", itemId)
-        cleanupScope.launch { clear(itemId, includeSideload = true) }
+        val token = batchToken(itemId)
+        cleanupScope.launch { clear(itemId, includeSideload = true, expectedToken = token) }
     }
 
     /**
@@ -261,12 +266,12 @@ class SubtitleCompareCache @Inject constructor(private val application: Applicat
     }
 
     private fun writeAtomically(target: File, bytes: ByteArray) {
-        val temp = File(target.parentFile, "${target.name}.tmp")
-        temp.writeBytes(bytes)
-        if (!temp.renameTo(target)) {
-            // 个别文件系统上目标已存在时 rename 会失败，删掉再来一次
-            target.delete()
-            check(temp.renameTo(target)) { "写入字幕对照缓存失败：$target" }
+        val temp = File.createTempFile(target.name, ".tmp", target.parentFile)
+        try {
+            temp.writeBytes(bytes)
+            check(temp.renameTo(target)) { "写入字幕对照缓存失败" }
+        } finally {
+            temp.delete()
         }
     }
 

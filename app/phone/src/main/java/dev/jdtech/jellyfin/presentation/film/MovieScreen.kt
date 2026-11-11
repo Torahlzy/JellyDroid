@@ -97,6 +97,7 @@ import dev.jdtech.jellyfin.presentation.film.components.ScrapeProgressDialog
 import dev.jdtech.jellyfin.presentation.film.components.ScraperUrlsDialog
 import dev.jdtech.jellyfin.presentation.film.components.SubtitleDownloadDialog
 import dev.jdtech.jellyfin.presentation.film.components.VideoMetadataBar
+import dev.jdtech.jellyfin.presentation.film.components.DetailLoadError
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.Motion
 import dev.jdtech.jellyfin.presentation.theme.spacings
@@ -316,6 +317,7 @@ fun MovieScreen(
     }
 
     MovieScreenLayout(
+        onRetryClick = { viewModel.loadMovie(movieId) },
         movieId = movieId,
         heroKey = heroKey,
         state = state,
@@ -610,6 +612,7 @@ private enum class MoreMenuDialogState {
 private fun MovieScreenLayout(
     movieId: UUID,
     state: MovieState,
+    onRetryClick: () -> Unit = {},
     heroKey: String = "movie-hero-$movieId",
     downloaderState: DownloaderState,
     onScrapeImageClick: (person: FindroidItemPerson) -> Unit,
@@ -1003,14 +1006,24 @@ private fun MovieScreenLayout(
         }
 
         // 加载中：居中转圈（延迟出现）；内容区块仍等进场转场结束再组合，避免与 morph 抢帧
-        if (state.movie == null && showLoadingSpinner) {
+        if (state.movie == null && state.error == null && showLoadingSpinner) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        }
+
+        state.error?.let { error ->
+            DetailLoadError(
+                error = error,
+                onRetryClick = onRetryClick,
+                modifier = Modifier.align(
+                    if (state.movie == null) Alignment.Center else Alignment.BottomCenter
+                ),
+            )
         }
 
         // 顶栏：与文字区块同一时机淡入（entranceStarted，见 contentAppeared 处注释），
         // 转场期间不显示，避免随页面级 fadeIn 提前出现
         AnimatedVisibility(
-            visible = entranceStarted,
+            visible = entranceStarted || state.error != null,
             enter =
                 fadeIn(
                     tween(

@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * 「下载字幕」的状态机：搜索 / 逐条下载 / 上传 / 落盘对照快照。
@@ -31,6 +33,17 @@ constructor(
     private val repository: JellyfinRepository,
     private val compareCache: SubtitleCompareCache,
 ) {
+
+    /** 一批候选固定归属于服务器、用户与条目，代次用于拒绝迟到结果。 */
+    data class Target(val server: String, val userId: UUID, val itemId: UUID, val generation: Long)
+
+    private var generation = 0L
+    private var batchTarget: Target? = null
+    private val compareMutex = Mutex()
+
+    private fun targetFor(itemId: UUID) = Target(repository.getBaseUrl(), repository.getUserId(), itemId, generation)
+
+    fun isCurrentTarget(target: Target, itemId: UUID): Boolean = target == targetFor(itemId)
 
     private val _state = MutableStateFlow(SubtitleDownloadState())
     val state: StateFlow<SubtitleDownloadState> = _state.asStateFlow()
@@ -70,9 +83,11 @@ constructor(
      * 语言优先级与时长容差判据都在 [SubtitleDownloader] 里，这里只负责状态与（用户选定后的）上传。
      * [videoDurationMs] 传 0 表示视频时长未知，界面显示「未知」。
      */
-    fun download(scope: CoroutineScope, keyword: String, videoDurationMs: Long) {
+    fun download(scope: CoroutineScope, keyword: String, videoDurationMs: Long, itemId: UUID) {
         if (keyword.isBlank()) return
         cancelJobs()
+        batchTarget = targetFor(itemId)
+        val currentGeneration = generation
         downloadedSubtitles = emptyMap()
         // 新一批候选重新开始：之前那次对照的关联就此断开（用户要对比得再点一次）
         invalidateCompareBatch()
@@ -83,7 +98,9 @@ constructor(
                 try {
                     downloader
                         .download(keyword, videoDurationMs)
-                        .collect { result -> handleResult(result) }
+                        .collect { result ->
+                            if (currentGeneration == generation) handleResult(result)
+                        }
                 } catch (e: CancellationException) {
                     AppLog.d("字幕搜索已取消：%s", keyword)
                     throw e
@@ -102,6 +119,7 @@ constructor(
      * 只解禁按钮，用户可重试或改选别的。
      */
     fun upload(scope: CoroutineScope, itemId: UUID, candidate: SubtitleCandidate) {
+        val requestTarget = batchTarget?.takeIf { isCurrentTarget(it, itemId) } ?: return
         val downloaded = downloadedSubtitles[candidate] ?: return
         if (uploadJob?.isActive == true) return
         downloadJob?.cancel()
@@ -111,6 +129,7 @@ constructor(
             scope.launch {
                 try {
                     uploadToServer(itemId, downloaded)
+                    if (!isCurrentTarget(requestTarget, itemId)) return@launch
                     AppLog.tag("SubSideload").d(
                         "服务器上传成功，准备发 Uploaded：item=%s，bytes=%d",
                         itemId,
@@ -119,6 +138,7 @@ constructor(
                     reset()
                     eventsChannel.send(
                         SubtitleDownloadEvent.Uploaded(
+                            target = requestTarget,
                             language = downloaded.subtitle.language,
                             subtitle = downloaded,
                         )
@@ -144,36 +164,38 @@ constructor(
      * 因此这里也不 [reset]：下载协程还要把后续结果写进列表与缓存。
      */
     suspend fun prepareCompare(itemId: UUID) {
-        val ready = readySubtitlesByOrder()
-        if (ready.isEmpty()) return
-        // 关联断开、换了条目、或快照被别处 clear（关闭面板 / 另一处开新一轮）都会让令牌换代。
-        // 这三种情况都按新批次重新落盘，否则会拿着过期令牌写入被拒，用户连点几次都进不了面板。
-        if (!isCurrentBatch(itemId)) {
-            // upsert 是按行号合并的，不清的话本次没下到的旧行号会跟着进面板
-            compareCache.clear(itemId)
-            // 必须在 clear 之后取令牌：之后每一次追加写入都带着它校验，
-            // 期间快照再被别处 clear 过就写不进去（详见 [compareBatchToken]）
-            compareBatchToken = compareCache.batchToken(itemId)
-        }
-        try {
-            compareCache.upsert(itemId, compareBatchToken, ready)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // 首次开批时 compareItemId 还没登记，只能按令牌判换代，不能用 isCurrentBatch。
-            // 换代说明这份快照已不归本批所有，静默作废等下一轮重开，不该给用户报错
-            if (compareCache.batchToken(itemId) != compareBatchToken) {
-                AppLog.d("对照快照已换代，本批落盘作废：%s", itemId)
-                invalidateCompareBatch()
-                return
+        val requestGeneration = generation
+        val event = compareMutex.withLock {
+            if (requestGeneration != generation) return@withLock null
+            val requestTarget = batchTarget?.takeIf { isCurrentTarget(it, itemId) }
+                ?: return@withLock null
+            if (readySubtitlesByOrder().isEmpty()) return@withLock null
+            if (!isCurrentBatch(itemId)) {
+                // 新批次先清理旧行号，clear 返回的令牌与后续追加共用。
+                compareBatchToken = compareCache.clear(itemId)
+                if (!isCurrentTarget(requestTarget, itemId)) return@withLock null
             }
-            AppLog.e(e, "字幕对照快照落盘失败：%s", itemId)
-            eventsChannel.send(SubtitleDownloadEvent.Failed(e))
-            return
+            compareItemId = itemId
+            // 清理挂起期间可能有候选就绪，登记关联后再取一次完整快照。
+            val ready = readySubtitlesByOrder()
+            try {
+                compareCache.upsert(itemId, compareBatchToken, ready)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!isCurrentBatch(itemId)) {
+                    AppLog.d("对照快照已换代，本批落盘作废：%s", itemId)
+                    invalidateCompareBatch()
+                    return@withLock null
+                }
+                AppLog.e(e, "字幕对照快照落盘失败：%s", itemId)
+                return@withLock SubtitleDownloadEvent.Failed(e)
+            }
+            if (!isCurrentTarget(requestTarget, itemId)) return@withLock null
+            SubtitleDownloadEvent.CompareReady(itemId, requestTarget)
         }
-        // 落盘成功后才登记关联：失败时不必让后续候选继续往一份没写成的快照里补
-        compareItemId = itemId
-        eventsChannel.send(SubtitleDownloadEvent.CompareReady(itemId))
+        // 事件消费者可能暂停；发送时不持有缓存锁，后到候选仍能追加。
+        if (requestGeneration == generation && event != null) eventsChannel.send(event)
     }
 
     /**
@@ -219,6 +241,8 @@ constructor(
     fun clear() = cancel()
 
     private fun cancelJobs() {
+        generation++
+        batchTarget = null
         downloadJob?.cancel()
         downloadJob = null
         uploadJob?.cancel()
@@ -296,10 +320,10 @@ constructor(
     }
 
     /** 对照期间下完的候选补进快照；快照被换代（令牌过期）即作废本批关联，写失败只记日志，不打断剩余下载。 */
-    private suspend fun appendToCompareSnapshot(downloaded: DownloadedSubtitle) {
-        val itemId = compareItemId ?: return
+    private suspend fun appendToCompareSnapshot(downloaded: DownloadedSubtitle) = compareMutex.withLock {
+        val itemId = compareItemId ?: return@withLock
         val index = _state.value.candidates.indexOfFirst { it.candidate == downloaded.candidate }
-        if (index < 0) return
+        if (index < 0) return@withLock
         try {
             compareCache.upsert(itemId, compareBatchToken, mapOf(index + 1 to downloaded))
         } catch (e: CancellationException) {

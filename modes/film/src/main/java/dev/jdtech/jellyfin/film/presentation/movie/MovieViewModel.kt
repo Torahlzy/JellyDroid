@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jellyfin.sdk.model.api.ImageType
 import org.jellyfin.sdk.model.api.PersonKind
 
 @HiltViewModel
@@ -119,14 +120,17 @@ constructor(
             subtitleController.events.collect { event ->
                 when (event) {
                     is SubtitleDownloadEvent.Uploaded -> {
+                        if (!subtitleController.isCurrentTarget(event.target, movieId)) return@collect
                         eventsChannel.send(MovieEvent.SubtitleUploaded(event.language))
                         // 重新拉一次条目，让播放源里带上刚上传的字幕轨
                         loadMovie(movieId)
                     }
                     is SubtitleDownloadEvent.Failed ->
                         eventsChannel.send(MovieEvent.SubtitleDownloadFailed(event.error))
-                    is SubtitleDownloadEvent.CompareReady ->
+                    is SubtitleDownloadEvent.CompareReady -> {
+                        if (!subtitleController.isCurrentTarget(event.target, movieId)) return@collect
                         eventsChannel.send(MovieEvent.SubtitleCompareReady)
+                    }
                 }
             }
         }
@@ -135,6 +139,7 @@ constructor(
     fun loadMovie(movieId: UUID) {
         this.movieId = movieId
         viewModelScope.launch {
+            _state.emit(_state.value.copy(error = null))
             try {
                 val movie = repository.getMovie(movieId)
                 // 可选播放来源改用与播放端相同的接口：条目自带的 sources 与 getPostedPlaybackInfo 的顺序未必一致，
@@ -172,6 +177,8 @@ constructor(
                 logFilePaths(movie, newState)
                 // 短评要出外网，失败只影响评论区，因此放在详情主体之后单独加载
                 loadComments(newState.defaultScrapeKeyword)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.emit(_state.value.copy(error = e))
             }
@@ -354,6 +361,7 @@ constructor(
             }
             is MovieAction.DownloadSubtitle -> {
                 subtitleController.download(
+                    itemId = movieId,
                     scope = viewModelScope,
                     keyword = action.keyword,
                     videoDurationMs = videoDurationMs(),
@@ -1042,9 +1050,7 @@ constructor(
     /**
      * 把 [images]（用户选中某个站点抓到的横图 / 竖图）上传到服务器，成功后刷新页面让新封面生效。
      *
-     * 上传前先删掉服务器上同类型的旧图：`setItemImage` 只覆盖同类图片的第 0 张，
-     * 不先删的话原有的多张背景（或同类多张）会和新图并存，看起来就像「老图没被替换」。
-     * 只删与本次上传同类型的图，没抓取的类型（如 Logo）保持不动。
+     * 单图类型直接覆盖；背景图在服务器上追加，全部上传成功后才删除该类型的旧图。
      */
     private fun uploadScrapedImages(images: List<ScrapedImage>) {
         if (images.isEmpty() || _state.value.isUploadingImages) return
@@ -1055,11 +1061,17 @@ constructor(
                 // 重新取一次服务器列表而不是用 state 里的缓存：用户可能刚点过「清理」
                 val replacedImages =
                     repository.getItemImages(movieId).filter { it.imageType in scrapedTypes }
-                if (replacedImages.isNotEmpty()) {
-                    repository.deleteItemImages(movieId, replacedImages)
-                }
-                images.forEach { image ->
-                    repository.setItemImage(movieId, image.imageType, image.bytes)
+                images.groupBy { it.imageType }.forEach { (type, replacements) ->
+                    replacements.forEach { image ->
+                        repository.setItemImage(movieId, type, image.bytes)
+                    }
+                    // Jellyfin 10.10 的多图上传忽略 imageIndex 并追加，旧索引在删除前仍有效。
+                    val redundantImages = if (type == ImageType.BACKDROP) {
+                        replacedImages.filter { it.imageType == type }
+                    } else emptyList()
+                    if (redundantImages.isNotEmpty()) {
+                        repository.deleteItemImages(movieId, redundantImages)
+                    }
                 }
                 // 刷新「当前服务器使用」，编辑封面弹窗里立刻能看到刚上传的图
                 refreshItemImages()
