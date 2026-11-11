@@ -349,7 +349,7 @@ else -> WelcomeRoute
 - **Screen**：`PHONE/presentation/settings/SettingsScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETTINGS/presentation/settings/SettingsViewModel.kt`、`SETTINGS/presentation/settings/SettingsState.kt`、`SETTINGS/presentation/settings/SettingsAction.kt`、`SETTINGS/presentation/settings/SettingsEvent.kt`。
 - **State 字段**：`isLoading`、`preferenceGroups`。
-- **主要方法 / Action**：`loadPreferences(indexes, deviceType)`、`onAction()`；`OnBackClick`、`OnUpdate`。
+- **主要方法 / Action**：`loadPreferences(indexes)`、`onAction()`；`OnBackClick`、`OnUpdate`。
 - **Event**：`NavigateToUsers`、`NavigateToServers`、`NavigateToAbout`、`NavigateToSettings`、`NavigateToSettingsFileEdit`、`UpdateTheme`、`LaunchIntent`、`RestartActivity`。
 - **入口**：底部「设置」标签（`PHONE/NavigationRoot.kt`）。
 

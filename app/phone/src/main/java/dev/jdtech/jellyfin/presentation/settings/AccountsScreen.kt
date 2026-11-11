@@ -46,7 +46,6 @@ import dev.jdtech.jellyfin.presentation.settings.components.settingsInteraction
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.settings.R as SettingsR
-import dev.jdtech.jellyfin.settings.presentation.enums.DeviceType
 import dev.jdtech.jellyfin.settings.presentation.settings.JavDbLoginState
 import dev.jdtech.jellyfin.settings.presentation.settings.SettingsAction
 import dev.jdtech.jellyfin.settings.presentation.settings.SettingsEvent
@@ -76,7 +75,6 @@ fun AccountsScreen(
         viewModel.onAction(AccountsAction.Refresh)
         settingsViewModel.loadPreferences(
             intArrayOf(SettingsR.string.settings_category_accounts),
-            DeviceType.PHONE,
         )
     }
     ObserveAsEvents(viewModel.events) { event ->
@@ -98,7 +96,6 @@ fun AccountsScreen(
             if (action is SettingsAction.OnUpdate) {
                 settingsViewModel.loadPreferences(
                     intArrayOf(SettingsR.string.settings_category_accounts),
-                    DeviceType.PHONE,
                 )
             }
         },

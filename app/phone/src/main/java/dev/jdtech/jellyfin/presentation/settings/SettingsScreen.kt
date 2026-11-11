@@ -41,7 +41,6 @@ import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.plus
 import dev.jdtech.jellyfin.settings.R as SettingsR
-import dev.jdtech.jellyfin.settings.presentation.enums.DeviceType
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceCategory
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceGroup
 import dev.jdtech.jellyfin.settings.presentation.settings.JavDbLoginState
@@ -70,7 +69,7 @@ fun SettingsScreen(
 
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    LaunchedEffect(true) { viewModel.loadPreferences(indexes, DeviceType.PHONE) }
+    LaunchedEffect(true) { viewModel.loadPreferences(indexes) }
 
     ObserveAsEvents(viewModel.events) { event ->
         when (event) {
@@ -135,7 +134,7 @@ fun SettingsScreen(
                 is SettingsAction.OnBackClick -> navigateBack()
                 is SettingsAction.OnUpdate -> {
                     viewModel.onAction(action)
-                    viewModel.loadPreferences(indexes, DeviceType.PHONE)
+                    viewModel.loadPreferences(indexes)
                 }
                 // 站点登录相关（取验证码 / 提交 / 退出 / 关弹窗）都由 ViewModel 处理
                 else -> viewModel.onAction(action)

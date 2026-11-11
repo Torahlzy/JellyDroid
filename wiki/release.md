@@ -1,6 +1,6 @@
 # 发版步骤（GitHub Release）
 
-最后更新：2026-10-28
+最后更新：2026-11-11
 
 本分支发版 = **本机构建并签名 release APK + 手工创建 GitHub Release**，不走 GitHub Actions。
 
@@ -15,7 +15,7 @@ const val APP_CODE = 210      // versionCode，十进制递增：2.0=200、2.1=2
 const val APP_NAME = "2.1"    // versionName，与标签 release-2.1 对应
 ```
 
-`APP_CODE` 必须单调递增，否则新包无法覆盖安装旧包。`:app:phone` 与 `:app:tv` 都从这里取版本，改一处即可。
+`APP_CODE` 必须单调递增，否则新包无法覆盖安装旧包。手机版 `:app:phone` 从这里取版本，改一处即可。
 
 ## 2. 准备签名
 

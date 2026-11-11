@@ -8,7 +8,6 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.jdtech.jellyfin.settings.R
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
-import dev.jdtech.jellyfin.settings.presentation.enums.DeviceType
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceAction
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceAppLanguage
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceCategory
@@ -46,7 +45,6 @@ constructor(
 
     /** 上一次加载用的参数：登录 / 退出登录后据此原地刷新账号行。 */
     private var lastIndexes: IntArray = intArrayOf()
-    private var lastDeviceType: DeviceType = DeviceType.PHONE
 
     private val topLevelPreferences =
         listOf(
@@ -261,7 +259,6 @@ constructor(
                                                     nameStringResource = R.string.player_gestures,
                                                     backendPreference =
                                                         appPreferences.playerGestures,
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
                                                 ),
                                                 PreferenceSwitch(
                                                     nameStringResource =
@@ -270,7 +267,6 @@ constructor(
                                                         R.string.player_gestures_vb_summary,
                                                     dependencies =
                                                         listOf(appPreferences.playerGestures),
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
                                                     backendPreference =
                                                         appPreferences.playerGesturesVB,
                                                 ),
@@ -281,7 +277,6 @@ constructor(
                                                         R.string.player_gestures_seek_summary,
                                                     dependencies =
                                                         listOf(appPreferences.playerGestures),
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
                                                     backendPreference =
                                                         appPreferences.playerGesturesSeek,
                                                 ),
@@ -292,7 +287,6 @@ constructor(
                                                         R.string.player_gestures_zoom_summary,
                                                     dependencies =
                                                         listOf(appPreferences.playerGestures),
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
                                                     backendPreference =
                                                         appPreferences.playerGesturesZoom,
                                                 ),
@@ -303,7 +297,6 @@ constructor(
                                                         R.string.player_start_maximized_summary,
                                                     dependencies =
                                                         listOf(appPreferences.playerGestures),
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
                                                     backendPreference =
                                                         appPreferences.playerGesturesStartMaximized,
                                                 ),
@@ -402,7 +395,6 @@ constructor(
                                                             appPreferences
                                                                 .playerMediaSegmentsAutoSkip
                                                         ),
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
                                                     backendPreference =
                                                         appPreferences
                                                             .playerMediaSegmentsAutoSkipMode,
@@ -458,7 +450,6 @@ constructor(
                                                             .pref_player_gestures_seek_trickplay_summary,
                                                     dependencies =
                                                         listOf(appPreferences.playerTrickplay),
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
                                                     backendPreference =
                                                         appPreferences.playerGesturesSeekTrickplay,
                                                 ),
@@ -473,7 +464,6 @@ constructor(
                                                         R.string.picture_in_picture_gesture,
                                                     descriptionStringRes =
                                                         R.string.picture_in_picture_gesture_summary,
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
                                                     backendPreference =
                                                         appPreferences.playerPipGesture,
                                                 )
@@ -506,7 +496,6 @@ constructor(
                                                 PreferenceSwitch(
                                                     nameStringResource =
                                                         R.string.download_mobile_data,
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
                                                     backendPreference =
                                                         appPreferences.downloadOverMobileData,
                                                 ),
@@ -516,7 +505,6 @@ constructor(
                                                         listOf(
                                                             appPreferences.downloadOverMobileData
                                                         ),
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
                                                     backendPreference =
                                                         appPreferences.downloadWhenRoaming,
                                                 ),
@@ -628,7 +616,6 @@ constructor(
                                             listOf(
                                                 PreferenceSelect(
                                                     nameStringResource = R.string.theme,
-                                                    supportedDeviceTypes = listOf(DeviceType.PHONE),
                                                     backendPreference = appPreferences.theme,
                                                     onUpdate = { value ->
                                                         viewModelScope.launch {
@@ -723,9 +710,8 @@ constructor(
             ),
         )
 
-    fun loadPreferences(indexes: IntArray = intArrayOf(), deviceType: DeviceType) {
+    fun loadPreferences(indexes: IntArray = intArrayOf()) {
         lastIndexes = indexes
-        lastDeviceType = deviceType
         viewModelScope.launch {
             var preferences = topLevelPreferences
 
@@ -752,7 +738,6 @@ constructor(
                         preferenceGroup.copy(
                             preferences =
                                 preferenceGroup.preferences
-                                    .filter { it.supportedDeviceTypes.contains(deviceType) }
                                     .map { preference ->
                                         when (preference) {
                                             is PreferenceSwitch -> {
@@ -917,7 +902,7 @@ constructor(
             is SettingsAction.JavDbLogout ->
                 viewModelScope.launch {
                     javDbSession.logout()
-                    loadPreferences(lastIndexes, lastDeviceType)
+                    loadPreferences(lastIndexes)
                 }
             is SettingsAction.CloseJavDbLogin ->
                 viewModelScope.launch {
@@ -978,7 +963,7 @@ constructor(
         when (result) {
             is JavDbLoginResult.Success -> {
                 _state.emit(_state.value.copy(javdbLogin = JavDbLoginState.Hidden))
-                loadPreferences(lastIndexes, lastDeviceType)
+                loadPreferences(lastIndexes)
             }
             is JavDbLoginResult.Failure -> {
                 val image = runCatching { javDbSession.loadCaptcha() }.getOrNull()

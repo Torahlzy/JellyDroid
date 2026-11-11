@@ -21,8 +21,7 @@ import dev.jdtech.jellyfin.core.presentation.theme.Spacings
  * 应用横幅：logo + 应用名文字。
  *
  * 应用名改用真实文本（取 app_name 资源）绘制，避免图内文字轮廓无法随改名联动。
- * logo 取 [R.drawable.ic_logo]，各 app 模块可用同名资源覆盖，手机版已覆盖为新版 JAV 图标；
- * [R.drawable.ic_banner] 是旧版水母 logo，留给 TV 端横幅使用。
+ * logo 取 [R.drawable.ic_logo]，手机版以同名资源覆盖为新版 JAV 图标。
  */
 @Composable
 fun AppBanner(modifier: Modifier = Modifier) {

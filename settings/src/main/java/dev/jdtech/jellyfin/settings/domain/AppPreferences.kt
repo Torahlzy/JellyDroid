@@ -189,10 +189,6 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     /** 所有可重建磁盘缓存共用的配额，单位为 MB。 */
     val cacheQuotaMb = Preference("pref_cache_quota_mb", 2048)
 
-    // TV 仍使用旧图片加载器，兼容字段不用于手机版缓存策略。
-    val imageCache = Preference("pref_image_cache", true)
-    val imageCacheSize = Preference("pref_image_cache_size", 900)
-
     // Sorting
     val sortBy = Preference("pref_sort_by", "SortName")
     val sortOrder = Preference("pref_sort_order", "Ascending")

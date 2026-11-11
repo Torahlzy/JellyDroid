@@ -8,7 +8,7 @@
 - **但要查编译错误，且优先用不产生构建开销的方式。** 顺序是：① 先看编辑器 / IDE 诊断（对已分析文件的实时语法、类型、未解析引用报错，零构建开销，改完代码就该看一眼）；② 诊断不足以判断时（涉及 Gradle 配置、资源引用、KSP / Hilt 生成代码），只编译受影响模块的 Kotlin 任务，如 `./gradlew :app:phone:compileLibreDebugKotlin`（任务名以 `./gradlew :app:phone:tasks --all` 为准）；③ 仅在用户明确要求时才 `assemble*` / `bundle*` 打包。**不要为了「看有没有编译错误」去跑 `assemble*`**——它会附带 dex、资源、打包等与「查错」无关的耗时步骤。
 - 保持修改最小化、聚焦，避免不必要的重构或大范围重写。
 - **`gradle/wrapper/gradle-wrapper.properties` 的本地改动默认忽略。** 用户本机长期把 `distributionUrl` 改成腾讯云镜像加速下载，但官方地址是 F-Droid 构建的要求（见文件内注释），所以这个文件**永远不提交**：审核 / 提交工作区变更时直接排除它，也不要建议还原。
-- **默认只改手机版（`:app:phone`），不考虑 TV 版（`:app:tv`）。** 只有与界面无关的共享逻辑（`:core`、`:data`、`:player:*`、`:settings`）才可能一并影响 TV 版。
+- **应用入口仅有手机版（`:app:phone`）。** 界面代码放在手机模块，共享业务逻辑按下文分层放入对应模块。
 - **注释一律使用中文**（代码注释、KDoc、TODO 说明）。
 - **UI 与动画一律遵守「[UI 与动效规范（Material 3 Expressive）](#ui-与动效规范material-3-expressive)」**。
 - **新增或修改功能前，先读「[代码设计与编码规范](#代码设计与编码规范)」**，按其分层、分包与代码风味要求实现。
@@ -275,7 +275,6 @@ README 面向产品宣发，保持清晰易懂；Git 核对基线统一记录在
 | 模块 | 职责 |
 |---|---|
 | `:app:phone` | 手机应用入口（Compose UI + 导航、`MainActivity`、`BaseApplication`） |
-| `:app:tv` | Android TV 应用（当前分支不维护） |
 | `:core` | 共享 ViewModel、DI 装配、下载器、后台 Worker、爬虫 |
 | `:data` | Jellyfin SDK 封装、Repository、Room 数据库、DTO |
 | `:settings` | `AppPreferences` 偏好系统 |
