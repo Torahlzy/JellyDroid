@@ -30,6 +30,7 @@ class AccountsViewModel @Inject constructor(
     private val eventsChannel = Channel<AccountsEvent>()
     val events = eventsChannel.receiveAsFlow()
     private val initialServerId = preferences.getValue(preferences.currentServer)
+    private var refreshJob: Job? = null
     private var publicUsersJob: Job? = null
 
     init {
@@ -39,7 +40,7 @@ class AccountsViewModel @Inject constructor(
 
     /**
      * 页面恢复时补刷，覆盖从添加服务器 / 管理地址 / 登录页返回后的数据变化。
-     * 首次进场若 init 的加载尚未结束，onAction 的 isLoading 守卫会合并重复请求。
+     * 与首次进场共用静默刷新，进行中的刷新会被合并；数据没变时 State 不变，界面不重组。
      */
     fun onResume() {
         onAction(AccountsAction.Refresh)
@@ -57,16 +58,21 @@ class AccountsViewModel @Inject constructor(
             toggleOfflineMode()
             return
         }
+        if (action == AccountsAction.Refresh) {
+            refresh()
+            return
+        }
         if (_state.value.isLoading) return
+        refreshJob?.cancel()
         publicUsersJob?.cancel()
         viewModelScope.launch {
             _state.emit(_state.value.copy(isLoading = true, error = null))
             try {
                 when (action) {
-                    AccountsAction.Back -> Unit
                     // 上面已提前处理，这里只补全密封分支
+                    AccountsAction.Back -> Unit
                     AccountsAction.ToggleOfflineMode -> Unit
-                    AccountsAction.Refresh -> load()
+                    AccountsAction.Refresh -> Unit
                     is AccountsAction.SelectServer -> {
                         _state.emit(_state.value.copy(hasChangedServer = true))
                         repository.setCurrentServer(action.serverId)
@@ -101,6 +107,26 @@ class AccountsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 进场与页面恢复时的静默刷新：加载态不写进 State，数据没变化时 StateFlow 靠 equals
+     * 去重，界面不会因一次刷新整体重组；身份变更操作会取消它，避免两次加载交叉写 State。
+     */
+    private fun refresh() {
+        if (_state.value.isLoading || refreshJob?.isActive == true) return
+        publicUsersJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            _state.emit(_state.value.copy(error = null))
+            try {
+                load()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.e(e, "加载或更新服务器与用户失败")
+                _state.emit(_state.value.copy(error = e))
+            }
+        }
+    }
+
     /** 离线模式决定全局 Repository 与底栏，切换后必须重启界面才能生效。 */
     private fun toggleOfflineMode() {
         val enabled = !_state.value.offlineMode
@@ -117,17 +143,20 @@ class AccountsViewModel @Inject constructor(
         // 添加服务器可能改过 SDK 的连接状态，返回后与当前保存的服务器重新对齐。
         current?.let { repository.setCurrentServer(it.id) }
         val users = current?.let { repository.getUsers(it.id) }.orEmpty()
+        val offlineMode = preferences.getValue(preferences.offlineMode)
+        val isSameServer = current != null && _state.value.currentServerId == current.id
         _state.emit(
             _state.value.copy(
                 servers = servers,
                 users = users,
-                publicUsers = emptyList(),
+                // 同一服务器且联网时保留公共用户，刷新不再把列表清空后再异步填回。
+                publicUsers = if (isSameServer && !offlineMode) _state.value.publicUsers else emptyList(),
                 currentServerId = current?.id,
                 currentUserId = current?.currentUserId,
                 hasChangedServer = _state.value.hasChangedServer || current?.id != initialServerId,
             )
         )
-        if (current != null && !preferences.getValue(preferences.offlineMode)) {
+        if (current != null && !offlineMode) {
             loadPublicUsers(current.id, users.map { it.id }.toSet())
         }
     }
