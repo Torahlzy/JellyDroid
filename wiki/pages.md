@@ -167,13 +167,13 @@ else -> WelcomeRoute
 
 ### DownloadsScreen — 下载
 
-- **职责**：展示本地已下载条目，分组网格呈现；空列表时提示「无下载」；点击条目时为详情路由设置 `useLocalData = true`，无需开启全局离线模式即可读取本地详情。
+- **职责**：展示本地已下载条目，分组网格呈现；空列表时提示「无下载」，加载失败可重试；点击条目时为详情路由设置 `useLocalData = true`，无需开启全局离线模式即可读取本地详情。右上角「保存到下载文件夹」支持选择已完成的电影、分集及不同视频版本，复制到手机公共 `Download/JellyDroid` 目录，显示所选文件大小、后台保存进度及成功 / 失败 / 取消数量。
 - **路由**：`DownloadsRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/DownloadsScreen.kt`。
-- **ViewModel**：`FILM/presentation/downloads/DownloadsViewModel.kt`。
-- **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action，VM 无 `onAction`）。
-- **State 字段**：`sections`、`isLoading`、`error`。
-- **主要方法**：`loadItems()`（内部调用 `repository.getDownloads()`）。
+- **ViewModel / State / Action**：`FILM/presentation/downloads/DownloadsViewModel.kt`、`FILM/presentation/downloads/DownloadsState.kt`、`FILM/presentation/downloads/DownloadsAction.kt`。
+- **State 字段**：`sections`、`isLoading`、`error`；保存相关状态为 `showExportDialog`、`exportItems`、`selectedSourceIds`、`isLoadingExportItems`、`isStartingExport`、`exportState`、`exportError`。
+- **主要方法 / Action**：`loadItems()`（内部调用 `repository.getDownloads()`）、`onAction()`；`OnItemClick`、`OpenExportDialog`、`CloseExportDialog`、`ToggleExportItem`、`ToggleSelectAll`、`ExportSelected`、`CancelExport`、`StoragePermissionDenied`、`Retry`。
+- **保存到公共目录**：弹窗为 `PHONE/presentation/film/components/DownloadExportDialog.kt`；业务接口与实现为 `core/src/main/java/dev/jdtech/jellyfin/utils/DownloadExporter.kt`、`core/src/main/java/dev/jdtech/jellyfin/utils/DownloadExporterImpl.kt`，从当前服务器的离线数据库读取已完成且文件存在的来源，不请求服务器。`core/src/main/java/dev/jdtech/jellyfin/work/DownloadExportWorker.kt` 使用 WorkManager 串行复制视频；Android 10 及以上通过 MediaStore 下载集合写入，Android 9 由 Screen 请求存储权限后写入公共目录。保留原始文件名与扩展名，同名自动另存，不覆盖既有文件；只复制视频文件，原有离线文件与播放记录不变，公共副本卸载后仍保留。关闭弹窗或离开页面后继续保存，可重新打开查看结果；停止保存只取消剩余任务，保留已完成的副本，未完成副本会清理。进程中断后，任务重跑会先按任务 id 清理上次未发布的副本，再检查源文件与剩余空间并重新复制；清理失败会显示保存失败，避免继续创建残留副本。
 - **详情数据来源**：`FILM/presentation/di/DetailRepositoryModule.kt` 根据路由保存在 `SavedStateHandle` 中的 `useLocalData` 参数，为电影 / 剧集 / 季 / 分集的 ViewModel 注入带 `FILM/presentation/di/DetailRepository.kt` 限定符的仓库；下载入口使用既有 `JellyfinRepositoryOfflineImpl`，元数据、播放源、下一集和季 / 分集列表均从 Room 读取。该参数沿剧集 → 季 → 分集及返回所属季 / 剧集的路径传递，进程重建后保留；本地详情范围内的 `LocalOfflineMode` 同时启用，隐藏服务器编辑入口，删除下载后返回上一页。播放时通过 Intent extra `useLocalData` 继续传入播放器，播放列表与进度记录同样使用本地仓库。其他入口仍按全局离线设置选择仓库。
 - **入口**：媒体页的「已下载」入口（`PHONE/presentation/film/components/MediaEntryCard.kt`，与「我喜欢」并排平分一行宽度）；离线模式下本页同时是底栏「下载」标签的根页面、启动落地页与各详情页 `navigateHome` 的目标，此时（`DownloadsScreen` 的 `isTabRoot`）列表底部额外留出底栏高度，避免最后一行被浮起的底栏压住（`CollectionGrid` 的 `bottomContentPadding`）。
 
@@ -208,7 +208,7 @@ else -> WelcomeRoute
 - **路由**：`FavoritesRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/FavoritesScreen.kt`；复用 `PHONE/presentation/film/CollectionScreen.kt` 的 `CollectionScreenLayout`（顶栏固定展示设置入口），设置弹窗为 `PHONE/presentation/film/components/SortByDialog.kt`。
 - **ViewModel**：`FILM/presentation/favorites/FavoritesViewModel.kt`；分组逻辑复用 `FILM/presentation/collection/CollectionSections.kt` 的 `buildCollectionSections()`。
-- **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action）；其中排序与封面模式字段由收藏页与合集页填充，下载页保持默认值。
+- **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action）；其中排序与封面模式字段由收藏页与合集页填充。
 - **State 字段**：`sections`、`sortBy`、`sortOrder`、`coverMode`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadItems()`（`repository.getFavoriteItems(sortBy, sortOrder)`，排序由服务端完成）、`onAction()`；`OnItemClick`、`OnBackClick`（导航由界面处理）、`ChangeSorting`（更新 State、写入共享偏好并重新取数）、`ChangeCoverMode`（更新 State 并写入共享偏好，不重新取数）。
 - **封面显示模式**：横图模式（`CollectionGrid.coverMode`）所有条目走 `Direction.HORIZONTAL` + `BANNER_ASPECT_RATIO`、列宽按可用宽度自适应；竖图模式保留分集原有的 16:9 剧照形态，其余条目用竖图。
