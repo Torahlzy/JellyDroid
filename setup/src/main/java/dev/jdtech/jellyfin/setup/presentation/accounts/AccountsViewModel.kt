@@ -25,16 +25,27 @@ class AccountsViewModel @Inject constructor(
     private val preferences: AppPreferences,
 ) : ViewModel() {
     private val _state =
-        MutableStateFlow(AccountsState(offlineMode = preferences.getValue(preferences.offlineMode)))
+        MutableStateFlow(
+            repository.getCachedAccounts().let { saved ->
+                AccountsState(
+                    servers = saved?.servers.orEmpty(),
+                    users = saved?.users.orEmpty(),
+                    currentServerId = saved?.currentServerId,
+                    currentUserId = saved?.currentUserId,
+                    offlineMode = preferences.getValue(preferences.offlineMode),
+                )
+            }
+        )
     val state = _state.asStateFlow()
     private val eventsChannel = Channel<AccountsEvent>()
     val events = eventsChannel.receiveAsFlow()
     private val initialServerId = preferences.getValue(preferences.currentServer)
     private var refreshJob: Job? = null
     private var publicUsersJob: Job? = null
+    private var hasResumed = false
 
     init {
-        // 服务器与用户都在本地 Room，进场立即读取，不等界面 ON_RESUME，避免首帧空白
+        // 首帧复用会话快照，Room 只在后台补齐其它服务器及账号变更。
         onAction(AccountsAction.Refresh)
     }
 
@@ -43,6 +54,11 @@ class AccountsViewModel @Inject constructor(
      * 与首次进场共用静默刷新，进行中的刷新会被合并；数据没变时 State 不变，界面不重组。
      */
     fun onResume() {
+        // 首次恢复已有 init 发起的刷新，避免本地查询刚结束就取消并重发公共用户请求。
+        if (!hasResumed) {
+            hasResumed = true
+            return
+        }
         onAction(AccountsAction.Refresh)
     }
 
@@ -62,6 +78,8 @@ class AccountsViewModel @Inject constructor(
             refresh()
             return
         }
+        if (action is AccountsAction.SelectServer && action.serverId == _state.value.currentServerId) return
+        if (action is AccountsAction.SelectUser && action.userId == _state.value.currentUserId) return
         if (_state.value.isLoading) return
         refreshJob?.cancel()
         publicUsersJob?.cancel()
@@ -115,7 +133,6 @@ class AccountsViewModel @Inject constructor(
         if (_state.value.isLoading || refreshJob?.isActive == true) return
         publicUsersJob?.cancel()
         refreshJob = viewModelScope.launch {
-            _state.emit(_state.value.copy(error = null))
             try {
                 load()
             } catch (e: CancellationException) {
@@ -138,33 +155,33 @@ class AccountsViewModel @Inject constructor(
     }
 
     private suspend fun load() {
-        val servers = repository.getServers()
-        val current = repository.getCurrentServer()
-        // 添加服务器可能改过 SDK 的连接状态，返回后与当前保存的服务器重新对齐。
-        current?.let { repository.setCurrentServer(it.id) }
-        val users = current?.let { repository.getUsers(it.id) }.orEmpty()
+        val saved = repository.getAccounts()
         val offlineMode = preferences.getValue(preferences.offlineMode)
-        val isSameServer = current != null && _state.value.currentServerId == current.id
+        val isSameServer = saved.currentServerId != null && _state.value.currentServerId == saved.currentServerId
+        val knownUserIds = saved.users.map { it.id }.toSet()
         _state.emit(
             _state.value.copy(
-                servers = servers,
-                users = users,
+                servers = saved.servers,
+                users = saved.users,
                 // 同一服务器且联网时保留公共用户，刷新不再把列表清空后再异步填回。
-                publicUsers = if (isSameServer && !offlineMode) _state.value.publicUsers else emptyList(),
-                currentServerId = current?.id,
-                currentUserId = current?.currentUserId,
-                hasChangedServer = _state.value.hasChangedServer || current?.id != initialServerId,
+                publicUsers = if (isSameServer && !offlineMode) {
+                    _state.value.publicUsers.filterNot { it.id in knownUserIds }
+                } else emptyList(),
+                currentServerId = saved.currentServerId,
+                currentUserId = saved.currentUserId,
+                offlineMode = offlineMode,
+                hasChangedServer = _state.value.hasChangedServer || saved.currentServerId != initialServerId,
+                error = if (isSameServer && !offlineMode) _state.value.error else null,
             )
         )
-        if (current != null && !offlineMode) {
-            loadPublicUsers(current.id, users.map { it.id }.toSet())
+        if (saved.currentServerId != null && !offlineMode) {
+            loadPublicUsers(saved.currentServerId, knownUserIds)
         }
     }
 
     /** 公共用户是补充数据，请求期间仍允许管理本地服务器和用户。 */
     private fun loadPublicUsers(serverId: String, knownUserIds: Set<UUID>) {
         publicUsersJob = viewModelScope.launch {
-            var error: Exception? = null
             val users =
                 try {
                     repository.getPublicUsers(serverId).filterNot { it.id in knownUserIds }
@@ -172,13 +189,16 @@ class AccountsViewModel @Inject constructor(
                     throw e
                 } catch (e: Exception) {
                     AppLog.e("加载公共用户失败，错误类型：%s", e.javaClass.simpleName)
-                    error = e
-                    emptyList()
+                    currentCoroutineContext().ensureActive()
+                    if (_state.value.currentServerId == serverId) {
+                        _state.emit(_state.value.copy(error = e))
+                    }
+                    return@launch
                 }
             // 连接已切换或请求已取消时，迟到的结果和错误都不能覆盖新列表。
             currentCoroutineContext().ensureActive()
             if (_state.value.currentServerId != serverId) return@launch
-            _state.emit(_state.value.copy(publicUsers = users, error = error))
+            _state.emit(_state.value.copy(publicUsers = users, error = null))
         }
     }
 }

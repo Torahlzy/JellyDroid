@@ -112,6 +112,7 @@ fun EpisodeScreen(
                     intent.putExtra("itemId", episodeId.toString())
                     intent.putExtra("itemKind", BaseItemKind.EPISODE.serialName)
                     intent.putExtra("startFromBeginning", action.startFromBeginning)
+                    intent.putExtra(PlayerActivity.EXTRA_USE_LOCAL_DATA, isOfflineMode)
                     context.startActivity(intent)
                 }
                 is EpisodeAction.OnBackClick -> navigateBack()

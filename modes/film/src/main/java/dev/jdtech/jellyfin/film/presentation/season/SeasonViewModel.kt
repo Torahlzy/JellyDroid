@@ -3,6 +3,7 @@ package dev.jdtech.jellyfin.film.presentation.season
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.jdtech.jellyfin.film.presentation.di.DetailRepository
 import dev.jdtech.jellyfin.repository.JellyfinRepository
 import java.util.UUID
 import javax.inject.Inject
@@ -13,8 +14,9 @@ import kotlinx.coroutines.launch
 import org.jellyfin.sdk.model.api.ItemFields
 
 @HiltViewModel
-class SeasonViewModel @Inject constructor(private val repository: JellyfinRepository) :
-    ViewModel() {
+class SeasonViewModel
+@Inject
+constructor(@DetailRepository private val repository: JellyfinRepository) : ViewModel() {
     private val _state = MutableStateFlow(SeasonState())
     val state = _state.asStateFlow()
 

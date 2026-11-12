@@ -19,6 +19,7 @@ import dev.jdtech.jellyfin.core.subtitle.SubtitleDownloadEvent
 import dev.jdtech.jellyfin.core.translator.MetadataTranslator
 import dev.jdtech.jellyfin.core.translator.TagTranslator
 import dev.jdtech.jellyfin.film.domain.VideoMetadataParser
+import dev.jdtech.jellyfin.film.presentation.di.DetailRepository
 import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.FindroidItemImage
 import dev.jdtech.jellyfin.models.FindroidItemPerson
@@ -56,7 +57,7 @@ import org.jellyfin.sdk.model.api.PersonKind
 class MovieViewModel
 @Inject
 constructor(
-    private val repository: JellyfinRepository,
+    @DetailRepository private val repository: JellyfinRepository,
     private val appPreferences: AppPreferences,
     private val videoMetadataParser: VideoMetadataParser,
     private val metadataScraper: MetadataScraper,

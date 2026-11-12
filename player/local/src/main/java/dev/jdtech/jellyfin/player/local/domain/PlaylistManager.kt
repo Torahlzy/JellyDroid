@@ -21,7 +21,7 @@ import org.jellyfin.sdk.model.api.BaseItemKind
 import org.jellyfin.sdk.model.api.ItemFields
 import org.jellyfin.sdk.model.api.MediaStreamType
 
-class PlaylistManager @Inject internal constructor(private val repository: JellyfinRepository) {
+class PlaylistManager @Inject internal constructor(private var repository: JellyfinRepository) {
     private var startItem: FindroidItem? = null
     private var items: List<FindroidItem> = emptyList()
     private val playerItems: MutableList<PlayerItem> = mutableListOf()
@@ -32,8 +32,16 @@ class PlaylistManager @Inject internal constructor(private val repository: Jelly
         itemKind: BaseItemKind,
         mediaSourceIndex: Int? = null,
         startFromBeginning: Boolean = false,
+        playbackRepository: JellyfinRepository = repository,
     ): PlayerItem? {
         AppLog.d("Retrieving initial player item")
+
+        // 同一播放页可能切换联网 / 本地入口，旧队列与已解析来源不能跨会话复用。
+        repository = playbackRepository
+        startItem = null
+        items = emptyList()
+        playerItems.clear()
+        currentItemIndex = 0
 
         val initialItem =
             when (itemKind) {

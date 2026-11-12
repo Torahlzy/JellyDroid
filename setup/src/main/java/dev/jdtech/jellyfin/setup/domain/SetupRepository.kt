@@ -9,6 +9,10 @@ import org.jellyfin.sdk.model.api.QuickConnectResult
 import org.jellyfin.sdk.model.api.ServerDiscoveryInfo
 
 interface SetupRepository {
+    fun getCachedAccounts(): AccountsSnapshot?
+
+    suspend fun getAccounts(): AccountsSnapshot
+
     fun discoverServers(): Flow<ServerDiscoveryInfo>
 
     suspend fun getServers(): List<ServerWithAddresses>

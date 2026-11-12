@@ -54,7 +54,8 @@ class SubtitlePlaybackCoordinator(
     /** 当前播放器；两条后端的切轨 API 各走各的 */
     private val player: Player,
     private val appPreferences: AppPreferences,
-    private val repository: JellyfinRepository,
+    private val repositoryProvider: () -> JellyfinRepository,
+    private val isUsingLocalData: () -> Boolean,
     /** 播放页自己的一份字幕下载状态机（**不是单例**，与详情页互不干扰） */
     private val subtitleController: SubtitleDownloadController,
     private val compareCache: SubtitleCompareCache,
@@ -67,6 +68,8 @@ class SubtitlePlaybackCoordinator(
     /** ExoPlayer 后端的侧载切轨（重载当前条目），由宿主转发给 PlayerViewModel */
     private val reloadWithExternalSubtitle: (uri: Uri, label: String, language: String) -> Unit,
 ) {
+    private val repository: JellyfinRepository
+        get() = repositoryProvider()
 
     companion object {
         /** 诊断用：等侧载字幕轨出现的最长时间；超时也只记日志，文件留到播放页销毁才回收。 */
@@ -440,13 +443,13 @@ class SubtitlePlaybackCoordinator(
      * 识别不到就留空输入框，与详情页一致。
      */
     private fun loadDefaultKeyword() {
+        keywordJob?.cancel()
         // 离线模式的来源是本地路径，识别不出番号，菜单里也没有「下载字幕」入口，不必白跑
-        if (appPreferences.getValue(appPreferences.offlineMode)) {
+        if (isUsingLocalData()) {
             _keyword.value = ""
             return
         }
         val itemId = targetItemId()
-        keywordJob?.cancel()
         keywordJob = scope.launch {
             try {
                 // 播放页可能由系统直接恢复，不能假设主界面已经恢复连接。

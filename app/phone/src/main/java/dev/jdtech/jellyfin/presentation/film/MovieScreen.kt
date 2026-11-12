@@ -294,6 +294,7 @@ fun MovieScreen(
                     startFromBeginning = false,
                     mediaSourceIndex = lastPlayedSourceIndex,
                     openSubtitleCompare = true,
+                    useLocalData = isOfflineMode,
                 )
             }
         }
@@ -348,6 +349,7 @@ fun MovieScreen(
                             itemKind = BaseItemKind.MOVIE,
                             startFromBeginning = action.startFromBeginning,
                             mediaSourceIndex = null,
+                            useLocalData = isOfflineMode,
                         )
                     }
                 }
@@ -526,6 +528,7 @@ fun MovieScreen(
                     itemKind = BaseItemKind.MOVIE,
                     startFromBeginning = playFromBeginningAfterSelect,
                     mediaSourceIndex = index,
+                    useLocalData = isOfflineMode,
                 )
             },
             onDismiss = { showPlaybackSourceDialog = false },
@@ -1158,6 +1161,7 @@ private fun startPlayer(
     itemKind: BaseItemKind,
     startFromBeginning: Boolean,
     mediaSourceIndex: Int?,
+    useLocalData: Boolean,
     /** 开播后直接打开字幕对照面板（候选已由详情页落盘）；不再重置播放进度。 */
     openSubtitleCompare: Boolean = false,
 ) {
@@ -1165,6 +1169,7 @@ private fun startPlayer(
     intent.putExtra("itemId", itemId.toString())
     intent.putExtra("itemKind", itemKind.serialName)
     intent.putExtra("startFromBeginning", startFromBeginning)
+    intent.putExtra(PlayerActivity.EXTRA_USE_LOCAL_DATA, useLocalData)
     mediaSourceIndex?.let { intent.putExtra(PlayerActivity.EXTRA_MEDIA_SOURCE_INDEX, it) }
     if (openSubtitleCompare) {
         intent.putExtra(PlayerActivity.EXTRA_OPEN_SUBTITLE_COMPARE, true)

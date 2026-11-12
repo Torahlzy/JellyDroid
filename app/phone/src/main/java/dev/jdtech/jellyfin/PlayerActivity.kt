@@ -49,7 +49,6 @@ import dev.jdtech.jellyfin.presentation.player.subtitle.SubtitleAdjustOverlay
 import dev.jdtech.jellyfin.presentation.player.subtitle.SubtitleCompareOverlay
 import dev.jdtech.jellyfin.presentation.player.subtitle.SubtitlePlaybackCoordinator
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
-import dev.jdtech.jellyfin.repository.JellyfinRepository
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.utils.PlayerGestureHelper
 import dev.jdtech.jellyfin.utils.PreviewScrubListener
@@ -69,6 +68,9 @@ class PlayerActivity : BasePlayerActivity(), PlayerMenuDialogFragment.Host {
         /** 指定播放条目下的哪个来源（多版本时由用户选择），未携带该 extra 时由播放器按默认规则挑选。 */
         const val EXTRA_MEDIA_SOURCE_INDEX = "mediaSourceIndex"
 
+        /** 下载详情的本地数据来源随播放入口传递，不改变全局离线设置。 */
+        const val EXTRA_USE_LOCAL_DATA = "useLocalData"
+
         /**
          * 开播后直接打开字幕对照面板（候选已由详情页落盘）。
          *
@@ -78,7 +80,6 @@ class PlayerActivity : BasePlayerActivity(), PlayerMenuDialogFragment.Host {
     }
 
     @Inject lateinit var appPreferences: AppPreferences
-    @Inject lateinit var repository: JellyfinRepository
 
     /** 播放页自己的一份字幕下载状态机（**不是单例**，与详情页互不干扰）。 */
     @Inject lateinit var subtitleController: SubtitleDownloadController
@@ -153,7 +154,8 @@ class PlayerActivity : BasePlayerActivity(), PlayerMenuDialogFragment.Host {
                 scope = lifecycleScope,
                 player = viewModel.player,
                 appPreferences = appPreferences,
-                repository = repository,
+                repositoryProvider = { viewModel.repository },
+                isUsingLocalData = { viewModel.isUsingLocalData },
                 subtitleController = subtitleController,
                 compareCache = subtitleCompareCache,
                 subtitleAdjustManager = subtitleAdjustManager,
@@ -416,6 +418,7 @@ class PlayerActivity : BasePlayerActivity(), PlayerMenuDialogFragment.Host {
             itemKind = itemKind ?: "",
             startFromBeginning = startFromBeginning,
             mediaSourceIndex = mediaSourceIndex,
+            useLocalData = intent.getBooleanExtra(EXTRA_USE_LOCAL_DATA, false),
         )
         hideSystemUI()
 
@@ -434,9 +437,14 @@ class PlayerActivity : BasePlayerActivity(), PlayerMenuDialogFragment.Host {
         val mediaSourceIndex =
             intent.extras!!.getInt(EXTRA_MEDIA_SOURCE_INDEX, -1).takeIf { index -> index >= 0 }
         val openSubtitleCompare = consumeOpenSubtitleCompareExtra()
+        val useLocalData = intent.getBooleanExtra(EXTRA_USE_LOCAL_DATA, false)
+        val isUsingLocalData = useLocalData || appPreferences.getValue(appPreferences.offlineMode)
 
         // 同一部影片只开对照面板、不重开视频：否则播放进度会被重置
-        if (openSubtitleCompare && itemId == viewModel.currentItemId) {
+        if (
+            openSubtitleCompare && itemId == viewModel.currentItemId &&
+                isUsingLocalData == viewModel.isUsingLocalData
+        ) {
             subtitleCoordinator.openComparePanel(itemId)
             return
         }
@@ -446,6 +454,7 @@ class PlayerActivity : BasePlayerActivity(), PlayerMenuDialogFragment.Host {
             itemKind = itemKind ?: "",
             startFromBeginning = startFromBeginning,
             mediaSourceIndex = mediaSourceIndex,
+            useLocalData = useLocalData,
         )
         // 换了一部影片：字幕目标条目与关键词跟着换，「播放视频时对比」则直接铺面板
         subtitleCoordinator.onPlaybackStarted(itemId, openSubtitleCompare)
@@ -491,7 +500,7 @@ class PlayerActivity : BasePlayerActivity(), PlayerMenuDialogFragment.Host {
      * 已有封面时不覆盖服务器数据，只提示用户先去删除，避免把服务器上已挑好的封面冲掉。
      */
     override val canModifyServer: Boolean
-        get() = !appPreferences.getValue(appPreferences.offlineMode)
+        get() = !viewModel.isUsingLocalData
 
     override fun adjustSubtitles() {
         binding.playerView.hideController()

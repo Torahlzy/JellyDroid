@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.jdtech.jellyfin.film.domain.VideoMetadataParser
+import dev.jdtech.jellyfin.film.presentation.di.DetailRepository
 import dev.jdtech.jellyfin.models.FindroidEpisode
 import dev.jdtech.jellyfin.models.FindroidItemPerson
 import dev.jdtech.jellyfin.repository.JellyfinRepository
@@ -22,7 +23,7 @@ import org.jellyfin.sdk.model.api.PersonKind
 class EpisodeViewModel
 @Inject
 constructor(
-    private val repository: JellyfinRepository,
+    @DetailRepository private val repository: JellyfinRepository,
     private val appPreferences: AppPreferences,
     private val videoMetadataParser: VideoMetadataParser,
 ) : ViewModel() {

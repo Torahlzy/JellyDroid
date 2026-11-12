@@ -125,13 +125,18 @@ data class LibraryRoute(
 
 @Serializable data object FavoritesRoute
 
-@Serializable data class MovieRoute(val movieId: String, val heroKey: String? = null)
+@Serializable
+data class MovieRoute(
+    val movieId: String,
+    val heroKey: String? = null,
+    val useLocalData: Boolean = false,
+)
 
-@Serializable data class ShowRoute(val showId: String)
+@Serializable data class ShowRoute(val showId: String, val useLocalData: Boolean = false)
 
-@Serializable data class EpisodeRoute(val episodeId: String)
+@Serializable data class EpisodeRoute(val episodeId: String, val useLocalData: Boolean = false)
 
-@Serializable data class SeasonRoute(val seasonId: String)
+@Serializable data class SeasonRoute(val seasonId: String, val useLocalData: Boolean = false)
 
 /**
  * 元数据维度浏览页。
@@ -396,7 +401,11 @@ fun NavigationRoot(
                 SharedElementHost(this) {
                     DownloadsScreen(
                         onItemClick = { item ->
-                            navigateToItem(navController = navController, item = item)
+                            navigateToItem(
+                                navController = navController,
+                                item = item,
+                                useLocalData = true,
+                            )
                         },
                         // 离线模式下下载页就是底栏标签的根页面，列表底部要给浮起的底栏留位
                         isTabRoot = isOfflineMode,
@@ -446,10 +455,118 @@ fun NavigationRoot(
                 popExitTransition = { detailPopExitTransition() },
             ) { backStackEntry ->
                 val route: MovieRoute = backStackEntry.toRoute()
-                SharedElementHost(this) {
-                    MovieScreen(
-                        movieId = UUID.fromString(route.movieId),
-                        heroKey = route.heroKey ?: "movie-hero-${route.movieId}",
+                CompositionLocalProvider(
+                    LocalOfflineMode provides (isOfflineMode || route.useLocalData)
+                ) {
+                    SharedElementHost(this) {
+                        MovieScreen(
+                            movieId = UUID.fromString(route.movieId),
+                            heroKey = route.heroKey ?: "movie-hero-${route.movieId}",
+                            navigateBack = { navController.safePopBackStack() },
+                            navigateHome = { navigateHome(navController, landingTab.route) },
+                            navigateToPerson = { personId, personName ->
+                                navController.safeNavigate(
+                                    ItemFilterRoute(
+                                        facet = MetadataFacet.ACTOR,
+                                        key = personId.toString(),
+                                        title = personName,
+                                    )
+                                )
+                            },
+                            navigateToMetadataFacet = { facet, key ->
+                                // 类型 / 标签没有独立实体 id，直接按值筛选
+                                navController.safeNavigate(
+                                    ItemFilterRoute(facet = facet, key = key, title = key)
+                                )
+                            },
+                            // 短评「去登录」：站点账号入口在 设置 → 网络 页里
+                            navigateToCommentSettings = {
+                                navController.safeNavigate(
+                                    SettingsRoute(
+                                        indexes = intArrayOf(SettingsR.string.settings_category_network)
+                                    )
+                                )
+                            },
+                            // 短评被站点拦截时进内置网页手动过 Cloudflare 盾
+                            navigateToUnblock = { navController.safeNavigate(JavDbUnblockRoute) },
+                        )
+                    }
+                }
+            }
+            composable<ShowRoute>(
+                enterTransition = { detailEnterTransition() },
+                popExitTransition = { detailPopExitTransition() },
+            ) { backStackEntry ->
+                val route: ShowRoute = backStackEntry.toRoute()
+                CompositionLocalProvider(
+                    LocalOfflineMode provides (isOfflineMode || route.useLocalData)
+                ) {
+                    ShowScreen(
+                        showId = UUID.fromString(route.showId),
+                        navigateBack = { navController.safePopBackStack() },
+                        navigateHome = { navigateHome(navController, landingTab.route) },
+                        navigateToItem = { item ->
+                            navigateToItem(
+                                navController = navController,
+                                item = item,
+                                useLocalData = route.useLocalData,
+                            )
+                        },
+                        navigateToPerson = { personId, personName ->
+                            navController.safeNavigate(
+                                ItemFilterRoute(
+                                    facet = MetadataFacet.ACTOR,
+                                    key = personId.toString(),
+                                    title = personName,
+                                )
+                            )
+                        },
+                    )
+                }
+            }
+            composable<SeasonRoute>(
+                enterTransition = { detailEnterTransition() },
+                popExitTransition = { detailPopExitTransition() },
+            ) { backStackEntry ->
+                val route: SeasonRoute = backStackEntry.toRoute()
+                CompositionLocalProvider(
+                    LocalOfflineMode provides (isOfflineMode || route.useLocalData)
+                ) {
+                    SeasonScreen(
+                        seasonId = UUID.fromString(route.seasonId),
+                        navigateBack = { navController.safePopBackStack() },
+                        navigateHome = { navigateHome(navController, landingTab.route) },
+                        navigateToItem = { item ->
+                            navigateToItem(
+                                navController = navController,
+                                item = item,
+                                useLocalData = route.useLocalData,
+                            )
+                        },
+                        navigateToSeries = { seriesId ->
+                            val showRoute =
+                                ShowRoute(
+                                    showId = seriesId.toString(),
+                                    useLocalData = route.useLocalData,
+                                )
+                            navController.safeNavigate(showRoute) {
+                                popUpTo(showRoute)
+                                launchSingleTop = true
+                            }
+                        },
+                    )
+                }
+            }
+            composable<EpisodeRoute>(
+                enterTransition = { detailEnterTransition() },
+                popExitTransition = { detailPopExitTransition() },
+            ) { backStackEntry ->
+                val route: EpisodeRoute = backStackEntry.toRoute()
+                CompositionLocalProvider(
+                    LocalOfflineMode provides (isOfflineMode || route.useLocalData)
+                ) {
+                    EpisodeScreen(
+                        episodeId = UUID.fromString(route.episodeId),
                         navigateBack = { navController.safePopBackStack() },
                         navigateHome = { navigateHome(navController, landingTab.route) },
                         navigateToPerson = { personId, personName ->
@@ -461,93 +578,19 @@ fun NavigationRoot(
                                 )
                             )
                         },
-                        navigateToMetadataFacet = { facet, key ->
-                            // 类型 / 标签没有独立实体 id，直接按值筛选
-                            navController.safeNavigate(
-                                ItemFilterRoute(facet = facet, key = key, title = key)
-                            )
-                        },
-                        // 短评「去登录」：站点账号入口在 设置 → 网络 页里
-                        navigateToCommentSettings = {
-                            navController.safeNavigate(
-                                SettingsRoute(
-                                    indexes = intArrayOf(SettingsR.string.settings_category_network)
+                        navigateToSeason = { seasonId ->
+                            val seasonRoute =
+                                SeasonRoute(
+                                    seasonId = seasonId.toString(),
+                                    useLocalData = route.useLocalData,
                                 )
-                            )
+                            navController.safeNavigate(seasonRoute) {
+                                popUpTo(seasonRoute)
+                                launchSingleTop = true
+                            }
                         },
-                        // 短评被站点拦截时进内置网页手动过 Cloudflare 盾
-                        navigateToUnblock = { navController.safeNavigate(JavDbUnblockRoute) },
                     )
                 }
-            }
-            composable<ShowRoute>(
-                enterTransition = { detailEnterTransition() },
-                popExitTransition = { detailPopExitTransition() },
-            ) { backStackEntry ->
-                val route: ShowRoute = backStackEntry.toRoute()
-                ShowScreen(
-                    showId = UUID.fromString(route.showId),
-                    navigateBack = { navController.safePopBackStack() },
-                    navigateHome = { navigateHome(navController, landingTab.route) },
-                    navigateToItem = { item ->
-                        navigateToItem(navController = navController, item = item)
-                    },
-                    navigateToPerson = { personId, personName ->
-                        navController.safeNavigate(
-                            ItemFilterRoute(
-                                facet = MetadataFacet.ACTOR,
-                                key = personId.toString(),
-                                title = personName,
-                            )
-                        )
-                    },
-                )
-            }
-            composable<SeasonRoute>(
-                enterTransition = { detailEnterTransition() },
-                popExitTransition = { detailPopExitTransition() },
-            ) { backStackEntry ->
-                val route: SeasonRoute = backStackEntry.toRoute()
-                SeasonScreen(
-                    seasonId = UUID.fromString(route.seasonId),
-                    navigateBack = { navController.safePopBackStack() },
-                    navigateHome = { navigateHome(navController, landingTab.route) },
-                    navigateToItem = { item ->
-                        navigateToItem(navController = navController, item = item)
-                    },
-                    navigateToSeries = { seriesId ->
-                        navController.safeNavigate(ShowRoute(showId = seriesId.toString())) {
-                            popUpTo(ShowRoute(showId = seriesId.toString()))
-                            launchSingleTop = true
-                        }
-                    },
-                )
-            }
-            composable<EpisodeRoute>(
-                enterTransition = { detailEnterTransition() },
-                popExitTransition = { detailPopExitTransition() },
-            ) { backStackEntry ->
-                val route: EpisodeRoute = backStackEntry.toRoute()
-                EpisodeScreen(
-                    episodeId = UUID.fromString(route.episodeId),
-                    navigateBack = { navController.safePopBackStack() },
-                    navigateHome = { navigateHome(navController, landingTab.route) },
-                    navigateToPerson = { personId, personName ->
-                        navController.safeNavigate(
-                            ItemFilterRoute(
-                                facet = MetadataFacet.ACTOR,
-                                key = personId.toString(),
-                                title = personName,
-                            )
-                        )
-                    },
-                    navigateToSeason = { seasonId ->
-                        navController.safeNavigate(SeasonRoute(seasonId = seasonId.toString())) {
-                            popUpTo(SeasonRoute(seasonId = seasonId.toString()))
-                            launchSingleTop = true
-                        }
-                    },
-                )
             }
             composable<MetadataBrowseRoute> { backStackEntry ->
                 val route: MetadataBrowseRoute = backStackEntry.toRoute()
@@ -694,6 +737,7 @@ private fun navigateToItem(
     navController: NavHostController,
     item: FindroidItem,
     movieHeroKey: String? = null,
+    useLocalData: Boolean = false,
 ) {
     when (item) {
         is FindroidBoxSet ->
@@ -702,12 +746,24 @@ private fun navigateToItem(
             )
         is FindroidMovie ->
             navController.safeNavigate(
-                MovieRoute(movieId = item.id.toString(), heroKey = movieHeroKey)
+                MovieRoute(
+                    movieId = item.id.toString(),
+                    heroKey = movieHeroKey,
+                    useLocalData = useLocalData,
+                )
             )
-        is FindroidShow -> navController.safeNavigate(ShowRoute(showId = item.id.toString()))
-        is FindroidSeason -> navController.safeNavigate(SeasonRoute(seasonId = item.id.toString()))
+        is FindroidShow ->
+            navController.safeNavigate(
+                ShowRoute(showId = item.id.toString(), useLocalData = useLocalData)
+            )
+        is FindroidSeason ->
+            navController.safeNavigate(
+                SeasonRoute(seasonId = item.id.toString(), useLocalData = useLocalData)
+            )
         is FindroidEpisode ->
-            navController.safeNavigate(EpisodeRoute(episodeId = item.id.toString()))
+            navController.safeNavigate(
+                EpisodeRoute(episodeId = item.id.toString(), useLocalData = useLocalData)
+            )
         is FindroidCollection ->
             navController.safeNavigate(
                 LibraryRoute(

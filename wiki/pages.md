@@ -167,13 +167,14 @@ else -> WelcomeRoute
 
 ### DownloadsScreen — 下载
 
-- **职责**：展示本地已下载条目，分组网格呈现；空列表时提示「无下载」；点击条目进入对应详情页。
+- **职责**：展示本地已下载条目，分组网格呈现；空列表时提示「无下载」；点击条目时为详情路由设置 `useLocalData = true`，无需开启全局离线模式即可读取本地详情。
 - **路由**：`DownloadsRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/DownloadsScreen.kt`。
 - **ViewModel**：`FILM/presentation/downloads/DownloadsViewModel.kt`。
 - **State / Action**：**复用** `FILM/presentation/collection/CollectionState.kt` 与 `FILM/presentation/collection/CollectionAction.kt`（无独立 State/Action，VM 无 `onAction`）。
 - **State 字段**：`sections`、`isLoading`、`error`。
 - **主要方法**：`loadItems()`（内部调用 `repository.getDownloads()`）。
+- **详情数据来源**：`FILM/presentation/di/DetailRepositoryModule.kt` 根据路由保存在 `SavedStateHandle` 中的 `useLocalData` 参数，为电影 / 剧集 / 季 / 分集的 ViewModel 注入带 `FILM/presentation/di/DetailRepository.kt` 限定符的仓库；下载入口使用既有 `JellyfinRepositoryOfflineImpl`，元数据、播放源、下一集和季 / 分集列表均从 Room 读取。该参数沿剧集 → 季 → 分集及返回所属季 / 剧集的路径传递，进程重建后保留；本地详情范围内的 `LocalOfflineMode` 同时启用，隐藏服务器编辑入口，删除下载后返回上一页。播放时通过 Intent extra `useLocalData` 继续传入播放器，播放列表与进度记录同样使用本地仓库。其他入口仍按全局离线设置选择仓库。
 - **入口**：媒体页的「已下载」入口（`PHONE/presentation/film/components/MediaEntryCard.kt`，与「我喜欢」并排平分一行宽度）；离线模式下本页同时是底栏「下载」标签的根页面、启动落地页与各详情页 `navigateHome` 的目标，此时（`DownloadsScreen` 的 `isTabRoot`）列表底部额外留出底栏高度，避免最后一行被浮起的底栏压住（`CollectionGrid` 的 `bottomContentPadding`）。
 
 ### LibraryScreen — 媒体库详情
@@ -217,7 +218,7 @@ else -> WelcomeRoute
 
 - **职责**：加载影片元数据 / 视频信息 / 演员，演员长按菜单支持获取头像与复制完整演员名，提供播放、预告、标记已看、收藏、下载、跳转演员、点击类型 / 标签跳到对应筛选结果页，以及「更多」菜单（编辑封面 / 编辑 nfo / 下载字幕 / 删除全部 / 抓取网址），下载字幕弹窗可把已下好的候选带进播放器做同屏对照（带上上次播放的来源下标，避免在另一个版本上开面板），并处理离线模式（离线时类型 / 标签不可点，也不显示「更多」菜单）。信息行的类型 / 标签取值由 `PHONE/presentation/film/components/InfoText.kt` 渲染，点击经 `MovieAction.NavigateToGenre` / `NavigateToTag` → `PHONE/NavigationRoot.kt` 的 `navigateToMetadataFacet` 跳转 `ItemFilterRoute`。
 - **加载错误**：加载失败停止等待动画，使用 `PHONE/presentation/film/components/DetailLoadError.kt` 显示错误详情和重试入口；重试调用本页原有 load 方法，已有内容继续保留，返回操作可用。
-- **路由**：`MovieRoute(movieId, heroKey?)`，定义并注册于 `PHONE/NavigationRoot.kt`；`heroKey` 记录点击来源，普通列表为空时使用默认卡片 key。
+- **路由**：`MovieRoute(movieId, heroKey?, useLocalData = false)`，定义并注册于 `PHONE/NavigationRoot.kt`；`heroKey` 记录点击来源，普通列表为空时使用默认卡片 key；下载入口携带 `useLocalData = true` 读取本地详情与播放源。
 - **进场动画**：列表封面与详情页头部之间是共享元素 morph（普通卡片 key 为 `movie-hero-<movieId>`，首页 Banner / 继续观看 / 接下来 / 最新添加分别使用带来源的 key，避免同一电影同时出现在多个分区时互相抢占；经 `PHONE/presentation/utils/SharedTransition.kt` 的 `heroSharedBounds` 建立，两个转场作用域由 `PHONE/NavigationRoot.kt` 的 `SharedTransitionNavHost` / `SharedElementHost` 经 CompositionLocal 下发）；加载态为居中转圈，内容区块等进场转场（morph）结束后才组合并让标题 / 信息行 / 按钮栏 / 简介 / 演员行依次入场（`AppearingSection`），避免转场中途组合整页内容抢帧卡顿；详情页进入为淡入 + 轻微放大、返回反向收缩，转场参数在 `PHONE/NavigationRoot.kt`（全局 token 镜像在 `PHONE/presentation/theme/Motion.kt`）。
 - **评论区（外网短评）**：最下方为 `MovieCommentsSection.kt`，支持加载、失败重试、JavDB 登录态提示。数据访问与磁盘缓存位于 `CORE/comment/`；开关与「评论使用代理」来自设置页「下载与网络 → 评论」，本地代理来自同页独立的「代理」组，缓存空间由「缓存」统一管理。访客可见条数受站点账号权益限制，评论失败不影响详情页其它内容。失败原因是被站点拦截（Cloudflare，`ScraperException.SiteBlocked`，State 字段 `isCommentsSiteBlocked`）时额外提供「打开网页过盾」按钮，经 `NavigationRoot.kt` 的 `navigateToUnblock` 跳转 `JavDbUnblockRoute`。
 - **Screen**：`PHONE/presentation/film/MovieScreen.kt`；弹窗与小组件主要在 `PHONE/presentation/film/components/` 下，跨域共用的「抓取网址」弹窗在 `PHONE/presentation/components/`，代理连通性测试组件在 `PHONE/presentation/proxy/`：
@@ -245,7 +246,7 @@ else -> WelcomeRoute
 
 - **职责**：加载剧集、下一集（NextUp）、季列表与演员，提供播放与标记等操作。
 - **加载错误**：加载失败停止等待动画，使用 `PHONE/presentation/film/components/DetailLoadError.kt` 显示错误详情和重试入口；重试调用本页原有 load 方法，已有内容继续保留，返回操作可用。
-- **路由**：`ShowRoute(showId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **路由**：`ShowRoute(showId, useLocalData = false)`，定义并注册于 `PHONE/NavigationRoot.kt`；下载入口的本地数据参数继续传给季 / 分集详情。
 - **Screen**：`PHONE/presentation/film/ShowScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/show/ShowViewModel.kt`、`FILM/presentation/show/ShowState.kt`、`FILM/presentation/show/ShowAction.kt`。
 - **State 字段**：`show`、`nextUp`、`seasons`、`actors`、`director`、`writers`、`error`。
@@ -256,7 +257,7 @@ else -> WelcomeRoute
 
 - **职责**：加载季信息与其分集列表，提供播放、标记、跳转条目或所属剧集。
 - **加载错误**：加载失败停止等待动画，使用 `PHONE/presentation/film/components/DetailLoadError.kt` 显示错误详情和重试入口；重试调用本页原有 load 方法，已有内容继续保留，返回操作可用。
-- **路由**：`SeasonRoute(seasonId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **路由**：`SeasonRoute(seasonId, useLocalData = false)`，定义并注册于 `PHONE/NavigationRoot.kt`；进入分集或返回所属剧集时保留本地数据参数。
 - **Screen**：`PHONE/presentation/film/SeasonScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/season/SeasonViewModel.kt`、`FILM/presentation/season/SeasonState.kt`、`FILM/presentation/season/SeasonAction.kt`。
 - **State 字段**：`season`、`episodes`、`error`。
@@ -267,7 +268,7 @@ else -> WelcomeRoute
 
 - **职责**：加载分集元数据 / 视频信息 / 演员，提供播放、标记已看、收藏、下载、跳转演员与所属季。
 - **加载错误**：加载失败停止等待动画，使用 `PHONE/presentation/film/components/DetailLoadError.kt` 显示错误详情和重试入口；重试调用本页原有 load 方法，已有内容继续保留，返回操作可用。
-- **路由**：`EpisodeRoute(episodeId)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **路由**：`EpisodeRoute(episodeId, useLocalData = false)`，定义并注册于 `PHONE/NavigationRoot.kt`；返回所属季时保留本地数据参数。
 - **Screen**：`PHONE/presentation/film/EpisodeScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/episode/EpisodeViewModel.kt`、`FILM/presentation/episode/EpisodeState.kt`、`FILM/presentation/episode/EpisodeAction.kt`；另使用 `CORE/presentation/downloader/DownloaderViewModel.kt`，下载生命周期与电影详情相同。
 - **State 字段**：`episode`、`videoMetadata`、`actors`、`displayExtraInfo`、`error`。
@@ -358,7 +359,7 @@ else -> WelcomeRoute
 - **职责**：同页展示已保存服务器与当前服务器的用户，离线模式开关固定在头部常驻（不随列表滚动）。服务器卡片按「名称 / 当前地址 / 管理地址 + 移除」三行排布。服务器和用户可切换、添加或移除，地址编辑与登录沿用既有页面；「添加账号」进入登录页。添加服务器后回到本页，页面恢复时刷新列表与连接状态；新用户登录成功后重启界面。移除只影响本地记录，必须确认；身份切换或切换离线模式后重启界面以释放旧服务器 / 用户的页面状态。
 - **路由**：`AccountsRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/settings/AccountsScreen.kt`。
-- **ViewModel / State / Action / Event**：`SETUP/presentation/accounts/AccountsViewModel.kt`、`SETUP/presentation/accounts/AccountsState.kt`、`SETUP/presentation/accounts/AccountsAction.kt`、`SETUP/presentation/accounts/AccountsEvent.kt`。服务器与用户来自本地 Room，由 ViewModel 进场立即加载；离线模式值在构造时同步读取、首帧即可显示，公共用户另行异步加载；切换服务器时取消旧请求，迟到结果不回填。本页不再依赖 `SETTINGS/presentation/settings/SettingsViewModel.kt`。
+- **ViewModel / State / Action / Event**：`SETUP/presentation/accounts/AccountsViewModel.kt`、`SETUP/presentation/accounts/AccountsState.kt`、`SETUP/presentation/accounts/AccountsAction.kt`、`SETUP/presentation/accounts/AccountsEvent.kt`。首帧通过 `SETUP/domain/SetupRepository.kt` 的 `getCachedAccounts()` 复用已加载列表，首次进入时复用 `data/src/main/java/dev/jdtech/jellyfin/api/JellyfinApi.kt` 启动恢复的当前服务器、地址与账号快照（`SETUP/domain/AccountsSnapshot.kt`）；后台 `getAccounts()` 从本地 Room 补齐并更新缓存。离线模式值在构造时同步读取；刷新保留已有内容，相同数据由 StateFlow 去重，列表标题与卡片使用固定 key。公共用户另行异步加载，失败保留旧列表并显示错误；重复选择当前服务器或用户不触发切换。切换服务器时取消旧请求，迟到结果不回填。本页不再依赖 `SETTINGS/presentation/settings/SettingsViewModel.kt`。
 - **入口**：设置首页「用户与服务器」。站点账号登录已移至设置页「下载与网络 → 评论」，登录 / 退出会作废评论缓存，站点会话实现见 `CORE/scraper/JavDbSessionImpl.kt`。
 
 ### CacheScreen — 缓存空间管理
@@ -458,11 +459,11 @@ else -> WelcomeRoute
 ### PlayerActivity — 视频播放
 
 - **职责**：视频播放界面（传统 View + Media3 `PlayerView` / ExoPlayer），展示标题、章节，提供跳过片头 / 片尾、PiP、手势，以及右上角菜单（字幕 / 字幕设置 / 下载字幕 / 播放速度 / 音轨 / 截取当前画面设为横屏封面）。字幕外观（字号 / 颜色 / 位置 / 偏移）的加载与应用委托给 `PHONE/presentation/player/subtitle/SubtitleAdjustManager.kt`，字幕搜索 / 上传与多字幕同屏对照分别见「字幕下载」与「字幕对照模式」。
-- **路由**：**无 NavHost 路由**，为独立 `Activity`（`class PlayerActivity : BasePlayerActivity()`）；Intent extra `openSubtitleCompare` 表示开播后直接打开字幕对照面板（详情页「播放视频时对比」使用，读一次即清除；同一影片已在播放时只开面板、不重开视频，否则进度会被重置）。
+- **路由**：**无 NavHost 路由**，为独立 `Activity`（`class PlayerActivity : BasePlayerActivity()`）；Intent extra `useLocalData` 沿用下载详情的本地数据来源，播放器初次创建、系统恢复和 `onNewIntent` 都据此选择仓库；本地播放时隐藏服务器封面修改与字幕上传入口，跳过字幕关键词联网查询。Intent extra `openSubtitleCompare` 表示开播后直接打开字幕对照面板（详情页「播放视频时对比」使用，读一次即清除；同一影片且数据来源相同时只开面板、不重开视频，否则进度会被重置）。
 - **Screen**：`PHONE/PlayerActivity.kt`；其中 `override val viewModel: PlayerViewModel by viewModels()`。菜单里的「截取当前画面设为横屏封面」由 `PlayerActivity.captureBackdrop()` 先经 `PlayerViewModel.hasBackdrop()` 确认服务器上没有 `BACKDROP`，再截帧上传（离线模式下不显示该菜单项，同样不显示「下载字幕」）；截帧工具为 `PHONE/utils/VideoFrameCapture.kt`（`SurfaceView.captureFrameAsJpeg()`，主线程 PixelCopy + 后台按视频显示比例裁黑边和 JPEG 压缩，复制前限制位图尺寸；检查与截帧前后校验条目和播放会话，切集即放弃上传）。
 - **ViewModel**：`PLAYER/presentation/PlayerViewModel.kt`。
 - **State 字段**（`UiState`，`PlayerViewModel.kt`）：`currentItemTitle`、`currentSegment`、`currentSkipButtonStringRes`、`currentTrickplay`、`currentChapters`、`fileLoaded`；事件流 `eventsChannelFlow`（`PlayerEvents`）。
-- **主要方法**：`initializePlayer(itemId, itemKind, startFromBeginning, mediaSourceIndex)`（`mediaSourceIndex` 由详情页「选择播放版本」经 Intent extra `mediaSourceIndex` 传入，为 `null` 时按默认规则选源）、`updatePlaybackProgress()`、`updateCurrentSegment()`、`reloadCurrentItemWithExternalSubtitle(uri, label, language)`（ExoPlayer 后端重取服务器外挂字幕，用 `setMediaItems` 重建播放列表挂上刚上传的字幕；请求前固定条目、来源与播放会话，重建前读取最新位置和播放状态；使用唯一 id 的本地副本并解除 TEXT 禁用 / 旧覆盖，轨道出现后明确选中新字幕，仅忽略重建本身的同条目切换）、`switchToTrack()`、`selectSpeed()`、`skipSegment()`、`seekToNextChapter()`、`seekToPreviousChapter()`、`isLastChapter()`、`hasBackdrop(itemId)`、`setBackdrop(itemId, imageBytes)`；属性 `currentItemId`（当前播放条目的服务器 id，未开始播放时为 `null`，是字幕上传 / 侧载的依据）。
+- **主要方法**：`initializePlayer(itemId, itemKind, startFromBeginning, mediaSourceIndex, useLocalData)`（`mediaSourceIndex` 由详情页「选择播放版本」经同名 Intent extra 传入，为 `null` 时按默认规则选源；`useLocalData` 选定本次播放及进度记录的仓库，并传入 `PLAYER/domain/PlaylistManager.kt`，重新开播时取消旧初始化、清理旧队列与来源缓存）、`updatePlaybackProgress()`、`updateCurrentSegment()`、`reloadCurrentItemWithExternalSubtitle(uri, label, language)`（ExoPlayer 后端重取服务器外挂字幕，用 `setMediaItems` 重建播放列表挂上刚上传的字幕；请求前固定条目、来源与播放会话，重建前读取最新位置和播放状态；使用唯一 id 的本地副本并解除 TEXT 禁用 / 旧覆盖，轨道出现后明确选中新字幕，仅忽略重建本身的同条目切换）、`switchToTrack()`、`selectSpeed()`、`skipSegment()`、`seekToNextChapter()`、`seekToPreviousChapter()`、`isLastChapter()`、`hasBackdrop(itemId)`、`setBackdrop(itemId, imageBytes)`；属性 `currentItemId`（当前播放条目的服务器 id，未开始播放时为 `null`，是字幕上传 / 侧载的依据）。
 - **辅助弹窗**（非页面）：`PHONE/presentation/player/PlayerMenuDialogFragment.kt`（右上角菜单，横屏下一行正方形格子、无标题行，汇总字幕 / 字幕设置 / 下载字幕 / 播放速度 / 音轨入口；没有可用字幕轨时「选择字幕轨」「字幕设置」置灰，并把截图设封面、打开下载字幕弹窗的动作回调给宿主 `PlayerActivity`；网格 UI 见 `PHONE/presentation/player/PlayerMenuContent.kt`）、`PHONE/presentation/player/SpeedSelectionDialogFragment.kt`、`PHONE/presentation/player/TrackSelectionDialogFragment.kt`，均有无参构造，通过 `activityViewModels()` 共享宿主的 `PlayerViewModel`；选轨类型放入 arguments，菜单动作经 `PlayerMenuDialogFragment.Host` 从恢复后的宿主取得。
 - **入口**：各详情页的播放动作（`MovieAction.Play`、`EpisodeAction.Play` 等）。
 

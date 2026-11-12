@@ -2,6 +2,7 @@ package dev.jdtech.jellyfin.api
 
 import android.content.Context
 import dev.jdtech.jellyfin.database.ServerDatabaseDao
+import dev.jdtech.jellyfin.models.ServerWithAddressesAndUsers
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -69,6 +70,8 @@ class JellyfinApi(
                 )
         )
     var userId: UUID? = null
+    var currentServer: ServerWithAddressesAndUsers? = null
+        private set
 
     val brandingApi = api.brandingApi
     val devicesApi = api.devicesApi
@@ -103,13 +106,26 @@ class JellyfinApi(
         sessionMutex.withLock {
             if (isSessionRestored) return
             val serverId = preferences.getValue(preferences.currentServer)
-            val saved = serverId?.let { database.getServerWithAddressAndUser(it) }
-            saved?.address?.let { address ->
-                api.update(baseUrl = address.address, accessToken = saved.user?.accessToken)
-                userId = saved.user?.id
-            }
+            updateCurrentServer(serverId?.let { database.getServerWithAddressesAndUsers(it) })
             isSessionRestored = true
         }
+    }
+
+    /** 保留已恢复的本地账号快照，账号页首帧无需重新等待 Room。 */
+    fun updateCurrentServer(saved: ServerWithAddressesAndUsers?) {
+        cacheCurrentServer(saved)
+        if (saved == null) return
+        val address = saved.addresses.firstOrNull {
+            it.id == saved.server.currentServerAddressId
+        } ?: return
+        val user = saved.users.firstOrNull { it.id == saved.server.currentUserId }
+        api.update(baseUrl = address.address, accessToken = user?.accessToken)
+        userId = user?.id
+    }
+
+    /** 账号记录变更只更新快照，保留本次登录或选址已建立的 SDK 连接。 */
+    fun cacheCurrentServer(saved: ServerWithAddressesAndUsers?) {
+        currentServer = saved?.copy(server = saved.server.copy())
     }
 
     companion object {

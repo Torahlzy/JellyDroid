@@ -49,6 +49,7 @@ import dev.jdtech.jellyfin.presentation.film.components.ItemTopBar
 import dev.jdtech.jellyfin.presentation.film.components.DetailLoadError
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
+import dev.jdtech.jellyfin.presentation.utils.LocalOfflineMode
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
 import java.util.UUID
 import org.jellyfin.sdk.model.api.BaseItemKind
@@ -63,6 +64,7 @@ fun SeasonScreen(
     viewModel: SeasonViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val isOfflineMode = LocalOfflineMode.current
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(true) { viewModel.loadSeason(seasonId = seasonId) }
@@ -76,6 +78,7 @@ fun SeasonScreen(
                     val intent = Intent(context, PlayerActivity::class.java)
                     intent.putExtra("itemId", seasonId.toString())
                     intent.putExtra("itemKind", BaseItemKind.SEASON.serialName)
+                    intent.putExtra(PlayerActivity.EXTRA_USE_LOCAL_DATA, isOfflineMode)
                     context.startActivity(intent)
                 }
                 is SeasonAction.OnBackClick -> navigateBack()

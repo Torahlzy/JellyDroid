@@ -59,6 +59,7 @@ import dev.jdtech.jellyfin.presentation.film.components.OverviewText
 import dev.jdtech.jellyfin.presentation.film.components.DetailLoadError
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
+import dev.jdtech.jellyfin.presentation.utils.LocalOfflineMode
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
 import dev.jdtech.jellyfin.utils.getShowDateString
 import java.util.UUID
@@ -75,6 +76,7 @@ fun ShowScreen(
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val isOfflineMode = LocalOfflineMode.current
 
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -89,6 +91,7 @@ fun ShowScreen(
                     val intent = Intent(context, PlayerActivity::class.java)
                     intent.putExtra("itemId", showId.toString())
                     intent.putExtra("itemKind", BaseItemKind.SERIES.serialName)
+                    intent.putExtra(PlayerActivity.EXTRA_USE_LOCAL_DATA, isOfflineMode)
                     context.startActivity(intent)
                 }
                 is ShowAction.PlayTrailer -> {

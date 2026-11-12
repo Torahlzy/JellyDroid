@@ -3,15 +3,18 @@ package dev.jdtech.jellyfin.setup.data
 import dev.jdtech.jellyfin.api.JellyfinApi
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.database.ServerDatabaseDao
+import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.models.ExceptionUiText
 import dev.jdtech.jellyfin.models.ExceptionUiTexts
 import dev.jdtech.jellyfin.models.Server
 import dev.jdtech.jellyfin.models.ServerAddress
 import dev.jdtech.jellyfin.models.ServerWithAddresses
+import dev.jdtech.jellyfin.models.ServerWithAddressesAndUsers
 import dev.jdtech.jellyfin.models.UiText
 import dev.jdtech.jellyfin.models.User
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.setup.R as SetupR
+import dev.jdtech.jellyfin.setup.domain.AccountsSnapshot
 import dev.jdtech.jellyfin.setup.domain.SetupRepository
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -25,13 +28,51 @@ import org.jellyfin.sdk.model.api.AuthenticationResult
 import org.jellyfin.sdk.model.api.QuickConnectDto
 import org.jellyfin.sdk.model.api.QuickConnectResult
 import org.jellyfin.sdk.model.api.ServerDiscoveryInfo
-import timber.log.Timber
 
 class SetupRepositoryImpl(
     private val jellyfinApi: JellyfinApi,
     private val database: ServerDatabaseDao,
     private val appPreferences: AppPreferences,
 ) : SetupRepository {
+    private var cachedAccounts: AccountsSnapshot? = null
+
+    override fun getCachedAccounts(): AccountsSnapshot? {
+        val serverId = appPreferences.getValue(appPreferences.currentServer)
+        cachedAccounts?.takeIf { it.currentServerId == serverId }?.let { return it }
+        val saved = jellyfinApi.currentServer?.takeIf { it.server.id == serverId } ?: return null
+        val server = saved.server.copy()
+        return AccountsSnapshot(
+            servers =
+                listOf(
+                    ServerWithAddresses(
+                        server = server,
+                        addresses = saved.addresses,
+                        user = saved.users.firstOrNull { it.id == server.currentUserId },
+                    )
+                ),
+            users = saved.users,
+            currentServerId = server.id,
+            currentUserId = server.currentUserId,
+        )
+    }
+
+    override suspend fun getAccounts(): AccountsSnapshot {
+        val servers = database.getServersWithAddresses()
+        val serverId = appPreferences.getValue(appPreferences.currentServer)
+        val current = servers.firstOrNull { it.server.id == serverId }
+        val users = current?.let { database.getUsers(it.server.id) }.orEmpty()
+        // 添加服务器可能临时改变 SDK 连接，返回后用同一份快照恢复，避免重复查询。
+        jellyfinApi.updateCurrentServer(
+            current?.let { ServerWithAddressesAndUsers(it.server, it.addresses, users) }
+        )
+        return AccountsSnapshot(
+            servers = servers,
+            users = users,
+            currentServerId = current?.server?.id,
+            currentUserId = current?.server?.currentUserId,
+        ).also { cachedAccounts = it }
+    }
+
     override fun discoverServers(): Flow<ServerDiscoveryInfo> {
         return jellyfinApi.jellyfin.discovery.discoverLocalServers()
     }
@@ -48,6 +89,10 @@ class SetupRepositoryImpl(
 
     override suspend fun deleteServer(serverId: String) {
         database.deleteServer(serverId)
+        cachedAccounts = null
+        if (jellyfinApi.currentServer?.server?.id == serverId) {
+            jellyfinApi.cacheCurrentServer(null)
+        }
     }
 
     override suspend fun getIsQuickConnectEnabled(): Boolean =
@@ -62,18 +107,17 @@ class SetupRepositoryImpl(
         }
 
     override suspend fun setCurrentServer(serverId: String) {
-        val serverWithAddressAndUser = database.getServerWithAddressAndUser(serverId) ?: return
-        val serverAddress = serverWithAddressAndUser.address ?: return
-        val user = serverWithAddressAndUser.user
+        val saved = database.getServerWithAddressesAndUsers(serverId) ?: return
+        jellyfinApi.updateCurrentServer(saved)
+        cachedAccounts = null
+    }
 
-        jellyfinApi.apply {
-            api.update(baseUrl = serverAddress.address, accessToken = user?.accessToken)
-            userId = user?.id
-        }
+    private suspend fun cacheCurrentServer(serverId: String) {
+        jellyfinApi.cacheCurrentServer(database.getServerWithAddressesAndUsers(serverId))
+        cachedAccounts = null
     }
 
     override suspend fun addServer(address: String): Server = withContext(Dispatchers.IO) {
-        // Check if address is not blank
         if (address.isBlank()) {
             throw ExceptionUiText(
                 UiText.StringResource(SetupR.string.add_server_error_empty_address)
@@ -125,16 +169,14 @@ class SetupRepositoryImpl(
                     UiText.StringResource(SetupR.string.add_server_error_no_id)
                 )
 
-        Timber.d("Connecting to server: ${serverInfo.serverName}")
+        AppLog.d("已找到可连接的服务器")
 
         val serverInDatabase = database.getServer(serverInfo.id!!)
 
-        // Check if server is already in the database
-        // If so only add a new address to that server if it's different
+        // 已保存的服务器只补充新地址，保留当前地址与账号选择。
         val server =
             if (serverInDatabase != null) {
                 val addresses = database.getServerWithAddresses(serverInDatabase.id).addresses
-                // If address is not in database, add it
                 if (addresses.none { it.address == recommendedServerInfo.address }) {
                     val serverAddress =
                         ServerAddress(
@@ -170,16 +212,12 @@ class SetupRepositoryImpl(
         jellyfinApi.apply {
             api.update(baseUrl = recommendedServerInfo.address, accessToken = null)
         }
+        cachedAccounts = null
 
         server
     }
 
-    /**
-     * Create a presentable string of issues with a server
-     *
-     * @param server The server with issues
-     * @return A presentable string of issues separated with \n
-     */
+    /** 将服务器兼容性问题转为界面可展示的文案。 */
     private fun createIssuesString(server: RecommendedServerInfo): Collection<UiText> {
         return server.issues.map {
             when (it) {
@@ -248,6 +286,7 @@ class SetupRepositoryImpl(
             api.update(accessToken = authenticationResult.accessToken)
             userId = authenticationResult.user?.id
         }
+        cacheCurrentServer(user.serverId)
     }
 
     override suspend fun getUsers(serverId: String): List<User> {
@@ -267,13 +306,9 @@ class SetupRepositoryImpl(
     }
 
     override suspend fun deleteUser(userId: UUID) {
-        // Let the user delete the current active user for now
-        /*val currentUser = getCurrentUser() ?: return
-        if (userId == currentUser.id) {
-            Timber.e("You cannot delete the current user")
-            return
-        }*/
         database.deleteUser(userId)
+        cachedAccounts = null
+        jellyfinApi.currentServer?.server?.id?.let { cacheCurrentServer(it) }
     }
 
     override suspend fun setCurrentUser(userId: UUID) {
@@ -286,6 +321,7 @@ class SetupRepositoryImpl(
             api.update(accessToken = user.accessToken)
             this.userId = user.id
         }
+        cacheCurrentServer(server.id)
     }
 
     override suspend fun setCurrentAddress(addressId: UUID) {
@@ -297,5 +333,6 @@ class SetupRepositoryImpl(
         server.currentServerAddressId = address.id
         database.updateServer(server)
         jellyfinApi.apply { api.update(baseUrl = address.address) }
+        cacheCurrentServer(server.id)
     }
 }

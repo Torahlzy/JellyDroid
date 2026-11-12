@@ -33,6 +33,7 @@ import dev.jdtech.jellyfin.player.local.R
 import dev.jdtech.jellyfin.player.local.domain.PlaylistManager
 import dev.jdtech.jellyfin.player.local.mpv.MPVPlayer
 import dev.jdtech.jellyfin.repository.JellyfinRepository
+import dev.jdtech.jellyfin.repository.JellyfinRepositoryOfflineImpl
 import dev.jdtech.jellyfin.settings.domain.AppPreferences
 import dev.jdtech.jellyfin.settings.domain.Constants
 import java.util.UUID
@@ -60,12 +61,22 @@ class PlayerViewModel
 constructor(
     private val application: Application,
     private val playlistManager: PlaylistManager,
-    private val repository: JellyfinRepository,
+    private val defaultRepository: JellyfinRepository,
+    private val offlineRepository: JellyfinRepositoryOfflineImpl,
     private val appPreferences: AppPreferences,
     private val savedStateHandle: SavedStateHandle,
     private val cacheManager: CacheManager,
 ) : ViewModel(), Player.Listener {
     val player: Player
+
+    /** 播放、进度记录与字幕编排共用本次入口选定的数据来源。 */
+    var repository: JellyfinRepository = defaultRepository
+        private set
+
+    val isUsingLocalData: Boolean
+        get() = repository === offlineRepository
+
+    private var initializationJob: Job? = null
 
     private val _uiState =
         MutableStateFlow(
@@ -216,7 +227,11 @@ constructor(
         itemKind: String,
         startFromBeginning: Boolean,
         mediaSourceIndex: Int? = null,
+        useLocalData: Boolean = false,
     ) {
+        initializationJob?.cancel()
+        val playbackRepository = if (useLocalData) offlineRepository else defaultRepository
+        repository = playbackRepository
         currentPlaybackSession++
         subtitleReloadJob?.cancel()
         isReloadingForSubtitle = false
@@ -224,16 +239,19 @@ constructor(
         pendingSubtitleId = null
         player.addListener(this)
 
-        viewModelScope.launch {
-            repository.initialize()
+        initializationJob = viewModelScope.launch {
             val startItem =
                 try {
+                    playbackRepository.initialize()
                     playlistManager.getInitialItem(
                         itemId = itemId,
                         itemKind = BaseItemKind.fromName(itemKind),
                         mediaSourceIndex = mediaSourceIndex,
                         startFromBeginning = startFromBeginning,
+                        playbackRepository = playbackRepository,
                     )
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     AppLog.e("播放器操作失败，错误类型：%s", e.javaClass.simpleName)
                     Toast.makeText(application, e.localizedMessage, Toast.LENGTH_LONG).show()

@@ -127,7 +127,7 @@ private fun AccountsScreenLayout(
                 verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.medium),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (state.error != null) item {
+                if (state.error != null) item(key = "error") {
                     Column {
                         Text(
                             stringResource(R.string.accounts_operation_failed),
@@ -141,7 +141,7 @@ private fun AccountsScreenLayout(
                         }
                     }
                 }
-                item {
+                item(key = "servers_title") {
                     AccountsSectionTitle(
                         stringResource(R.string.accounts_servers),
                         stringResource(R.string.accounts_add_server),
@@ -149,7 +149,7 @@ private fun AccountsScreenLayout(
                         onAddServer,
                     )
                 }
-                items(state.servers, key = { it.server.id }) { server ->
+                items(state.servers, key = { "server_${it.server.id}" }) { server ->
                     ServerCard(
                         name = server.server.name,
                         address =
@@ -163,7 +163,7 @@ private fun AccountsScreenLayout(
                         onDelete = { pendingDelete = AccountsAction.DeleteServer(server.server.id) },
                     )
                 }
-                item {
+                item(key = "users_title") {
                     AccountsSectionTitle(
                         title = stringResource(R.string.accounts_users),
                         action = stringResource(R.string.accounts_add_user),
@@ -171,7 +171,7 @@ private fun AccountsScreenLayout(
                         onClick = { onLogin(null) },
                     )
                 }
-                items(state.users, key = { it.id.toString() }) { user ->
+                items(state.users, key = { "user_${it.id}" }) { user ->
                     AccountCard(
                         title = user.name,
                         subtitle = null,
