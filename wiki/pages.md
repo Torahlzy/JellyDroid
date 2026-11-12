@@ -145,12 +145,12 @@ else -> WelcomeRoute
 
 ### HomeScreen — 首页
 
-- **职责**：聚合首页。顶部为 `HomeHeader`（服务器名、搜索、重试）；下方按 section 渲染推荐轮播、继续观看、接下来、各媒体库最新。
+- **职责**：聚合首页。顶部为 `HomeHeader`（服务器名与服务器切换入口，名称直接显示，不执行尺寸展开动画）；下方按 section 渲染推荐轮播、继续观看、接下来、各媒体库最新，加载失败时在内容区提供重试入口。
 - **路由**：`HomeRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/HomeScreen.kt`；section 组装在 `HomeScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/home/HomeViewModel.kt`、`FILM/presentation/home/HomeState.kt`、`FILM/presentation/home/HomeAction.kt`。
 - **State 字段**：`server`、`suggestionsSection`、`resumeSection`、`nextUpSection`、`views`、`isLoading`、`error`。
-- **主要方法 / Action**：`loadData(refreshSuggestions)`；`OnItemClick`（可带共享元素来源 `heroKey`）、`OnLibraryClick`、`OnRetryClick`、`OnRefresh`、`OnSearchClick`、`OnManageServers`。
+- **主要方法 / Action**：`loadData(refreshSuggestions)`；`OnItemClick`（可带共享元素来源 `heroKey`）、`OnLibraryClick`、`OnRetryClick`、`OnRefresh`、`OnManageServers`。
 - **数据来源**：`getSuggestions()`、`getResumeItems()`、`getNextUp()`、`getUserViews()` + `getLatestMedia(view.id)`（`HomeViewModel.kt`）；各 section 有内容时自动展示，为空则不渲染，不再提供单独开关。banner（推荐轮播）只在首次进入与下拉刷新 / 切换服务器（`OnRefresh`）时拉取，从详情页返回首页不重新请求，避免轮播被重建；返回首页若共享元素转场仍在执行，等转场结束后再刷新其它分区，继续观看条目的增删与排序变化使用 LazyRow 条目动画。
 - **入口**：启动路由 / 底部「首页」标签 / 各详情页的 `navigateHome`。离线模式下页面不可达（首页数据全来自服务器），落地页与 `navigateHome` 的目标改为下载页。
 
@@ -162,7 +162,7 @@ else -> WelcomeRoute
 - **ViewModel / State / Action**：`FILM/presentation/media/MediaViewModel.kt`、`FILM/presentation/media/MediaState.kt`、`FILM/presentation/media/MediaAction.kt`。
 - **State 字段**：`libraries`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadData()`；`OnItemClick`、`OnFavoritesClick`、`OnDownloadsClick`、`OnRetryClick`。
-- **入口**：底部「媒体」标签（离线模式不显示）；首页搜索按钮会切到此页并置 `searchExpanded = true`（`PHONE/NavigationRoot.kt`）。
+- **入口**：底部「媒体」标签（离线模式不显示）。
 - **浏览入口**：网格末尾追加 `PHONE/presentation/film/components/MediaBrowseSection.kt`——按 nfo 已入库的维度（类别 / 标签 / 分级 / 年份 / 演员 / 导演 / 编剧 / 制片公司，枚举为 `data/src/main/java/dev/jdtech/jellyfin/models/MetadataFacet.kt`）列出入口，固定每行两个、随列表一起滚动，点击进入 `MetadataBrowseRoute`。
 
 ### DownloadsScreen — 下载
@@ -502,7 +502,7 @@ else -> WelcomeRoute
 - **挂载位置**：媒体库页内（`MediaScreen.kt`；`searchViewModel = hiltViewModel()` 见 `MediaScreen.kt`）。
 - **ViewModel / State / Action**：`FILM/presentation/search/SearchViewModel.kt`、`FILM/presentation/search/SearchState.kt`、`FILM/presentation/search/SearchAction.kt`。
 - **State 字段**：`items`、`loading`；**Action**：`Search(query)`、`OnItemClick`。
-- **触发方式**：`PHONE/NavigationRoot.kt` 的 `searchExpanded` 状态控制搜索栏展开；首页搜索按钮切到 `MediaRoute` 并置 `searchExpanded = true`（`PHONE/NavigationRoot.kt`）。
+- **触发方式**：点击媒体库页内的搜索栏展开搜索；展开状态通过 `MediaScreen` 的 `onSearchExpand` 回传至 `PHONE/NavigationRoot.kt` 的 `searchExpanded`，同时隐藏底部导航。
 
 ---
 

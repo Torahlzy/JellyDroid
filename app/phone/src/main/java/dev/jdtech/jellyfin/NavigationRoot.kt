@@ -362,14 +362,6 @@ fun NavigationRoot(
                                 )
                             )
                         },
-                        onSearchClick = {
-                            searchExpanded = true
-                            navController.safeNavigate(MediaRoute) {
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
                         onManageServers = { navController.safeNavigate(ServersRoute) },
                         onItemClick = { item, heroKey ->
                             navigateToItem(

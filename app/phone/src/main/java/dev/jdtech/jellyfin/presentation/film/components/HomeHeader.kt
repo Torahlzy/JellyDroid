@@ -1,16 +1,12 @@
 package dev.jdtech.jellyfin.presentation.film.components
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,21 +23,14 @@ import androidx.compose.ui.unit.dp
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
-import dev.jdtech.jellyfin.presentation.utils.LocalOfflineMode
 
 @Composable
 fun HomeHeader(
     serverName: String,
     onServerClick: () -> Unit,
-    onSearchClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isOfflineMode = LocalOfflineMode.current
-
-    Row(
-        modifier = modifier.fillMaxWidth().height(56.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
+    Row(modifier = modifier.fillMaxWidth().height(56.dp)) {
         Surface(
             onClick = onServerClick,
             modifier = Modifier.fillMaxHeight().weight(1f, fill = false),
@@ -64,32 +53,7 @@ fun HomeHeader(
                     overflow = TextOverflow.Ellipsis,
                     maxLines = 1,
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.animateContentSize(),
                 )
-            }
-        }
-
-        Spacer(Modifier.width(MaterialTheme.spacings.medium))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacings.medium)) {
-            if (!isOfflineMode) {
-                Surface(
-                    onClick = onSearchClick,
-                    modifier = Modifier.fillMaxHeight().aspectRatio(1f),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            painter = painterResource(CoreR.drawable.ic_search),
-                            contentDescription = null,
-                        )
-                    }
-                }
             }
         }
     }
@@ -99,10 +63,6 @@ fun HomeHeader(
 @Preview(showBackground = true)
 private fun HomeHeaderPreview() {
     FindroidTheme {
-        HomeHeader(
-            serverName = "Jellyfin",
-            onServerClick = {},
-            onSearchClick = {},
-        )
+        HomeHeader(serverName = "Jellyfin", onServerClick = {})
     }
 }
