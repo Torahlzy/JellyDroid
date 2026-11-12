@@ -37,6 +37,8 @@ render.experimental.xml
 # Keystore files
 *.jks
 *.keystore
+# 仅共享 debug 密钥入库，release 密钥继续忽略
+!/signing/debug.keystore
 
 # Google Services (e.g. APIs or Firebase)
 google-services.json

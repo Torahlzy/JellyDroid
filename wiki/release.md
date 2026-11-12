@@ -28,7 +28,11 @@ release.key.alias=
 release.key.password=
 ```
 
-任一项缺失时 release / staging 会构建成**未签名包**：既装不上，也不能发布，debug 则回退到 AGP 默认的 `debug.keystore`。发版前先确认这四项非空，并确保 keystore 与上一版是同一个——换签名会导致老用户必须卸载重装。四项齐全时 debug / release / staging 都用这份签名，debug 可直接覆盖安装已装的正式包并保留数据。
+任一项缺失时 release / staging 会构建成**未签名包**：既装不上，也不能发布。发版前先确认这四项非空，并确保 keystore 与上一版是同一个——换签名会导致老用户必须卸载重装。
+
+debug 固定使用仓库内的 `signing/debug.keystore`（JKS），不读取 release 签名，也不使用机器本地的默认 debug 密钥。别名为 `androiddebugkey`，仓库口令与私钥口令均为 `android`，仅供调试包使用，可随仓库共享；release 密钥与口令仍不得入库。各机器拉取仓库后无需额外配置，打出的 debug 包签名一致，可互相覆盖安装。请保留这份密钥，不要重新生成或替换。
+
+debug 与 release 包名相同但签名不同，**不能互相覆盖安装**；从使用 release 签名或机器默认 debug 签名的旧包切换时，需要先卸载旧包（会清除应用数据）。staging 继续复用 release 签名，并使用 `.staging` 包名后缀。
 
 ## 3. 构建
 

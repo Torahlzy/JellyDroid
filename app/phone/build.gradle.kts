@@ -12,8 +12,8 @@ plugins {
 }
 
 // release 签名信息属于本地配置，写在 local.properties（已被 .gitignore 忽略，不入库）。
-// 按下面四个 key 填写，四项齐全才会注册签名配置；任一缺失时 release / staging 保持未签名，
-// debug 沿用 AGP 默认的 debug.keystore，其他机器构建不受影响。
+// 按下面四个 key 填写，四项齐全才会注册签名配置；任一缺失时 release / staging 保持未签名。
+// debug 固定使用仓库内的独立密钥，不依赖本地 release 配置。
 //   release.store.file=
 //   release.store.password=
 //   release.key.alias=
@@ -28,6 +28,15 @@ fun signingProperty(key: String): String? = signingProps.getProperty(key)?.trim(
 
 android {
     signingConfigs {
+        // debug 密钥及口令公开入库，保证不同机器构建的调试包可以互相覆盖安装。
+        getByName("debug") {
+            storeFile = rootProject.file("signing/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+            storeType = "JKS"
+        }
+
         val storeFile = signingProperty("release.store.file")
         val storePassword = signingProperty("release.store.password")
         val keyAlias = signingProperty("release.key.alias")
@@ -58,14 +67,9 @@ android {
         testInstrumentationRunner = "dev.jdtech.jellyfin.HiltTestRunner"
     }
 
-    // 各构建类型共用同一签名，debug 才能直接覆盖安装已装的 release 包并保留数据。
-    // 签名配置不存在时不能给 debug 显式赋 null，否则会丢掉 AGP 默认的 debug.keystore 而产出未签名包。
     val releaseSigning = signingConfigs.findByName("release")
 
     buildTypes {
-        if (releaseSigning != null) {
-            named("debug") { signingConfig = releaseSigning }
-        }
         named("release") {
             // local.properties 配齐签名项时对 release 签名；staging 经 initWith 复用同一签名
             signingConfig = releaseSigning
