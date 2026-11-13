@@ -28,6 +28,7 @@ import dev.jdtech.jellyfin.logging.AppLog
 import dev.jdtech.jellyfin.logging.TorahDebugTree
 import dev.jdtech.jellyfin.cache.CacheManager
 import dev.jdtech.jellyfin.cache.CacheCategory
+import dev.jdtech.jellyfin.privacy.RecentsPrivacyLifecycleCallbacks
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,6 +54,8 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
 
     @Inject lateinit var userDataSyncScheduler: UserDataSyncScheduler
 
+    @Inject lateinit var recentsPrivacyLifecycleCallbacks: RecentsPrivacyLifecycleCallbacks
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder().setWorkerFactory(workerFactory).build()
 
@@ -76,6 +79,7 @@ class BaseApplication : Application(), Configuration.Provider, SingletonImageLoa
         }
 
         DynamicColors.applyToActivitiesIfAvailable(this)
+        registerActivityLifecycleCallbacks(recentsPrivacyLifecycleCallbacks)
 
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {

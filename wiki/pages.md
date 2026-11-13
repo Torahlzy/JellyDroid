@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-11-12**
+**最后更新：2026-11-13**
 
 ---
 
@@ -507,6 +507,8 @@ else -> WelcomeRoute
 ---
 
 ## 页面共性约定
+
+- **最近任务隐私**：`PHONE/BaseApplication.kt` 注册 `PHONE/privacy/RecentsPrivacyLifecycleCallbacks.kt`，在各 Activity 创建完成后统一禁用最近任务截图，并将任务卡片背景设为纯黑，覆盖主界面与独立播放器。仅 Android 13 及以上生效；Android 12 及以下保持系统原有预览行为。所有版本均保留前台截图和录屏能力，不使用 `FLAG_SECURE`，也不在退后台时临时添加遮罩。
 
 - **MVVM + 单向数据流**：`ViewModel` 暴露 `StateFlow<XxxState>`，Screen 通过 `collectAsStateWithLifecycle()` 观察；用户交互分发 `XxxAction` 给 `onAction()`。
 - **State / Action 复用**：`DownloadsViewModel` 与 `FavoritesViewModel` 复用 `FILM/presentation/collection/CollectionState.kt` + `FILM/presentation/collection/CollectionAction.kt`，**没有**独立的 `DownloadsState` / `FavoritesState`。
