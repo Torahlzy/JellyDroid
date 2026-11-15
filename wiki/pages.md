@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-11-13**
+**最后更新：2026-11-15**
 
 ---
 
@@ -167,13 +167,14 @@ else -> WelcomeRoute
 
 ### DownloadsScreen — 下载
 
-- **职责**：展示本地已下载条目，分组网格呈现；空列表时提示「无下载」，加载失败可重试；点击条目时为详情路由设置 `useLocalData = true`，无需开启全局离线模式即可读取本地详情。右上角「保存到下载文件夹」支持选择已完成的电影、分集及不同视频版本，复制到手机公共 `Download/JellyDroid` 目录，显示所选文件大小、后台保存进度及成功 / 失败 / 取消数量。
+- **职责**：展示本地已下载条目，分组网格呈现；空列表时提示「无下载」，加载失败可重试；点击条目时为详情路由设置 `useLocalData = true`，无需开启全局离线模式即可读取本地详情。仅本页支持两个条目操作入口（由 `CollectionGrid` 的 `onItemExport` / `onItemMenu` 与 `ItemCard` 的 `onExportClick` / `onLongClick` 提供）：点击条目右上角「保存到下载文件夹」下载图标直接弹确认弹窗；长按条目弹出操作菜单（`DownloadsItemMenuDialog`），菜单里选「保存到下载文件夹」同样进入确认弹窗，确认后把该条目已完成的视频复制到手机公共 `Download/JellyDroid` 目录，复制在后台进行，页面顶部显示进度条。菜单右上角的「删除下载」（错误色）等同详情页删除本地文件：先经 `DeleteDownloadDialog` 二次确认，确认后调 `Downloader.deleteItem` 删除本地文件与离线库记录并刷新列表。保存 / 删除失败原因显示在进度条下方（`operationError`）。
 - **路由**：`DownloadsRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/DownloadsScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/downloads/DownloadsViewModel.kt`、`FILM/presentation/downloads/DownloadsState.kt`、`FILM/presentation/downloads/DownloadsAction.kt`。
-- **State 字段**：`sections`、`isLoading`、`error`；保存相关状态为 `showExportDialog`、`exportItems`、`selectedSourceIds`、`isLoadingExportItems`、`isStartingExport`、`exportState`、`exportError`。
-- **主要方法 / Action**：`loadItems()`（内部调用 `repository.getDownloads()`）、`onAction()`；`OnItemClick`、`OpenExportDialog`、`CloseExportDialog`、`ToggleExportItem`、`ToggleSelectAll`、`ExportSelected`、`CancelExport`、`StoragePermissionDenied`、`Retry`。
-- **保存到公共目录**：弹窗为 `PHONE/presentation/film/components/DownloadExportDialog.kt`；业务接口与实现为 `core/src/main/java/dev/jdtech/jellyfin/utils/DownloadExporter.kt`、`core/src/main/java/dev/jdtech/jellyfin/utils/DownloadExporterImpl.kt`，从当前服务器的离线数据库读取已完成且文件存在的来源，不请求服务器。`core/src/main/java/dev/jdtech/jellyfin/work/DownloadExportWorker.kt` 使用 WorkManager 串行复制视频；Android 10 及以上通过 MediaStore 下载集合写入，Android 9 由 Screen 请求存储权限后写入公共目录。保留原始文件名与扩展名，同名自动另存，不覆盖既有文件；只复制视频文件，原有离线文件与播放记录不变，公共副本卸载后仍保留。关闭弹窗或离开页面后继续保存，可重新打开查看结果；停止保存只取消剩余任务，保留已完成的副本，未完成副本会清理。进程中断后，任务重跑会先按任务 id 清理上次未发布的副本，再检查源文件与剩余空间并重新复制；清理失败会显示保存失败，避免继续创建残留副本。
+- **State 字段**：`sections`、`isLoading`、`error`；条目操作相关状态为 `itemMenuItem`（待弹菜单条目）、`exportConfirmItem`（待保存确认条目）、`deleteConfirmItem`（待删除确认条目）、`exportState`、`operationError`。
+- **主要方法 / Action**：`loadItems()`（内部调用 `repository.getDownloads()`）、`onAction()`；`OnItemClick`、`OnItemMenu`、`DismissItemMenu`、`OnItemExport`、`DismissExportConfirm`、`ConfirmExport`、`OnItemDelete`、`DismissDeleteConfirm`、`ConfirmDelete`、`StoragePermissionDenied`、`Retry`。
+- **保存到公共目录**：确认弹窗为 `PHONE/presentation/film/components/DownloadExportConfirmDialog.kt`（Android 9 由 Screen 请求存储权限后再执行）；业务接口与实现为 `core/src/main/java/dev/jdtech/jellyfin/utils/DownloadExporter.kt`、`core/src/main/java/dev/jdtech/jellyfin/utils/DownloadExporterImpl.kt`，从当前服务器的离线数据库读取已完成且文件存在的来源，不请求服务器。`core/src/main/java/dev/jdtech/jellyfin/work/DownloadExportWorker.kt` 使用 WorkManager 串行复制视频；Android 10 及以上通过 MediaStore 下载集合写入，Android 9 写入公共目录。保留原始文件名与扩展名，同名自动另存，不覆盖既有文件；只复制视频文件，原有离线文件与播放记录不变，公共副本卸载后仍保留。确认弹窗后复制在后台继续，离开页面不影响；进程中断后，任务重跑会先按任务 id 清理上次未发布的副本，再检查源文件与剩余空间并重新复制；清理失败会显示保存失败，避免继续创建残留副本。
+- **删除下载**：操作菜单为 `PHONE/presentation/film/components/DownloadsItemMenuDialog.kt`，删除确认复用详情页的 `PHONE/presentation/film/components/DeleteDownloadDialog.kt`；ViewModel 注入 `core/src/main/java/dev/jdtech/jellyfin/utils/Downloader.kt`，取条目的 LOCAL 来源调 `deleteItem(item, source)`，行为与详情页删除一致（删本地文件与离线库记录），成功后 `loadItems()` 刷新列表。
 - **详情数据来源**：`FILM/presentation/di/DetailRepositoryModule.kt` 根据路由保存在 `SavedStateHandle` 中的 `useLocalData` 参数，为电影 / 剧集 / 季 / 分集的 ViewModel 注入带 `FILM/presentation/di/DetailRepository.kt` 限定符的仓库；下载入口使用既有 `JellyfinRepositoryOfflineImpl`，元数据、播放源、下一集和季 / 分集列表均从 Room 读取。该参数沿剧集 → 季 → 分集及返回所属季 / 剧集的路径传递，进程重建后保留；本地详情范围内的 `LocalOfflineMode` 同时启用，隐藏服务器编辑入口，删除下载后返回上一页。播放时通过 Intent extra `useLocalData` 继续传入播放器，播放列表与进度记录同样使用本地仓库。其他入口仍按全局离线设置选择仓库。
 - **入口**：媒体页的「已下载」入口（`PHONE/presentation/film/components/MediaEntryCard.kt`，与「我喜欢」并排平分一行宽度）；离线模式下本页同时是底栏「下载」标签的根页面、启动落地页与各详情页 `navigateHome` 的目标，此时（`DownloadsScreen` 的 `isTabRoot`）列表底部额外留出底栏高度，避免最后一行被浮起的底栏压住（`CollectionGrid` 的 `bottomContentPadding`）。
 
@@ -321,23 +322,14 @@ else -> WelcomeRoute
 
 ## JavDB 过盾页面（javdb）
 
-### JavDbUnblockScreen — JavDB 过盾
+### JavDbUnblockScreen — JavDB 过盾 / 网页版登录
 
-- **职责**：JavDB 抓取被 Cloudflare 拦截（`ScraperException.SiteBlocked`）时，在内置 WebView 里打开站点首页，由用户手动完成人机验证。WebView 按设置里的抓取代理（`AppPreferences.scrapeProxy`）经 `androidx.webkit` 的 `ProxyController` 配置同样的出口（与抓取请求对齐 IP，cf_clearance 才对抓取有效）；页面每次加载完成时把 WebView 的 Cookie（含 cf_clearance）经 `CORE/scraper/ScraperCookieJar.importCookies` 搬进抓取 Cookie 罐、并把 WebView 的 UA 存进 `AppPreferences.javdbWebViewUserAgent`（后续 JavDB 抓取请求复用同一 UA，见 `CORE/scraper/ScraperHttp.kt` 的 `withUserAgentOverride`）。网页内可后退时返回键先退网页；右上角「完成」返回上一页，之后在详情页点「重试」重新加载短评。
-- **路由**：`JavDbUnblockRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
-- **Screen**：`PHONE/presentation/javdb/JavDbUnblockScreen.kt`（WebView 经 `AndroidView` 承载，无 State / Action 文件）。
-- **ViewModel**：`PHONE/presentation/javdb/JavDbUnblockViewModel.kt`，暴露 `startUrl`、`proxyAddress` 与 `onPageFinished(url, cookieHeader, userAgent)`。
-- **入口**：电影详情页评论区加载失败且被站点拦截时的「打开网页过盾」按钮（`PHONE/presentation/film/components/MovieCommentsSection.kt`）。
-
-#### 方案备忘：网页版登录（未实现）
-
-现有登录走 `CORE/scraper/JavDbSessionImpl.kt` 的图形验证码流程（取登录页 token → 取 rucaptcha 验证码图 → POST 提交），三步都经过 Cloudflare，依赖过盾拿到的 `cf_clearance` 与 UA 覆盖（`CORE/scraper/ScraperHttp.kt` 的 `withUserAgentOverride`）。**如果下次登录仍然失败**（验证码取图或提交被 403，或验证码频繁识别不过），考虑改为在过盾页的 WebView 里直接登录，思路：
-
-1. 用户在 `JavDbUnblockScreen` 的 WebView 里完成站点登录（站点自己的人机验证在页面里处理，不依赖 App 内的图形验证码流程）。
-2. 「完成」时按当前登录态分流：
-   - **App 未登录**：把 WebView 的会话 Cookie（`_jdb_session` 等）也导入 `ScraperCookieJar`，再请求一次 profile 页解析账号名 / VIP 回填 `AppPreferences`（`javdbLoggedInUser` / `javdbVip`，解析逻辑可复用 `JavDbSessionImpl` 现成的实现），让设置页与评论区的登录态立即生效；
-   - **App 已登录**：维持现状，只导入 Cloudflare 的 Cookie（`cf` / `__cf` 前缀，规则已实现于 `JavDbUnblockViewModel.onPageFinished`），避免 WebView 的匿名会话顶掉已登录会话——之前全量导入导致「会话失效被清光」的教训即源于此。
-3. 改动范围集中在 `JavDbUnblockViewModel` 与 `JavDbSession`（`:settings` 接口加一个「从现有会话 Cookie 校验并回填账号状态」的方法 + `:core` 实现），约百行；前置的 UA 覆盖与 Cookie 同步机制均已就绪。
+- **职责**：JavDB 抓取被 Cloudflare 拦截（`ScraperException.SiteBlocked`）时，在内置 WebView 里打开站点首页，由用户手动完成人机验证。WebView 按设置里的抓取代理（`AppPreferences.scrapeProxy`，仅「评论使用代理」开启时生效）经 `androidx.webkit` 的 `ProxyController` 配置同样的出口（与抓取请求对齐 IP，cf_clearance 才对抓取有效）；页面每次加载完成时把 WebView 的 Cookie（含 cf_clearance）经 `CORE/scraper/ScraperCookieJar.importCookies` 搬进抓取 Cookie 罐、并把 WebView 的 UA 存进 `AppPreferences.javdbWebViewUserAgent`（后续 JavDB 抓取请求复用同一 UA，见 `CORE/scraper/ScraperHttp.kt` 的 `withUserAgentOverride`）。网页内可后退时返回键先退网页；网页退到头后，右上角「完成」与系统返回键都会先同步登录态再返回，之后在详情页点「重试」重新加载短评。
+- **网页版登录（唯一的登录方式）**：`requireLogin = true` 时本页就是站点账号登录页——起始地址为站点登录页，账号密码、图形验证码与人机验证都在网页里完成；点「完成」时若 App 未登录，由 `JavDbSession.adoptWebViewSession`（`CORE/scraper/JavDbSessionImpl.kt`）把整段网页会话 Cookie 导入抓取 Cookie 罐，再访问一次 profile 页确认会话有效并回填账号名 / VIP（`AppPreferences.javdbLoggedInUser` / `javdbVip`），让设置页与评论区的登录态立即生效；网页里没登录则留在本页用 Snackbar 提示。App 已登录时跳过整段导入（网页多半是匿名新会话，会顶掉已登录会话），只同步 `cf` / `__cf` 前缀的放行 Cookie。
+- **路由**：`JavDbUnblockRoute(requireLogin = false)`，定义并注册于 `PHONE/NavigationRoot.kt`。
+- **Screen**：`PHONE/presentation/javdb/JavDbUnblockScreen.kt`（WebView 经 `AndroidView` 承载，无 Action 文件）。
+- **ViewModel / State**：`PHONE/presentation/javdb/JavDbUnblockViewModel.kt`、`PHONE/presentation/javdb/JavDbUnblockState.kt`；暴露 `startUrl(requireLogin)`、`proxyAddress`、`state`、`onPageFinished(url, cookieHeader, userAgent)`、`finish(requireLogin)`、`onMessageShown()`。
+- **入口**：电影详情页评论区加载失败且被站点拦截时的「打开网页过盾」按钮（`PHONE/presentation/film/components/MovieCommentsSection.kt`）；设置页站点账号弹窗（`PHONE/presentation/settings/components/JavDbAccountDialog.kt`）里的「在网页里登录」。
 
 ---
 
@@ -345,12 +337,12 @@ else -> WelcomeRoute
 
 ### SettingsScreen — 设置主页
 
-- **职责**：按 `indexes` 展示分组偏好并处理嵌套导航。首页七个入口按「语言」「用户与服务器」「播放器」「下载与网络」「缓存」「界面」「关于」排列，语言置顶便于首次使用切换。界面页仅保留跟随系统 / 浅色 / 深色主题；动态色彩在系统支持时自动启用。下载与网络页管理下载约束、连接超时、「评论」组（开启外网评论、评论使用代理、站点账号登录）、独立的「抓取网址」卡片与独立的「代理」组（本地代理设置；代理是 nfo / 封面 / 头像 / 字幕 / 评论共用的全局设置，不受评论开关禁用），缓存进入专属页面。「抓取网址」入口只作配置入口、不显示网址，说明为「配置抓取图片、nfo、字幕的站点。」；点开后与详情页「更多」菜单共用 `PHONE/presentation/components/ScraperUrlsDialog.kt`，弹窗回填各站点实际生效地址（运行时配置优先，未配置回退打包配置，见 `SETTINGS/domain/ScrapeSiteUrlsProvider.kt` 与 `CORE/scraper/ScraperUrlProviderImpl.kt`），保存走 `SettingsAction.SaveScrapeUrls`；防呆只针对用户本次改动，不误报回填的打包地址。「本地代理设置」弹窗带「测试」按钮（见电影详情页一节）。动作型偏好只有声明了空态文案的账号行才显示「未登录」。文本输入和登录组件位于 `PHONE/presentation/settings/components/`；站点账号登录弹窗由设置页承载。播放器固定记忆手动调节的亮度，不再提供独立开关。
+- **职责**：按 `indexes` 展示分组偏好并处理嵌套导航。首页七个入口按「语言」「用户与服务器」「播放器」「下载与网络」「缓存」「界面」「关于」排列，语言置顶便于首次使用切换。界面页仅保留跟随系统 / 浅色 / 深色主题；动态色彩在系统支持时自动启用。下载与网络页管理下载约束、连接超时、「评论」组（开启外网评论、评论使用代理、站点账号登录）、独立的「抓取网址」卡片与独立的「代理」组（本地代理设置；代理是 nfo / 封面 / 头像 / 字幕 / 评论共用的全局设置，不受评论开关禁用），缓存进入专属页面。「抓取网址」入口只作配置入口、不显示网址，说明为「配置抓取图片、nfo、字幕的站点。」；点开后与详情页「更多」菜单共用 `PHONE/presentation/components/ScraperUrlsDialog.kt`，弹窗回填各站点实际生效地址（运行时配置优先，未配置回退打包配置，见 `SETTINGS/domain/ScrapeSiteUrlsProvider.kt` 与 `CORE/scraper/ScraperUrlProviderImpl.kt`），保存走 `SettingsAction.SaveScrapeUrls`；防呆只针对用户本次改动，不误报回填的打包地址。「本地代理设置」弹窗带「测试」按钮（见电影详情页一节）。动作型偏好只有声明了空态文案的账号行才显示「未登录」。文本输入组件位于 `PHONE/presentation/settings/components/`；站点账号登录改由 `PHONE/presentation/settings/components/JavDbAccountDialog.kt` 承载——登录只在站点网页里完成，弹窗仅提供「在网页里登录」入口（跳 `JavDbUnblockRoute(requireLogin = true)`，见「JavDB 过盾页面」）与已登录时的退出登录，不再有账号密码与图形验证码输入。播放器固定记忆手动调节的亮度，不再提供独立开关。
 - **路由**：`SettingsRoute(indexes: IntArray)`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/settings/SettingsScreen.kt`。
 - **ViewModel / State / Action / Event**：`SETTINGS/presentation/settings/SettingsViewModel.kt`、`SETTINGS/presentation/settings/SettingsState.kt`、`SETTINGS/presentation/settings/SettingsAction.kt`、`SETTINGS/presentation/settings/SettingsEvent.kt`。
-- **State 字段**：`isLoading`、`preferenceGroups`，站点登录态（`javdbLogin` / `javdbAccount` / `javdbLoggedInUser`），以及「抓取网址」弹窗的 `showScrapeUrlsDialog` / `scrapeSiteUrls`。
-- **主要方法 / Action**：`loadPreferences(indexes)`、`onAction()`；`OnBackClick`、`OnUpdate`、站点登录相关 Action 与 `OpenScrapeUrls` / `SaveScrapeUrls` / `CloseScrapeUrls`。
+- **State 字段**：`isLoading`、`preferenceGroups`，站点账号弹窗的 `showJavDbAccountDialog` 与登录态 `javdbLoggedInUser`，以及「抓取网址」弹窗的 `showScrapeUrlsDialog` / `scrapeSiteUrls`。
+- **主要方法 / Action**：`loadPreferences(indexes)`、`onAction()`；`OnBackClick`、`OnUpdate`、`CloseJavDbAccount` / `OpenJavDbWebLogin` / `JavDbLogout` 与 `OpenScrapeUrls` / `SaveScrapeUrls` / `CloseScrapeUrls`。
 - **Event**：`NavigateToUsers`、`NavigateToServers`、`NavigateToAbout`、`NavigateToSettings`、`NavigateToSettingsFileEdit`、`UpdateTheme`、`LaunchIntent`。
 - **入口**：底部「设置」标签（`PHONE/NavigationRoot.kt`）。
 

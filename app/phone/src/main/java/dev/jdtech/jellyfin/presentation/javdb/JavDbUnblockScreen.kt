@@ -11,10 +11,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -31,9 +35,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
 import androidx.webkit.WebViewFeature
@@ -46,17 +52,30 @@ import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
  *
  * 验证通过（页面正常打开）后点右上角「完成」返回，返回后到详情页点「重试」重新加载短评；
  * WebView 侧的 Cookie 与 UA 在每次页面加载完成时自动同步，无需用户做别的操作。
+ *
+ * [requireLogin] 为 true 时本页是**网页版登录**入口：从登录页开始，点「完成」时校验并接管
+ * 网页里的登录会话，网页里没登录会留在本页提示。
  */
 @Composable
 fun JavDbUnblockScreen(
     navigateBack: () -> Unit,
+    requireLogin: Boolean = false,
     viewModel: JavDbUnblockViewModel = hiltViewModel(),
 ) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // 同步完成后再返回：ViewModel 只管状态，导航留在界面侧
+    LaunchedEffect(state.isFinished) {
+        if (state.isFinished) navigateBack()
+    }
+
     JavDbUnblockScreenLayout(
-        startUrl = viewModel.startUrl,
+        startUrl = viewModel.startUrl(requireLogin),
         proxyAddress = viewModel.proxyAddress,
+        state = state,
+        onMessageShown = viewModel::onMessageShown,
         onPageFinished = viewModel::onPageFinished,
-        onDone = navigateBack,
+        onDone = { viewModel.finish(requireLogin) },
     )
 }
 
@@ -65,16 +84,28 @@ fun JavDbUnblockScreen(
 private fun JavDbUnblockScreenLayout(
     startUrl: String,
     proxyAddress: String,
+    state: JavDbUnblockState,
+    onMessageShown: () -> Unit,
     onPageFinished: (url: String, cookieHeader: String?, userAgent: String) -> Unit,
     onDone: () -> Unit,
 ) {
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // 同步失败提示（仅网页版登录会走到）：展示后立即清空，避免重组时重复弹出
+    LaunchedEffect(state.message) {
+        val message = state.message ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        onMessageShown()
+    }
 
     // WebView 句柄：网页内可后退时返回键先退网页，而不是直接退出本页
     var webView: WebView? by remember { mutableStateOf(null) }
     // canGoBack 不是 Compose 状态，网页内跳转不会触发重组，得在导航回调里主动记录
     var canGoBack by remember { mutableStateOf(false) }
-    BackHandler(enabled = canGoBack) { webView?.goBack() }
+    // 网页退到头后，系统返回键与「完成」走同一条路：先同步登录态再返回，
+    // 否则用户用系统返回离开时网页里的登录不会被接管
+    BackHandler { if (canGoBack) webView?.goBack() else onDone() }
 
     // 代理覆盖是否已由本页设置（退出时据此还原；App 内只有本页用 WebView，全局覆盖无外溢）
     var proxyApplied by remember { mutableStateOf(false) }
@@ -101,12 +132,21 @@ private fun JavDbUnblockScreenLayout(
                     }
                 },
                 actions = {
-                    TextButton(onClick = onDone) {
+                    if (state.isSyncing) {
+                        CircularProgressIndicator(
+                            modifier =
+                                Modifier.size(SYNCING_INDICATOR_SIZE)
+                                    .align(Alignment.CenterVertically),
+                            strokeWidth = SYNCING_INDICATOR_STROKE,
+                        )
+                    }
+                    TextButton(onClick = onDone, enabled = !state.isSyncing) {
                         Text(text = stringResource(CoreR.string.javdb_unblock_done))
                     }
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         when {
             // 没配站点网址时给提示，而不是留一块永远空白的 WebView
@@ -254,6 +294,11 @@ private fun proxyRule(address: String): String? {
     }
 }
 
+/** 顶栏「完成」旁同步进度的尺寸：顶栏操作区留白小，18dp 是可辨识的最小值。 */
+private val SYNCING_INDICATOR_SIZE = 18.dp
+
+private val SYNCING_INDICATOR_STROKE = 2.dp
+
 @PreviewScreenSizes
 @Composable
 private fun JavDbUnblockScreenPreview() {
@@ -261,6 +306,8 @@ private fun JavDbUnblockScreenPreview() {
         JavDbUnblockScreenLayout(
             startUrl = "https://javdb.example",
             proxyAddress = "",
+            state = JavDbUnblockState(),
+            onMessageShown = {},
             onPageFinished = { _, _, _ -> },
             onDone = {},
         )

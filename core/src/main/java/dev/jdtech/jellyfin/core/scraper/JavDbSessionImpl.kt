@@ -13,18 +13,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
 
 /**
- * JavDB 网页端登录。
+ * JavDB 账号会话。
  *
- * 站点登录表单（`POST /user_sessions`）要求三样东西同时在场：
- * 1. 登录页里的一次性 `authenticity_token`；
- * 2. 单次有效的**图形验证码**（`GET /rucaptcha/?t=...` 返回 GIF，答案与当前会话绑定）；
- * 3. 账号（用户名或邮箱）与密码。
- *
- * 三者都绑在同一次会话的 Cookie 上，因此这里强制顺序：先取登录页 → 再取验证码 → 用户看清后一起提交。
- * 会话 Cookie 由 [ScraperCookieJar] 保存（含落盘），登录成功后短评等后续请求自动带上。
+ * 站点登录（图形验证码与 Cloudflare 人机验证）完全在过盾页的 WebView 里由用户完成，本类不接触
+ * 账号密码，只负责接管网页登录后的会话：[adoptWebViewSession] 把整段 Cookie 搬进
+ * [ScraperCookieJar]（含落盘），校验一次有效后回填账号名与 VIP 状态，之后的短评请求自动带上会话。
  */
 class JavDbSessionImpl
 @Inject
@@ -36,110 +31,55 @@ constructor(
     private val commentCache: CommentCache,
 ) : JavDbSession {
 
-    /** 登录页拿到的一次性 token，登录成功或失败后都要重新取。 */
-    @Volatile private var loginToken: String? = null
-
-    /** 取验证码与提交登录是同一段流程，串行化避免两次点击互相覆盖 token。 */
+    /** 接管网页会话与短评侧的会话校验可能并发，串行化避免两次请求互相覆盖 Cookie 与登录状态。 */
     private val mutex = Mutex()
 
     override fun loggedInAccount(): String =
         appPreferences.getValue(appPreferences.javdbLoggedInUser)
 
-    override suspend fun loadCaptcha(): ByteArray =
-        mutex.withLock {
-            val baseUrl = requireBaseUrl()
-            val loginUrl = "$baseUrl/login"
-            val page = http.getFollowingRedirects(loginUrl, HEADERS)
-            if (page.code !in 200..299) {
-                throw ScraperException.WebsiteError("JavDB: 登录页返回 ${page.code}")
-            }
-            loginToken =
-                Jsoup.parse(page.body, loginUrl)
-                    .selectFirst("form[action=/user_sessions] input[name=authenticity_token]")
-                    ?.attr("value")
-                    ?.takeIf { it.isNotBlank() }
-                    ?: throw ScraperException.WebsiteError("JavDB: 登录页结构变化，找不到表单 token")
-            // 验证码取图会刷新会话 Cookie，必须与随后的提交处在同一次会话里
-            http.getBytes("$baseUrl$CAPTCHA_PATH${System.currentTimeMillis()}", HEADERS)
-        }
-
-    override suspend fun login(
-        account: String,
-        password: String,
-        captcha: String,
+    override suspend fun adoptWebViewSession(
+        pageUrl: String,
+        cookieHeader: String?,
     ): JavDbLoginResult =
         mutex.withLock {
+            if (cookieHeader.isNullOrBlank()) {
+                return@withLock JavDbLoginResult.Failure(WEB_LOGIN_REQUIRED)
+            }
+            // 整段导入：走到这里说明 App 未登录，网页里的会话就是之后抓取要用的会话
+            cookieJar.importCookies(pageUrl, cookieHeader)
             val baseUrl = requireBaseUrl()
-            val token =
-                loginToken
-                    ?: return@withLock JavDbLoginResult.Failure("验证码已失效，请刷新验证码后重试")
-            val accountName = account.trim()
-            if (accountName.isEmpty() || password.isEmpty()) {
-                return@withLock JavDbLoginResult.Failure("请填写账号与密码")
-            }
-            if (captcha.isBlank()) {
-                return@withLock JavDbLoginResult.Failure("请填写图形验证码")
-            }
-
-            val response =
+            val check =
                 try {
-                    http.postFollowingRedirects(
-                        "$baseUrl/user_sessions",
-                        form =
-                            mapOf(
-                                "authenticity_token" to token,
-                                "email" to accountName,
-                                "password" to password,
-                                "_rucaptcha" to captcha.trim(),
-                                "remember" to "1",
-                                "commit" to "登入",
-                            ),
-                        headers = HEADERS,
+                    http.getFollowingRedirects(
+                        "$baseUrl/users/profile",
+                        HEADERS,
+                        // 出口要与过盾页 WebView 保持一致（cf_clearance 与 IP 绑定）：网页打开时按
+                        // 「评论使用代理」决定走代理还是直连，这里用同一个开关，否则 IP 不同会被判 403
+                        useProxy = appPreferences.getValue(appPreferences.commentsUseProxy),
                     )
                 } catch (e: ScraperException) {
-                    AppLog.w(e, "JavDB 登录请求失败")
-                    return@withLock JavDbLoginResult.Failure(e.message ?: "登录请求失败")
+                    AppLog.w(e, "JavDB 网页登录后校验会话失败")
+                    return@withLock JavDbLoginResult.Failure(e.message ?: "校验网页登录状态失败")
                 }
-
-            // 失败时站点有两种形态：渲染完整登录页（带错误文案），或 30 字节的 JS 跳转页
-            // （`window.location.href='/login'`，HTTP 仍是 200，无任何文案）。只比对 URL 会把
-            // 后者漏判成成功（POST 后 URL 仍是 /user_sessions），必须同时看 body
-            val bouncedToLogin =
-                response.url.contains("/login") ||
-                    response.body.contains("window.location.href='/login'")
-            if (bouncedToLogin) {
-                loginToken = null
-                val message =
-                    if (response.body.contains("message-header")) {
-                        readLoginError(Jsoup.parse(response.body))
-                    } else {
-                        "登录失败：账号、密码或验证码不正确"
-                    }
-                return@withLock JavDbLoginResult.Failure(message)
-            }
-
-            // 用一个需要登录的页面复核，避免把「被挡在别处的 200」当成成功。
-            // 与上面同理：未登录时该页面是 200 + JS 跳转（仅 30 字节），长度与内容都要看
-            val profileUrl = "$baseUrl/users/profile"
-            val check = http.getFollowingRedirects(profileUrl, HEADERS)
-            val profileInvalid =
+            // 与 ensureSessionValid 同理：未登录时站点回 JS 跳转页或完整登录页（HTTP 仍是 200）
+            val invalid =
                 check.url.contains("/login") ||
                     check.body.contains("window.location.href='/login'") ||
                     check.body.length < PROFILE_MIN_LENGTH
-            if (profileInvalid) {
-                loginToken = null
-                return@withLock JavDbLoginResult.Failure("登录未生效，请确认账号密码后重试")
+            if (invalid) {
+                AppLog.i("JavDB 网页登录未生效：profile 页仍是未登录状态")
+                return@withLock JavDbLoginResult.Failure(WEB_LOGIN_REQUIRED)
             }
 
-            loginToken = null
-            appPreferences.setValue(appPreferences.javdbAccount, accountName)
-            appPreferences.setValue(appPreferences.javdbLoggedInUser, accountName)
-            // 登录复核用的 profile 页里带着账号的「用戶類型」，顺手解析出 VIP 状态给设置页账号行显示
+            // 网页登录没有用户输入的账号可存，名字只能从 profile 页解析；解析不到时用站点名占位
+            // ——javdbLoggedInUser 空串即「未登录」，不能留空
+            val account = parseAccountName(check.body).ifBlank { UNKNOWN_ACCOUNT_NAME }
+            appPreferences.setValue(appPreferences.javdbLoggedInUser, account)
             appPreferences.setValue(appPreferences.javdbVip, parseVip(check.body))
             // 登录前缓存的短评可能只有站点给访客的那几条，作废后下次进详情页会重新抓
             commentCache.clear()
-            AppLog.i("JavDB 登录成功：%s", accountName)
-            JavDbLoginResult.Success(accountName)
+            AppLog.i("JavDB 网页登录成功：%s", account)
+            JavDbLoginResult.Success(account)
         }
 
     override suspend fun ensureSessionValid(): Boolean {
@@ -163,7 +103,6 @@ constructor(
         // 会话已失效：清掉本地登录痕迹（与登出相同的清理，但不打「已退出」日志）
         val host = runCatching { URI(baseUrl).host }.getOrNull()
         host?.let { cookieJar.clearHost(it) }
-        loginToken = null
         appPreferences.setValue(appPreferences.javdbLoggedInUser, "")
         appPreferences.setValue(appPreferences.javdbVip, false)
         AppLog.i("JavDB 会话已失效，已清除登录状态，请重新登录")
@@ -176,7 +115,6 @@ constructor(
                 runCatching { URI(url).host }.getOrNull()
             }
         host?.let { cookieJar.clearHost(it) }
-        loginToken = null
         appPreferences.setValue(appPreferences.javdbLoggedInUser, "")
         appPreferences.setValue(appPreferences.javdbVip, false)
         // 退出后能看到的评论会变少，旧缓存同样作废
@@ -185,31 +123,38 @@ constructor(
     }
 
     /**
-     * 登录失败页上的提示文案。
-     *
-     * 站点把错误放在 `div.message-container > article.message > div.message-header` 里
-     * （页面上还有一条「永久訪問 JavDB 的方法」的 `message-body`，不能笼统地取 message-body）。
-     */
-    private fun readLoginError(document: Document): String =
-        document
-            .select("div.message-container .message-header")
-            .map { it.text().trim() }
-            .firstOrNull { it.isNotEmpty() }
-            ?: "登录失败：账号、密码或验证码不正确"
-
-    /**
      * 从 profile 页解析账号是否 VIP：个人信息的「用戶類型」一栏是
      * `<span class="label">用戶類型:</span><span class="tag ...">永久VIP</span>` 这样的结构，
      * VIP 用户的值里带「VIP」字样；非 VIP 该栏可能没有 tag 或不含「VIP」。
      */
-    private fun parseVip(profileBody: String): Boolean {
+    private fun parseVip(profileBody: String): Boolean =
+        readProfileField(profileBody, "用戶類型").contains("VIP", ignoreCase = true)
+
+    /** 从 profile 页解析用户名；网页登录没有用户输入的账号可存，只能从这里取。 */
+    private fun parseAccountName(profileBody: String): String = readProfileField(profileBody, "用戶名")
+
+    /**
+     * 读 profile 页某一栏的值：`span.label` 是字段名，它与值同在一个父节点里，
+     * 值通常是 `span.value` 或 `span.tag`，两者都没有时退回父节点去掉字段名后的文本。
+     */
+    private fun readProfileField(profileBody: String, labelKeyword: String): String {
         val label =
             Jsoup.parse(profileBody)
                 .select("span.label")
-                .firstOrNull { it.text().contains("用戶類型") }
-                ?: return false
-        val value = label.parent()?.selectFirst("span.tag")?.text().orEmpty()
-        return value.contains("VIP", ignoreCase = true)
+                .firstOrNull { it.text().contains(labelKeyword) }
+                ?: return ""
+        val parent = label.parent() ?: return ""
+        val value = parent.selectFirst("span.value")?.text()?.trim()
+        if (!value.isNullOrEmpty()) return value
+        val tag = parent.selectFirst("span.tag")?.text()?.trim()
+        if (!tag.isNullOrEmpty()) return tag
+        // 兜底取的是整个父节点的文本，结构不符时会拿到一大段内容；超过字段长度上限的宁可不用
+        return parent
+            .text()
+            .removePrefix(label.text())
+            .trim()
+            .takeIf { it.length <= MAX_PROFILE_FIELD_LENGTH }
+            .orEmpty()
     }
 
     private fun requireBaseUrl(): String =
@@ -217,7 +162,14 @@ constructor(
             ?: throw ScraperException.WebsiteError("JavDB: 没有配置站点网址")
 
     private companion object {
-        const val CAPTCHA_PATH = "/rucaptcha/?t="
+        /** 网页里还没登录时的统一提示。 */
+        const val WEB_LOGIN_REQUIRED = "网页里还没有登录，请先登录站点账号"
+
+        /** profile 页解析不到用户名时的占位：登录态不能存空串（空串即未登录）。 */
+        const val UNKNOWN_ACCOUNT_NAME = "JavDB"
+
+        /** profile 页字段值（用户名、用户类型）的长度上限，超过它的兜底文本一律视为解析失败。 */
+        const val MAX_PROFILE_FIELD_LENGTH = 40
 
         /** profile 页真实内容远大于此；小于它基本就是站点的 JS 跳转 / 异常短响应。 */
         const val PROFILE_MIN_LENGTH = 1000

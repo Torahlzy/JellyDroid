@@ -62,13 +62,8 @@
     <string name="settings_javdb_account">站点账号</string>
     <string name="settings_javdb_account_summary">登录抓取站点（JavDB）。登录后短评可能返回更多条。</string>
     <string name="settings_javdb_not_logged_in">未登录</string>
-    <string name="settings_javdb_login_title">站点登录</string>
-    <string name="settings_javdb_login_summary">站点要求图形验证码：填写账号、密码与图片里的 5 个字母，密码不会保存。</string>
-    <string name="settings_javdb_login_account">用户名或邮箱</string>
-    <string name="settings_javdb_login_password">密码</string>
-    <string name="settings_javdb_login_captcha">图形验证码</string>
-    <string name="settings_javdb_login_submit">登录</string>
-    <string name="settings_javdb_captcha_refresh">点击换一张</string>
+    <string name="settings_javdb_login_web_summary">登录在站点自己的网页里完成，图形验证码与人机验证都在网页内处理；在网页右上角点「完成」后，会话会同步回 App。</string>
+    <string name="settings_javdb_web_login">在网页里登录</string>
     <string name="settings_javdb_logout">退出登录（%1$s）</string>
     <string name="pref_player_mpv_hwdec">硬件解码</string>
     <string name="pref_player_mpv_vo">视频输出</string>

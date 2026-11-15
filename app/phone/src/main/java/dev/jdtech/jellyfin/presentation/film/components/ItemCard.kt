@@ -1,17 +1,23 @@
 package dev.jdtech.jellyfin.presentation.film.components
 
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -19,6 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -35,11 +44,16 @@ import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.heroSharedBounds
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ItemCard(
     item: FindroidItem,
     direction: Direction,
     onClick: (FindroidItem) -> Unit,
+    // 长按回调；仅下载页传入，弹出条目操作菜单
+    onLongClick: (() -> Unit)? = null,
+    // 右上角「保存到下载文件夹」图标回调；为 null 时不显示该图标（非下载页无此入口）
+    onExportClick: (() -> Unit)? = null,
     // 可选宽高比覆盖，透传给封面
     aspectRatio: Float? = null,
     // 无封面时展示的占位图标（drawable 资源），透传给封面
@@ -55,6 +69,7 @@ fun ItemCard(
             Direction.HORIZONTAL -> 260
             Direction.VERTICAL -> 150
         }
+    val haptics = LocalHapticFeedback.current
     Column(
         modifier =
             modifier
@@ -66,7 +81,19 @@ fun ItemCard(
                     }
                 )
                 .clip(MaterialTheme.shapes.small)
-                .clickable(onClick = { onClick(item) })
+                .then(
+                    if (onLongClick != null) {
+                        Modifier.combinedClickable(
+                            onClick = { onClick(item) },
+                            onLongClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onLongClick()
+                            },
+                        )
+                    } else {
+                        Modifier.clickable(onClick = { onClick(item) })
+                    }
+                )
     ) {
         Surface(shape = MaterialTheme.shapes.small) {
             BoxWithConstraints {
@@ -95,9 +122,11 @@ fun ItemCard(
                     ) {
                         // 封面多半取自合集内部条目，用角标让用户知道这是合集而非单个影片
                         if (item is FindroidBoxSet) BoxSetBadge()
-                        if (item.isDownloaded()) DownloadedBadge()
+                        // 下载页条目必然已下载，「已下载」角标与保存图标语义重复，有保存入口时省略角标
+                        if (onExportClick == null && item.isDownloaded()) DownloadedBadge()
                         if (item.played) PlayedBadge()
                         item.unplayedItemCount?.takeIf { it > 0 }?.let { ItemCountBadge(it) }
+                        onExportClick?.let { onExport -> ExportBadge(onClick = onExport) }
                     }
                     if (direction == Direction.HORIZONTAL) {
                         ProgressBar(
@@ -134,6 +163,25 @@ fun ItemCard(
             )
         }
         Spacer(Modifier.height(2.dp))
+    }
+}
+
+/** 下载页专属：条目右上角「保存到下载文件夹」图标，比普通角标稍大且可点击。 */
+@Composable
+private fun ExportBadge(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    BaseBadge(
+        modifier =
+            modifier
+                .defaultMinSize(minWidth = 28.dp, minHeight = 28.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(onClick = onClick),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_download),
+            contentDescription = stringResource(R.string.download_export_title),
+            tint = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.size(20.dp).align(Alignment.Center),
+        )
     }
 }
 

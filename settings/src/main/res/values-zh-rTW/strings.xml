@@ -54,13 +54,8 @@
     <string name="settings_javdb_account">站點帳號</string>
     <string name="settings_javdb_account_summary">登入擷取站點（JavDB）。登入後短評可能回傳更多則。</string>
     <string name="settings_javdb_not_logged_in">未登入</string>
-    <string name="settings_javdb_login_title">站點登入</string>
-    <string name="settings_javdb_login_summary">站點要求圖形驗證碼：填寫帳號、密碼與圖片裡的 5 個字母，密碼不會儲存。</string>
-    <string name="settings_javdb_login_account">使用者名稱或電子郵件</string>
-    <string name="settings_javdb_login_password">密碼</string>
-    <string name="settings_javdb_login_captcha">圖形驗證碼</string>
-    <string name="settings_javdb_login_submit">登入</string>
-    <string name="settings_javdb_captcha_refresh">點擊換一張</string>
+    <string name="settings_javdb_login_web_summary">登入在站點自己的網頁裡完成，圖形驗證碼與人機驗證都在網頁內處理；在網頁右上角點「完成」後，工作階段會同步回 App。</string>
+    <string name="settings_javdb_web_login">在網頁裡登入</string>
     <string name="settings_javdb_logout">登出（%1$s）</string>
     <string name="settings_use_cache_summary">在磁碟上快取圖片以減少載入時間。 將在應用程式重新啟動後生效。</string>
     <string name="settings_cache_size_message">應用程式將使用此大小的磁碟空間儲存來自 Jellyfin 伺服器的圖片。 較大的值可能對較慢的網路有益。</string>

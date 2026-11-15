@@ -19,12 +19,9 @@ import dev.jdtech.jellyfin.settings.presentation.models.PreferenceMultiSelect
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceSelect
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceSwitch
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceTextInput
-import dev.jdtech.jellyfin.settings.domain.JavDbLoginResult
 import dev.jdtech.jellyfin.settings.domain.JavDbSession
 import dev.jdtech.jellyfin.settings.domain.ScrapeSiteUrlsProvider
-import dev.jdtech.jellyfin.logging.AppLog
 import javax.inject.Inject
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -604,8 +601,15 @@ constructor(
                                                         R.string.settings_javdb_account_summary,
                                                     emptyValueStringRes =
                                                         R.string.settings_javdb_not_logged_in,
+                                                    // 登录在站点网页里完成，这里只打开账号弹窗（入口 + 退出登录）
                                                     onClick = {
-                                                        viewModelScope.launch { openJavDbLogin() }
+                                                        viewModelScope.launch {
+                                                            _state.emit(
+                                                                _state.value.copy(
+                                                                    showJavDbAccountDialog = true
+                                                                )
+                                                            )
+                                                        }
                                                     },
                                                 ),
                                             )
@@ -860,7 +864,6 @@ constructor(
             _state.emit(
                 _state.value.copy(
                     preferenceGroups = preferences,
-                    javdbAccount = appPreferences.getValue(appPreferences.javdbAccount),
                     javdbLoggedInUser = javDbSession.loggedInAccount(),
                     scrapeSiteUrls = loadScrapeSiteUrls(),
                 )
@@ -914,24 +917,14 @@ constructor(
                     is PreferenceAction -> Unit
                 }
             }
-            is SettingsAction.OpenJavDbLogin -> viewModelScope.launch { openJavDbLogin() }
-            is SettingsAction.RefreshJavDbCaptcha -> viewModelScope.launch { openJavDbLogin() }
-            is SettingsAction.SubmitJavDbLogin ->
-                viewModelScope.launch {
-                    submitJavDbLogin(
-                        account = action.account,
-                        password = action.password,
-                        captcha = action.captcha,
-                    )
-                }
             is SettingsAction.JavDbLogout ->
                 viewModelScope.launch {
                     javDbSession.logout()
                     loadPreferences(lastIndexes)
                 }
-            is SettingsAction.CloseJavDbLogin ->
+            is SettingsAction.CloseJavDbAccount ->
                 viewModelScope.launch {
-                    _state.emit(_state.value.copy(javdbLogin = JavDbLoginState.Hidden))
+                    _state.emit(_state.value.copy(showJavDbAccountDialog = false))
                 }
             is SettingsAction.OpenScrapeUrls ->
                 viewModelScope.launch {
@@ -964,71 +957,4 @@ constructor(
         }
     }
 
-    /** 打开登录弹窗：先取登录页 token 与一张验证码，拿到图片再让弹窗显示输入框。 */
-    private suspend fun openJavDbLogin() {
-        _state.emit(_state.value.copy(javdbLogin = JavDbLoginState.Loading))
-        val image =
-            try {
-                javDbSession.loadCaptcha()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                AppLog.w(e, "获取 JavDB 登录验证码失败")
-                _state.emit(
-                    _state.value.copy(
-                        javdbLogin =
-                            JavDbLoginState.Input(
-                                captchaImage = null,
-                                error = e.message ?: "获取验证码失败",
-                            )
-                    )
-                )
-                return
-            }
-        _state.emit(_state.value.copy(javdbLogin = JavDbLoginState.Input(captchaImage = image)))
-    }
-
-    /**
-     * 提交登录。
-     *
-     * 验证码是一次性的：失败后自动换一张，避免用户拿旧图反复试；成功后关弹窗并刷新账号行。
-     * 整个提交包在 try 里：login 内部只转网络异常，其它意外异常也不能崩掉协程，一律转成弹窗提示。
-     */
-    private suspend fun submitJavDbLogin(account: String, password: String, captcha: String) {
-        val current = _state.value.javdbLogin
-        if (current is JavDbLoginState.Input) {
-            _state.emit(
-                _state.value.copy(
-                    javdbLogin = current.copy(isSubmitting = true, error = null)
-                )
-            )
-        }
-        val result =
-            try {
-                javDbSession.login(account, password, captcha)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                AppLog.w(e, "JavDB 登录提交失败")
-                JavDbLoginResult.Failure(e.message ?: "登录失败，请稍后重试")
-            }
-        when (result) {
-            is JavDbLoginResult.Success -> {
-                _state.emit(_state.value.copy(javdbLogin = JavDbLoginState.Hidden))
-                loadPreferences(lastIndexes)
-            }
-            is JavDbLoginResult.Failure -> {
-                val image = runCatching { javDbSession.loadCaptcha() }.getOrNull()
-                _state.emit(
-                    _state.value.copy(
-                        javdbLogin =
-                            JavDbLoginState.Input(
-                                captchaImage = image,
-                                error = result.message,
-                            )
-                    )
-                )
-            }
-        }
-    }
 }

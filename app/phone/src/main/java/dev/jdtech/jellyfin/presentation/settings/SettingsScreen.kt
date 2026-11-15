@@ -35,7 +35,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.presentation.components.ScraperUrlsDialog
-import dev.jdtech.jellyfin.presentation.settings.components.JavDbLoginDialog
+import dev.jdtech.jellyfin.presentation.settings.components.JavDbAccountDialog
 import dev.jdtech.jellyfin.presentation.settings.components.SettingsGroupCard
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
@@ -43,7 +43,6 @@ import dev.jdtech.jellyfin.presentation.utils.plus
 import dev.jdtech.jellyfin.settings.R as SettingsR
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceCategory
 import dev.jdtech.jellyfin.settings.presentation.models.PreferenceGroup
-import dev.jdtech.jellyfin.settings.presentation.settings.JavDbLoginState
 import dev.jdtech.jellyfin.settings.presentation.settings.SettingsAction
 import dev.jdtech.jellyfin.settings.presentation.settings.SettingsEvent
 import dev.jdtech.jellyfin.settings.presentation.settings.SettingsState
@@ -61,6 +60,7 @@ fun SettingsScreen(
     navigateToAbout: () -> Unit,
     navigateToAccounts: () -> Unit,
     navigateToCache: () -> Unit,
+    navigateToJavDbWebLogin: () -> Unit,
     navigateBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -130,7 +130,12 @@ fun SettingsScreen(
                     viewModel.onAction(action)
                     viewModel.loadPreferences(indexes)
                 }
-                // 站点登录相关（取验证码 / 提交 / 退出 / 关弹窗）都由 ViewModel 处理
+                // 站点登录唯一入口：关掉账号弹窗，进过盾页里的网页登录
+                is SettingsAction.OpenJavDbWebLogin -> {
+                    viewModel.onAction(SettingsAction.CloseJavDbAccount)
+                    navigateToJavDbWebLogin()
+                }
+                // 退出登录、关弹窗等都由 ViewModel 处理
                 else -> viewModel.onAction(action)
             }
         },
@@ -184,17 +189,12 @@ private fun SettingsScreenLayout(
         }
     }
 
-    if (state.javdbLogin !is JavDbLoginState.Hidden) {
-        JavDbLoginDialog(
-            state = state.javdbLogin,
+    if (state.showJavDbAccountDialog) {
+        JavDbAccountDialog(
             loggedInAccount = state.javdbLoggedInUser,
-            initialAccount = state.javdbAccount,
-            onRefreshCaptcha = { onAction(SettingsAction.RefreshJavDbCaptcha) },
-            onSubmit = { account, password, captcha ->
-                onAction(SettingsAction.SubmitJavDbLogin(account, password, captcha))
-            },
+            onOpenWebLogin = { onAction(SettingsAction.OpenJavDbWebLogin) },
             onLogout = { onAction(SettingsAction.JavDbLogout) },
-            onDismiss = { onAction(SettingsAction.CloseJavDbLogin) },
+            onDismiss = { onAction(SettingsAction.CloseJavDbAccount) },
         )
     }
 

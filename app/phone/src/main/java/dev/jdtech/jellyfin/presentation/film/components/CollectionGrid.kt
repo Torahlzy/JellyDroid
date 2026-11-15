@@ -18,6 +18,7 @@ import dev.jdtech.jellyfin.film.presentation.collection.CollectionAction
 import dev.jdtech.jellyfin.models.CollectionSection
 import dev.jdtech.jellyfin.models.CoverDisplayMode
 import dev.jdtech.jellyfin.models.FindroidEpisode
+import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.GridCellsAdaptiveWithMinColumns
 
@@ -37,6 +38,10 @@ fun CollectionGrid(
     onAction: (CollectionAction) -> Unit,
     coverMode: CoverDisplayMode = CoverDisplayMode.defaultValue,
     bottomContentPadding: Dp = MaterialTheme.spacings.default,
+    // 下载页专属：点击条目右上角保存图标时回调；为 null 时不显示该图标
+    onItemExport: ((FindroidItem) -> Unit)? = null,
+    // 下载页专属：长按条目弹出操作菜单时回调；为 null 时不支持长按
+    onItemMenu: ((FindroidItem) -> Unit)? = null,
 ) {
     val isLandscape = coverMode == CoverDisplayMode.LANDSCAPE
 
@@ -85,6 +90,8 @@ fun CollectionGrid(
                     aspectRatio = if (isLandscape) BANNER_ASPECT_RATIO else null,
                     isWidthAdaptive = isLandscape,
                     onClick = { onAction(CollectionAction.OnItemClick(item)) },
+                    onLongClick = onItemMenu?.let { callback -> { callback(item) } },
+                    onExportClick = onItemExport?.let { callback -> { callback(item) } },
                     modifier = Modifier.animateItem(),
                 )
             }

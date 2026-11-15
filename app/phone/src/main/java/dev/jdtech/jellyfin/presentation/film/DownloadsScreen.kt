@@ -21,7 +21,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -47,8 +46,10 @@ import dev.jdtech.jellyfin.models.CollectionSection
 import dev.jdtech.jellyfin.models.FindroidItem
 import dev.jdtech.jellyfin.models.UiText
 import dev.jdtech.jellyfin.presentation.film.components.CollectionGrid
+import dev.jdtech.jellyfin.presentation.film.components.DeleteDownloadDialog
 import dev.jdtech.jellyfin.presentation.film.components.DetailLoadError
-import dev.jdtech.jellyfin.presentation.film.components.DownloadExportDialog
+import dev.jdtech.jellyfin.presentation.film.components.DownloadExportConfirmDialog
+import dev.jdtech.jellyfin.presentation.film.components.DownloadsItemMenuDialog
 import dev.jdtech.jellyfin.presentation.theme.FindroidTheme
 import dev.jdtech.jellyfin.presentation.theme.spacings
 import dev.jdtech.jellyfin.presentation.utils.rememberSafePadding
@@ -67,7 +68,7 @@ fun DownloadsScreen(
     val storagePermission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             viewModel.onAction(
-                if (granted) DownloadsAction.ExportSelected
+                if (granted) DownloadsAction.ConfirmExport
                 else DownloadsAction.StoragePermissionDenied
             )
         }
@@ -80,7 +81,7 @@ fun DownloadsScreen(
         onAction = { action ->
             when (action) {
                 is DownloadsAction.OnItemClick -> onItemClick(action.item)
-                DownloadsAction.ExportSelected -> {
+                DownloadsAction.ConfirmExport -> {
                     val needsStoragePermission =
                         Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
                             ContextCompat.checkSelfPermission(
@@ -122,11 +123,6 @@ private fun DownloadsScreenLayout(
         topBar = {
             TopAppBar(
                 title = { Text(text = stringResource(CoreR.string.title_download)) },
-                actions = {
-                    TextButton(onClick = { onAction(DownloadsAction.OpenExportDialog) }) {
-                        Text(stringResource(CoreR.string.download_export_title))
-                    }
-                },
                 windowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
                 scrollBehavior = scrollBehavior,
             )
@@ -145,6 +141,18 @@ private fun DownloadsScreenLayout(
             state.error?.let { error ->
                 DetailLoadError(error, onRetryClick = { onAction(DownloadsAction.Retry) })
             }
+            state.operationError?.let { operationError ->
+                Text(
+                    text = operationError.asString(),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier =
+                        Modifier.fillMaxWidth().padding(
+                            horizontal = MaterialTheme.spacings.default,
+                            vertical = MaterialTheme.spacings.small,
+                        ),
+                )
+            }
             Box(modifier = Modifier.weight(1f)) {
                 if (state.sections.isEmpty() && !state.isLoading && state.error == null) {
                     Text(
@@ -161,13 +169,36 @@ private fun DownloadsScreenLayout(
                             onAction(DownloadsAction.OnItemClick(action.item))
                         }
                     },
+                    onItemExport = { onAction(DownloadsAction.OnItemExport(it)) },
+                    onItemMenu = { onAction(DownloadsAction.OnItemMenu(it)) },
                     bottomContentPadding = bottomContentPadding,
                 )
             }
         }
     }
 
-    if (state.showExportDialog) DownloadExportDialog(state, onAction)
+    state.itemMenuItem?.let {
+        DownloadsItemMenuDialog(
+            onExportClick = { onAction(DownloadsAction.OnItemExport(it)) },
+            onDeleteClick = { onAction(DownloadsAction.OnItemDelete(it)) },
+            onDismiss = { onAction(DownloadsAction.DismissItemMenu) },
+        )
+    }
+
+    state.exportConfirmItem?.let { item ->
+        DownloadExportConfirmDialog(
+            item = item,
+            confirmEnabled = !state.isExportBusy,
+            onAction = onAction,
+        )
+    }
+
+    state.deleteConfirmItem?.let {
+        DeleteDownloadDialog(
+            onDelete = { onAction(DownloadsAction.ConfirmDelete) },
+            onDismiss = { onAction(DownloadsAction.DismissDeleteConfirm) },
+        )
+    }
 }
 
 @PreviewScreenSizes

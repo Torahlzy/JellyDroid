@@ -160,8 +160,13 @@ data class ItemFilterRoute(val facet: MetadataFacet, val key: String, val title:
 
 @Serializable data class SettingsFileEditRoute(val filePath: String)
 
-/** JavDB 被 Cloudflare 拦截时的过盾页：内置 WebView 手动通过人机验证，Cookie/UA 自动同步回抓取。 */
-@Serializable data object JavDbUnblockRoute
+/**
+ * JavDB 被 Cloudflare 拦截时的过盾页：内置 WebView 手动通过人机验证，Cookie/UA 自动同步回抓取。
+ *
+ * [requireLogin] 为 true 表示从「站点账号登录」进来的网页版登录：从登录页开始，
+ * 「完成」时校验并接管网页里的登录会话（网页里没登录就留在本页提示）。
+ */
+@Serializable data class JavDbUnblockRoute(val requireLogin: Boolean = false)
 
 @Serializable data object AboutRoute
 
@@ -666,6 +671,10 @@ fun NavigationRoot(
                     navigateToAbout = { navController.safeNavigate(AboutRoute) },
                     navigateToAccounts = { navController.safeNavigate(AccountsRoute) },
                     navigateToCache = { navController.safeNavigate(CacheRoute) },
+                    // 站点登录：到过盾页的 WebView 里由用户自己登录，完成时接管会话
+                    navigateToJavDbWebLogin = {
+                        navController.safeNavigate(JavDbUnblockRoute(requireLogin = true))
+                    },
                     navigateBack = { navController.safePopBackStack() },
                 )
             }
@@ -687,8 +696,12 @@ fun NavigationRoot(
                     navigateBack = { navController.safePopBackStack() },
                 )
             }
-            composable<JavDbUnblockRoute> {
-                JavDbUnblockScreen(navigateBack = { navController.safePopBackStack() })
+            composable<JavDbUnblockRoute> { backStackEntry ->
+                val route: JavDbUnblockRoute = backStackEntry.toRoute()
+                JavDbUnblockScreen(
+                    requireLogin = route.requireLogin,
+                    navigateBack = { navController.safePopBackStack() },
+                )
             }
             composable<AboutRoute> {
                 AboutScreen(navigateBack = { navController.safePopBackStack() })

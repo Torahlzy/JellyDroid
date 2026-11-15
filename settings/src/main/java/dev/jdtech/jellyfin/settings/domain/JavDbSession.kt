@@ -10,8 +10,9 @@ sealed interface JavDbLoginResult {
 /**
  * 抓取站点的账号会话（目前只有 JavDB 需要登录）。
  *
- * 登录成功后会话 Cookie 留在抓取用的 Cookie 存储里，之后的短评请求自动带上；
- * 站点登录需要图形验证码，因此登录分两步：[loadCaptcha] 拿图，用户看清后连账号密码一起提交。
+ * 登录只在站点自己的网页里完成（图形验证码与 Cloudflare 人机验证都由站点页面处理），
+ * App 不接触账号密码，只负责接管网页登录后的会话：会话 Cookie 留在抓取用的 Cookie 存储里，
+ * 之后的短评请求自动带上。
  *
  * 接口定义放在 `:settings` 是为了让设置页的 ViewModel 能直接调用，实现在 `:core`
  * （只有它才依赖网络与抓取站点地址）。
@@ -30,14 +31,18 @@ interface JavDbSession {
     suspend fun ensureSessionValid(): Boolean
 
     /**
-     * 取一张登录验证码图片（同时准备好本次登录所需的会话与表单 token）。
+     * 接管内置网页里拿到的登录会话。
      *
-     * 返回的是原始图片字节（站点给 GIF），由界面自行解码展示。
+     * 用户在网页里登录后，这里把整段会话 Cookie 搬进抓取 Cookie 罐，再访问一次 profile 页
+     * 确认会话有效，有效则回填账号名与 VIP 状态。
+     *
+     * **调用方必须保证此时 App 未登录**：网页里的会话多半是匿名新建的，整段导入会顶掉已有登录态。
+     *
+     * [pageUrl] 为网页当前地址（Cookie 按它的域名入库）；[cookieHeader] 是系统 WebView
+     * CookieManager 给出的整段 Cookie（`k=v; k2=v2`）。网页里还没登录时返回
+     * [JavDbLoginResult.Failure]，本地登录状态保持不变。
      */
-    suspend fun loadCaptcha(): ByteArray
-
-    /** 提交账号密码与验证码；验证码错了会返回 [JavDbLoginResult.Failure]，需要换一张再试。 */
-    suspend fun login(account: String, password: String, captcha: String): JavDbLoginResult
+    suspend fun adoptWebViewSession(pageUrl: String, cookieHeader: String?): JavDbLoginResult
 
     /** 退出登录：清掉会话 Cookie 与记录的账号名。 */
     fun logout()

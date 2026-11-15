@@ -122,9 +122,6 @@ class AppPreferences @Inject constructor(val sharedPreferences: SharedPreference
     val commentsUseProxy = Preference("pref_comments_use_proxy", true)
 
 
-    /** 站点登录时用过的账号名（只用于回填输入框，密码不落盘）。 */
-    val javdbAccount = Preference("pref_javdb_account", "")
-
     /** 已登录的账号名，空串表示未登录；退出登录时清空。 */
     val javdbLoggedInUser = Preference("pref_javdb_logged_in_user", "")
 
