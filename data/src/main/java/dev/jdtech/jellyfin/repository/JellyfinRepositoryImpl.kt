@@ -526,16 +526,23 @@ class JellyfinRepositoryImpl(
                 .mapNotNull { it.toFindroidItem(this@JellyfinRepositoryImpl, database) }
         }
 
-    override suspend fun getResumeItems(): List<FindroidItem> =
+    override suspend fun getPlaybackHistory(): List<FindroidItem> =
         withContext(Dispatchers.IO) {
+            // 播放历史按最后播放时间倒序：已看完、看了一半、以及开头看了少量就退出的条目
+            // 都会更新 LastPlayedDate，单查询即可覆盖；从未播放的条目该字段为空，服务端排序时沉底，
+            // 客户端再过滤一次兜底
             jellyfinApi.itemsApi
-                .getResumeItems(
+                .getItems(
                     jellyfinApi.userId!!,
-                    limit = 12,
                     includeItemTypes = listOf(BaseItemKind.MOVIE, BaseItemKind.EPISODE),
+                    recursive = true,
+                    sortBy = listOf(ItemSortBy.DATE_PLAYED),
+                    sortOrder = listOf(ItemSortOrder.DESCENDING),
+                    limit = 12,
                 )
                 .content
                 .items
+                .filter { it.userData?.lastPlayedDate != null }
                 .mapNotNull { it.toFindroidItem(this@JellyfinRepositoryImpl, database) }
         }
 

@@ -36,12 +36,12 @@ constructor(
     val state = _state.asStateFlow()
 
     private val uuidSuggestions = UUID.fromString("31e47044-9b79-4bb0-99d0-0e477ed65420")
-    private val uuidContinueWatching =
+    private val uuidPlaybackHistory =
         UUID(4937169328197226115, -4704919157662094443) // 44845958-8326-4e83-beb4-c4f42e9eeb95
     private val uuidNextUp =
         UUID(1783371395749072194, -6164625418200444295) // 18bfced5-f237-4d42-aa72-d9d7fed19279
 
-    private val uiTextContinueWatching = UiText.StringResource(FilmR.string.continue_watching)
+    private val uiTextPlaybackHistory = UiText.StringResource(FilmR.string.playback_history)
     private val uiTextNextUp = UiText.StringResource(FilmR.string.next_up)
 
     // 本地的服务器名称只在添加服务器时写入一次，服务端改名后不会同步。
@@ -66,7 +66,7 @@ constructor(
                 }
 
                 loadSuggestions(refreshSuggestions)
-                loadResumeItems()
+                loadPlaybackHistory()
                 loadNextUpItems()
                 loadViews()
             } catch (e: Exception) {
@@ -151,20 +151,20 @@ constructor(
         _state.emit(_state.value.copy(suggestionsSection = section))
     }
 
-    private suspend fun loadResumeItems() {
-        AppLog.i("Loading resume items")
-        val resumeItems = repository.getResumeItems()
+    private suspend fun loadPlaybackHistory() {
+        AppLog.i("Loading playback history")
+        val historyItems = repository.getPlaybackHistory()
 
         val section =
-            if (resumeItems.isEmpty()) {
+            if (historyItems.isEmpty()) {
                 null
             } else {
                 HomeItem.Section(
-                    HomeSection(uuidContinueWatching, uiTextContinueWatching, resumeItems)
+                    HomeSection(uuidPlaybackHistory, uiTextPlaybackHistory, historyItems)
                 )
             }
 
-        _state.emit(_state.value.copy(resumeSection = section))
+        _state.emit(_state.value.copy(historySection = section))
     }
 
     private suspend fun loadNextUpItems() {

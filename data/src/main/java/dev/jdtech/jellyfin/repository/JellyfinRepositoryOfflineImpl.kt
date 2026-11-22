@@ -175,18 +175,20 @@ class JellyfinRepositoryOfflineImpl(
         return emptyList()
     }
 
-    override suspend fun getResumeItems(): List<FindroidItem> {
+    // 首页在离线模式下不可达，此实现只为满足接口对称；本地 userdata 没有最后播放时间戳，
+    // 无法像在线那样按播放时间倒序，只能给出有进度的条目
+    override suspend fun getPlaybackHistory(): List<FindroidItem> {
         return withContext(Dispatchers.IO) {
             val movies =
                 database
                     .getMoviesByServerId(appPreferences.getValue(appPreferences.currentServer)!!)
                     .map { it.toFindroidMovie(database, jellyfinApi.userId!!) }
-                    .filter { it.playbackPositionTicks > 0 }
+                    .filter { it.playbackPositionTicks > 0 || it.played }
             val episodes =
                 database
                     .getEpisodesByServerId(appPreferences.getValue(appPreferences.currentServer)!!)
                     .map { it.toFindroidEpisode(database, jellyfinApi.userId!!) }
-                    .filter { it.playbackPositionTicks > 0 }
+                    .filter { it.playbackPositionTicks > 0 || it.played }
             movies + episodes
         }
     }

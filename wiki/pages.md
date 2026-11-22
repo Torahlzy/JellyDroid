@@ -27,7 +27,7 @@
 - 所有 Compose 页面遵循同一模式：`ViewModel` 暴露 `StateFlow<XxxState>` 并提供 `onAction(XxxAction)`，Screen 观察状态并分发动作。详见文末「页面共性约定」。
 - 各页面 Screen 目前均无 KDoc，本文职责由 `@Composable` 参数 + ViewModel 的 State 字段 / 方法归纳得出。
 
-**最后更新：2026-11-15**
+**最后更新：2026-11-22**
 
 ---
 
@@ -145,13 +145,13 @@ else -> WelcomeRoute
 
 ### HomeScreen — 首页
 
-- **职责**：聚合首页。顶部为 `HomeHeader`（服务器名与服务器切换入口，名称直接显示，不执行尺寸展开动画）；下方按 section 渲染推荐轮播、继续观看、接下来、各媒体库最新，加载失败时在内容区提供重试入口。
+- **职责**：聚合首页。顶部为 `HomeHeader`（服务器名与服务器切换入口，名称直接显示，不执行尺寸展开动画）；下方按 section 渲染推荐轮播、历史记录、接下来、各媒体库最新，加载失败时在内容区提供重试入口。
 - **路由**：`HomeRoute`，定义并注册于 `PHONE/NavigationRoot.kt`。
 - **Screen**：`PHONE/presentation/film/HomeScreen.kt`；section 组装在 `HomeScreen.kt`。
 - **ViewModel / State / Action**：`FILM/presentation/home/HomeViewModel.kt`、`FILM/presentation/home/HomeState.kt`、`FILM/presentation/home/HomeAction.kt`。
-- **State 字段**：`server`、`suggestionsSection`、`resumeSection`、`nextUpSection`、`views`、`isLoading`、`error`。
+- **State 字段**：`server`、`suggestionsSection`、`historySection`、`nextUpSection`、`views`、`isLoading`、`error`。
 - **主要方法 / Action**：`loadData(refreshSuggestions)`；`OnItemClick`（可带共享元素来源 `heroKey`）、`OnLibraryClick`、`OnRetryClick`、`OnRefresh`、`OnManageServers`。
-- **数据来源**：`getSuggestions()`、`getResumeItems()`、`getNextUp()`、`getUserViews()` + `getLatestMedia(view.id)`（`HomeViewModel.kt`）；各 section 有内容时自动展示，为空则不渲染，不再提供单独开关。banner（推荐轮播）只在首次进入与下拉刷新 / 切换服务器（`OnRefresh`）时拉取，从详情页返回首页不重新请求，避免轮播被重建；返回首页若共享元素转场仍在执行，等转场结束后再刷新其它分区，继续观看条目的增删与排序变化使用 LazyRow 条目动画。
+- **数据来源**：`getSuggestions()`、`getPlaybackHistory()`、`getNextUp()`、`getUserViews()` + `getLatestMedia(view.id)`（`HomeViewModel.kt`）；各 section 有内容时自动展示，为空则不渲染，不再提供单独开关。历史记录为播放过的条目（看了一半 / 已看完 / 开头少量进度即退出）按最后播放时间倒序（服务端 `DatePlayed` 排序，从未播放的条目沉底）。banner（推荐轮播）只在首次进入与下拉刷新 / 切换服务器（`OnRefresh`）时拉取，从详情页返回首页不重新请求，避免轮播被重建；返回首页若共享元素转场仍在执行，等转场结束后再刷新其它分区，历史记录条目的增删与排序变化使用 LazyRow 条目动画。
 - **入口**：启动路由 / 底部「首页」标签 / 各详情页的 `navigateHome`。离线模式下页面不可达（首页数据全来自服务器），落地页与 `navigateHome` 的目标改为下载页。
 
 ### MediaScreen — 媒体库总览
@@ -220,7 +220,7 @@ else -> WelcomeRoute
 - **职责**：加载影片元数据 / 视频信息 / 演员，演员长按菜单支持获取头像与复制完整演员名，提供播放、预告、标记已看、收藏、下载、跳转演员、点击类型 / 标签跳到对应筛选结果页，以及「更多」菜单（编辑封面 / 编辑 nfo / 下载字幕 / 删除全部 / 抓取网址），下载字幕弹窗可把已下好的候选带进播放器做同屏对照（带上上次播放的来源下标，避免在另一个版本上开面板），并处理离线模式（离线时类型 / 标签不可点，也不显示「更多」菜单）。信息行的类型 / 标签取值由 `PHONE/presentation/film/components/InfoText.kt` 渲染，点击经 `MovieAction.NavigateToGenre` / `NavigateToTag` → `PHONE/NavigationRoot.kt` 的 `navigateToMetadataFacet` 跳转 `ItemFilterRoute`。
 - **加载错误**：加载失败停止等待动画，使用 `PHONE/presentation/film/components/DetailLoadError.kt` 显示错误详情和重试入口；重试调用本页原有 load 方法，已有内容继续保留，返回操作可用。
 - **路由**：`MovieRoute(movieId, heroKey?, useLocalData = false)`，定义并注册于 `PHONE/NavigationRoot.kt`；`heroKey` 记录点击来源，普通列表为空时使用默认卡片 key；下载入口携带 `useLocalData = true` 读取本地详情与播放源。
-- **进场动画**：列表封面与详情页头部之间是共享元素 morph（普通卡片 key 为 `movie-hero-<movieId>`，首页 Banner / 继续观看 / 接下来 / 最新添加分别使用带来源的 key，避免同一电影同时出现在多个分区时互相抢占；经 `PHONE/presentation/utils/SharedTransition.kt` 的 `heroSharedBounds` 建立，两个转场作用域由 `PHONE/NavigationRoot.kt` 的 `SharedTransitionNavHost` / `SharedElementHost` 经 CompositionLocal 下发）；加载态为居中转圈，内容区块等进场转场（morph）结束后才组合并让标题 / 信息行 / 按钮栏 / 简介 / 演员行依次入场（`AppearingSection`），避免转场中途组合整页内容抢帧卡顿；详情页进入为淡入 + 轻微放大、返回反向收缩，转场参数在 `PHONE/NavigationRoot.kt`（全局 token 镜像在 `PHONE/presentation/theme/Motion.kt`）。
+- **进场动画**：列表封面与详情页头部之间是共享元素 morph（普通卡片 key 为 `movie-hero-<movieId>`，首页 Banner / 历史记录 / 接下来 / 最新添加分别使用带来源的 key，避免同一电影同时出现在多个分区时互相抢占；经 `PHONE/presentation/utils/SharedTransition.kt` 的 `heroSharedBounds` 建立，两个转场作用域由 `PHONE/NavigationRoot.kt` 的 `SharedTransitionNavHost` / `SharedElementHost` 经 CompositionLocal 下发）；加载态为居中转圈，内容区块等进场转场（morph）结束后才组合并让标题 / 信息行 / 按钮栏 / 简介 / 演员行依次入场（`AppearingSection`），避免转场中途组合整页内容抢帧卡顿；详情页进入为淡入 + 轻微放大、返回反向收缩，转场参数在 `PHONE/NavigationRoot.kt`（全局 token 镜像在 `PHONE/presentation/theme/Motion.kt`）。
 - **评论区（外网短评）**：最下方为 `MovieCommentsSection.kt`，支持加载、失败重试、JavDB 登录态提示。数据访问与磁盘缓存位于 `CORE/comment/`；开关与「评论使用代理」来自设置页「下载与网络 → 评论」，本地代理来自同页独立的「代理」组，缓存空间由「缓存」统一管理。访客可见条数受站点账号权益限制，评论失败不影响详情页其它内容。失败原因是被站点拦截（Cloudflare，`ScraperException.SiteBlocked`，State 字段 `isCommentsSiteBlocked`）时额外提供「打开网页过盾」按钮，经 `NavigationRoot.kt` 的 `navigateToUnblock` 跳转 `JavDbUnblockRoute`。
 - **Screen**：`PHONE/presentation/film/MovieScreen.kt`；弹窗与小组件主要在 `PHONE/presentation/film/components/` 下，跨域共用的「抓取网址」弹窗在 `PHONE/presentation/components/`，代理连通性测试组件在 `PHONE/presentation/proxy/`：
   - `ItemPlayButton.kt`：封面上的悬浮播放按钮。未滚动时浮在封面中央并跟随内容一起滚动，点击直接播放（`MovieAction.Play(startFromBeginning = false)`，与按钮栏的播放一致）；封面滑出超过一半后收起，用弹簧动画飞到顶栏「回到首页」按钮后方（尺寸与收起锚点按 `ItemTopBar` 的按钮对齐）。悬浮层铺满全屏但不消费触摸，只有按钮圆形区域可点，`headerHeightPx` 由 `MovieScreen.kt` 测量封面后传入。

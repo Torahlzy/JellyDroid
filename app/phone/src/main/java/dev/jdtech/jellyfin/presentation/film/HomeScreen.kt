@@ -123,16 +123,16 @@ private fun HomeScreenLayout(state: HomeState, onAction: (HomeAction) -> Unit) {
                             )
                         }
                     }
-                    state.resumeSection?.let { section ->
+                    state.historySection?.let { section ->
                         item(key = section.id) {
                             HomeSection(
                                 section = section.homeSection,
                                 itemsPadding = itemsPadding,
                                 onAction = onAction,
                                 modifier = Modifier.animateItem(),
-                                // 继续观看封面沿用首页 banner 的宽高比
+                                // 历史记录封面沿用首页 banner 的宽高比
                                 aspectRatio = BANNER_ASPECT_RATIO,
-                                heroKeyPrefix = "movie-hero-resume",
+                                heroKeyPrefix = "movie-hero-history",
                             )
                         }
                     }
@@ -214,7 +214,7 @@ private fun HomeScreenLayoutPreview() {
                 HomeState(
                     server = dummyServer,
                     suggestionsSection = dummyHomeSuggestions,
-                    resumeSection = dummyHomeSection,
+                    historySection = dummyHomeSection,
                     views = listOf(dummyHomeView),
                 ),
             onAction = {},

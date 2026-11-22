@@ -121,7 +121,11 @@ interface JellyfinRepository {
 
     suspend fun getSuggestions(): List<FindroidItem>
 
-    suspend fun getResumeItems(): List<FindroidItem>
+    /**
+     * 播放历史：看了一半、已看完、以及开头看了少量就退出的条目，按最后播放时间倒序。
+     * 排序由服务端完成（按 DatePlayed 排序时从未播放的条目沉底）。
+     */
+    suspend fun getPlaybackHistory(): List<FindroidItem>
 
     suspend fun getLatestMedia(parentId: UUID): List<FindroidItem>
 
