@@ -155,17 +155,20 @@ class JellyfinRepositoryOfflineImpl(
 
     override suspend fun getSearchItems(query: String): List<FindroidItem> {
         return withContext(Dispatchers.IO) {
+            // 分隔符与字母数字边界替换成 % 通配，见 toOfflineLikePattern，
+            // 使「mida242」也能命中「mida-242」这类带连字符的标题
+            val pattern = toOfflineLikePattern(query)
             val movies =
                 database
-                    .searchMovies(appPreferences.getValue(appPreferences.currentServer)!!, query)
+                    .searchMovies(appPreferences.getValue(appPreferences.currentServer)!!, pattern)
                     .map { it.toFindroidMovie(database, jellyfinApi.userId!!) }
             val shows =
                 database
-                    .searchShows(appPreferences.getValue(appPreferences.currentServer)!!, query)
+                    .searchShows(appPreferences.getValue(appPreferences.currentServer)!!, pattern)
                     .map { it.toFindroidShow(database, jellyfinApi.userId!!) }
             val episodes =
                 database
-                    .searchEpisodes(appPreferences.getValue(appPreferences.currentServer)!!, query)
+                    .searchEpisodes(appPreferences.getValue(appPreferences.currentServer)!!, pattern)
                     .map { it.toFindroidEpisode(database, jellyfinApi.userId!!) }
             movies + shows + episodes
         }

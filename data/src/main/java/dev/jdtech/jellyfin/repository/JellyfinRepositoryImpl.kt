@@ -501,16 +501,23 @@ class JellyfinRepositoryImpl(
 
     override suspend fun getSearchItems(query: String): List<FindroidItem> =
         withContext(Dispatchers.IO) {
-            jellyfinApi.itemsApi
-                .getItems(
-                    jellyfinApi.userId!!,
-                    searchTerm = query,
-                    includeItemTypes = listOf(BaseItemKind.MOVIE, BaseItemKind.SERIES),
-                    recursive = true,
-                )
-                .content
-                .items
-                .mapNotNull { it.toFindroidItem(this@JellyfinRepositoryImpl, database) }
+            // 原查询搜不到时依次用归一化变体重试（去分隔符、补连字符），
+            // 让「mida 242」「mida242」也能命中「MIDA-242」这类番号标题
+            for (variant in buildSearchQueryVariants(query)) {
+                val items =
+                    jellyfinApi.itemsApi
+                        .getItems(
+                            jellyfinApi.userId!!,
+                            searchTerm = variant,
+                            includeItemTypes = listOf(BaseItemKind.MOVIE, BaseItemKind.SERIES),
+                            recursive = true,
+                        )
+                        .content
+                        .items
+                        .mapNotNull { it.toFindroidItem(this@JellyfinRepositoryImpl, database) }
+                if (items.isNotEmpty()) return@withContext items
+            }
+            emptyList()
         }
 
     override suspend fun getSuggestions(): List<FindroidItem> =

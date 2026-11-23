@@ -245,13 +245,20 @@ interface ServerDatabaseDao {
     @Query("SELECT * FROM userdata WHERE toBeSynced = 1 ORDER BY userId, itemId")
     fun observePendingUserData(): Flow<List<FindroidUserDataDto>>
 
-    @Query("SELECT * FROM movies WHERE serverId = :serverId AND name LIKE '%' || :name || '%'")
+    // ESCAPE '\' 配合 toOfflineLikePattern 转义用户输入里的 % 与 _
+    @Query(
+        "SELECT * FROM movies WHERE serverId = :serverId AND name LIKE '%' || :name || '%' ESCAPE '\\'",
+    )
     suspend fun searchMovies(serverId: String, name: String): List<FindroidMovieDto>
 
-    @Query("SELECT * FROM shows WHERE serverId = :serverId AND name LIKE '%' || :name || '%'")
+    @Query(
+        "SELECT * FROM shows WHERE serverId = :serverId AND name LIKE '%' || :name || '%' ESCAPE '\\'",
+    )
     suspend fun searchShows(serverId: String, name: String): List<FindroidShowDto>
 
-    @Query("SELECT * FROM episodes WHERE serverId = :serverId AND name LIKE '%' || :name || '%'")
+    @Query(
+        "SELECT * FROM episodes WHERE serverId = :serverId AND name LIKE '%' || :name || '%' ESCAPE '\\'",
+    )
     suspend fun searchEpisodes(serverId: String, name: String): List<FindroidEpisodeDto>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
